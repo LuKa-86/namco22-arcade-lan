@@ -1,0 +1,52 @@
+# Namco C139 link (SCI) — research notes
+
+Working notes for LAN link play. Everything here is inferred from the games' own
+driver code (the 68K listing in the `/* ... */` comments of `gen/*_lifted.c`);
+MAME's C139 is a stub (status reads `0x0004`, nothing is sent) so there is no
+reference implementation to compare against.
+
+## The chip, as the 68K sees it
+
+| | Super 22 (Tokyo Wars, Dirt Dash) | System 22 (Rave Racer) |
+|---|---|---|
+| buffer, 16 KB | `0x410000` | `0x20010000` |
+| send area (own packet) | `0x410000` (word offset 0) | `0x20010000` |
+| receive ring, 0x1000 words | `0x412000` (word offset `0x1000`) | `0x20012000` |
+| registers, 8 x 16-bit | `0x420000`–`0x42000E` | `0x20020000`–`0x2002000E` |
+| interrupt | syscon line 2 (`0x700002`), TW sets level 4, vector `0x932A0` | syscon SCI line |
+
+Buffer words are 9-bit characters: bits 0-7 data, bit 8 marks the last word of a
+frame (the sender sets it; the checksum word starts at `0x100`).
+
+Registers (word offset → meaning, from Tokyo Wars' use):
+
+| reg | addr | meaning (inferred) |
+|---|---|---|
+| 0 | `+0x0` | status. bit 1 = a frame was received. Written 0 by the handler = acknowledge. Interrupt with bit 1 clear = "transmitter idle". |
+| 1 | `+0x2` | control. Values seen `0xF`, `0xD`, `0xB`, `0x9`. bit 1 = mask the receive interrupt, bit 2 = mask the transmit-idle interrupt (level-triggered: the driver masks it whenever its send queue is empty). |
+| 2 | `+0x4` | 0 in TW. Rave Racer writes 0, 1, 3 (mode?) — TODO |
+| 3 | `+0x6` | written 1 then 0 around starting a send when more sends are queued (strobe; no visible effect needed so far) |
+| 4 | `+0x8` | `0xFF` at init |
+| 5 | `+0xA` | send word count. Write `0x46` (70) starts a send; reads non-zero while the transmitter is busy. |
+| 6 | `+0xC` | receive write pointer, in words, `0x1000`-based, wraps in `0x1000..0x1FFF`. Init `0x1000`. |
+| 7 | `+0xE` | send source, in words from the buffer base: 0 = own packet, `0x1000+n` = a received frame in the ring (forwarding). |
+
+## Tokyo Wars' protocol (driver at `0x92F82`–`0x93820`)
+
+- Cabinet number = EEPROM byte 9, bits 0-1 (read at `0x92F82` with `movep.l` from `0x460010`): 0..3.
+- Called every frame from `0x4A02` / `0x11232`: `0x9362E` (who answered, ring size, link health) then `0x93072` (send own packet).
+- Frame, 70 words: `0x81+id`, hop, `0xA2`, `0x73+id`, 64 data bytes, hop (copy), checksum (`0x100` + byte sum).
+- **Ring, store-and-forward.** On receive (handler `0x932A0`): find the end marker scanning back from reg 6, check `0xA2`,
+  both hop copies equal, hop+1 ≤ 4, id bytes agree, id < 16; increment both hop copies (and checksum by 2) in the ring
+  buffer, copy the data to the sender's double buffer, then forward the frame by pointing reg 7 at it. A frame that
+  comes back to its sender stops there; its hop count = ring size.
+- Link health: 8 frames without the own frame returning → link bad. The set of cabinets heard must be stable for 8 frames.
+- Each cabinet sends its own state (authoritative), so there is no lockstep and no "desync" in the lockstep sense:
+  a late or lost frame only means the others see slightly old data for that frame.
+
+## Emulation approach
+
+Packet-level, not bit-level: when the game starts a send, the model takes the 70 words and delivers them to the next
+cabinet in the ring (UDP over the LAN, or 127.0.0.1 for several instances on one PC). A receiving model writes one frame
+at a time into its ring at reg 6, sets status bit 1 and raises the interrupt; the next queued frame is delivered only
+after the game acknowledges. The ring order skips cabinets that are switched off, so a dead PC does not break the others.
