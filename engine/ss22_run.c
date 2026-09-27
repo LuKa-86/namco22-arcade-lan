@@ -57,11 +57,15 @@ void rd_budget_out(void);
  *   --link-cabinets M        how many cabinets the set can have (default 4)
  *   --link-peers A,B,C,D     the cabinets' IPv4 addresses, in cabinet order (default: all on this PC, 127.0.0.1)
  *   --link-port P            UDP port of cabinet 1 (cabinet N uses P + N - 1; default 22220)
- *   --link-test D:J:L        TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost
+ *   --link-test D:J:L[:S]    TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost; S = this copy's clock S ppm fast (headless)
  *   --mute                   no sound (the other copies when several run on one PC)
  * A linked copy keeps its own EEPROM (<lname>_eeprom_cabN.nv) and log (<game>_cabN.log), so copies can share one folder. */
 static lnk_cfg link_cfg = { .id = -1, .nodes = 4, .base_port = 22220 };
 static bool link_on, mute;
+static int  link_skew_ppm;                                             /* TEST (--link-test D:J:L:S): this copy's clock S ppm fast (negative: slow) */
+static uint32_t link_down_frames, link_down_now;                        /* frames the GAME saw its link down (after it first came up) */
+static uint32_t link_up_run;                                           /* consecutive good frames: counting starts after 2 s of a good link (boot) */
+static bool link_was_up;
 static void link_slice(void)
 {
     for (int k = 0; k < 8 && c139_tick(k == 0); k++) {                /* a frame is taken in and forwarded within the slice */
@@ -71,7 +75,7 @@ static void link_slice(void)
 }
 static void link_pace(void)                                            /* headless linked copies: real time, like a window */
 {
-    static uint64_t next; const uint64_t f = SDL_GetPerformanceFrequency(), step = (uint64_t)((double)f / 59.906);
+    static uint64_t next; const uint64_t f = SDL_GetPerformanceFrequency(), step = (uint64_t)((double)f / (59.906 * (1.0 + link_skew_ppm / 1e6)));
     uint64_t t = SDL_GetPerformanceCounter();
     if (!next || t > next + 10 * step) next = t;
     next += step;
@@ -82,8 +86,8 @@ static void link_report(void)
     const lnk_stats *n = lnk_get_stats(); const c139_stats *c = c139_get_stats();
     char g[200] = "";
     if (g_ss22_game->link_report) g_ss22_game->link_report(g, sizeof g);
-    fprintf(stderr, "[LINK] frame %u  cabinets on %02X (next %d)  chip tx %u rx %u queue-drop %u unacked %u  net sent %u recv %u lost %u bad %u  | %s\n",
-            rr_frame, lnk_alive_mask(), lnk_next_hop() + 1, c->tx, c->rx, c->rx_dropped, c->rx_unacked, n->sent, n->recv, n->lost_seq, n->bad, g);
+    fprintf(stderr, "[LINK] frame %u  down %u (now %u)  cabinets on %02X (next %d)  chip tx %u rx %u queue-drop %u unacked %u  net sent %u recv %u lost %u bad %u  | %s\n",
+            rr_frame, link_down_frames, link_down_now, lnk_alive_mask(), lnk_next_hop() + 1, c->tx, c->rx, c->rx_dropped, c->rx_unacked, n->sent, n->recv, n->lost_seq, n->bad, g);
 }
 
 #ifdef RR_TRACE
@@ -241,7 +245,15 @@ void rr_tick(void)
     if ((serial_acc += 100) >= 60 * SLICES) { serial_acc -= 60 * SLICES; ss22_dsp_serial(); }
     if (++slice % SLICES) return;
     rr_frame++;
-    if (link_on) { if (!ss22_host_active()) link_pace(); if (rr_frame % 300 == 0) link_report(); }
+    if (link_on) {
+        lnk_set_ready((g_hw.irq_enabled & 4u) && c139_get_stats()->tx >= 60);   /* the game's link driver runs (its IRQ on, a second of sends) */
+        if (!ss22_host_active()) link_pace();
+        if (g_ss22_game->link_good) {
+            if (g_ss22_game->link_good()) { if (++link_up_run >= 120) link_was_up = true; link_down_now = 0; }
+            else if ((link_up_run = 0), link_was_up) { link_down_frames++; if (++link_down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", rr_frame); }
+        }
+        if (rr_frame % 300 == 0) link_report();
+    }
 #ifdef RR_TRACE
     if (pc_ring_frame >= 0 && (rr_frame == (uint32_t)pc_ring_frame || (pc_ring_frame > 0 && rr_frame > (uint32_t)pc_ring_frame && rr_frame % 300 == 0))) pc_ring_report();
 #endif
@@ -351,7 +363,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         else if (!strcmp(argv[i], "--link-cabinets") && i + 1 < argc) link_cfg.nodes = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--link-peers") && i + 1 < argc) link_cfg.peers = argv[++i];
         else if (!strcmp(argv[i], "--link-port") && i + 1 < argc) link_cfg.base_port = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--link-test") && i + 1 < argc) sscanf(argv[++i], "%d:%d:%d", &link_cfg.delay_ms, &link_cfg.jitter_ms, &link_cfg.loss_pct);
+        else if (!strcmp(argv[i], "--link-test") && i + 1 < argc) sscanf(argv[++i], "%d:%d:%d:%d", &link_cfg.delay_ms, &link_cfg.jitter_ms, &link_cfg.loss_pct, &link_skew_ppm);
         else if (!strcmp(argv[i], "--mute")) mute = true;
         else rom_dir = argv[i];
     }
@@ -394,6 +406,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
             return 2;
         }
         g_ss22_link_id_byte = g->link_id_byte; g_ss22_link_id = link_cfg.id & 3;
+        atexit(lnk_close);                              /* however the game ends, the others hear it go */
         link_on = true;
     }
     if (win_scale) ss22_eeprom_persist(nvfile);         /* a player's session keeps its options and records; headless runs (the gates) never do */

@@ -27,9 +27,10 @@ typedef int sock_t;
 #define MAGIC     0x4E32324Cu               /* "N22L" */
 #define PROTO     1
 #define T_FRAME   1
-#define T_HELLO   2
-#define HELLO_MS  250
-#define ALIVE_MS  1000
+#define T_HELLO   2                         /* + 1 byte: bit 0 = ready (the game is running its link) */
+#define T_BYE     3                         /* this cabinet is closing: step over it at once */
+#define HELLO_MS  25                        /* a hello to every cabinet this often ... */
+#define ALIVE_MS  120                       /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
 #define HDR       16                        /* magic 4, proto 1, type 1, src 1, dst 1, seq 4, tag 4 */
 
 static struct {
@@ -39,6 +40,7 @@ static struct {
     struct sockaddr_in addr[LNK_MAX_NODES];
     uint32_t tag;
     uint64_t heard[LNK_MAX_NODES];          /* SDL ticks of the last packet from each cabinet (0 = never) */
+    bool     ready[LNK_MAX_NODES], ready_self;   /* its game forwards frames: only then is it part of the ring */
     uint32_t seq_to[LNK_MAX_NODES], last_seq[LNK_MAX_NODES];   /* numbered per destination: a gap = packets lost on that path */
     uint64_t next_hello;
     lnk_stats st;
@@ -109,11 +111,10 @@ bool lnk_open(const lnk_cfg *cfg)
     return true;
 }
 
-void lnk_close(void) { if (L.on) { sock_close(L.s); L.on = false; } }
 bool lnk_on(void) { return L.on; }
 const lnk_stats *lnk_get_stats(void) { return &L.st; }
 
-static bool alive(int n, uint64_t t) { return L.heard[n] == UINT64_MAX || (L.heard[n] && t - L.heard[n] < ALIVE_MS); }
+static bool alive(int n, uint64_t t) { return L.heard[n] == UINT64_MAX || (L.ready[n] && L.heard[n] && t - L.heard[n] < ALIVE_MS); }
 
 uint32_t lnk_alive_mask(void)
 {
@@ -180,8 +181,8 @@ static void hellos(void)
     uint64_t t = now_ms();
     if (t < L.next_hello) return;
     L.next_hello = t + HELLO_MS;
-    uint8_t b[HDR];
-    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_HELLO, n); raw_send(n, b, HDR); }
+    uint8_t b[HDR + 1];
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_HELLO, n); b[HDR] = L.ready_self; raw_send(n, b, HDR + 1); }
 }
 
 int lnk_recv(uint16_t *w, int max)
@@ -207,8 +208,12 @@ int lnk_recv(uint16_t *w, int max)
         int src = b[6];
         L.heard[src] = now_ms();
         uint32_t seq = get32(b + 8);
+        /* lost = gaps in the numbering; a late (reordered) packet fills its gap back in */
         if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) L.st.lost_seq += seq - L.last_seq[src] - 1;
+        else if (seq < L.last_seq[src] && L.last_seq[src] - seq < 1000 && L.st.lost_seq) L.st.lost_seq--;
         if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
+        if (b[5] == T_HELLO) { if (len > HDR) L.ready[src] = b[HDR] & 1; continue; }
+        if (b[5] == T_BYE) { L.heard[src] = 0; L.ready[src] = false; continue; }
         if (b[5] != T_FRAME) continue;
         int n = (len - HDR) / 2;
         if (n > max) n = max;
@@ -216,4 +221,15 @@ int lnk_recv(uint16_t *w, int max)
         L.st.recv++;
         return n;
     }
+}
+
+void lnk_set_ready(bool r) { L.ready_self = r; }
+
+void lnk_close(void)
+{
+    if (!L.on) return;
+    uint8_t b[HDR];
+    for (int k = 0; k < 3; k++)                               /* a goodbye (three times: it is UDP) */
+        for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_BYE, n); raw_send(n, b, HDR); }
+    sock_close(L.s); L.on = false;
 }

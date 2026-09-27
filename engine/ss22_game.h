@@ -76,6 +76,7 @@ typedef struct ss22_game {
      * the game's own view of the link for the log (who it hears, the ring size, link good) -- NULL = none */
     int         link_id_byte;
     void      (*link_report)(char *buf, int n);
+    bool      (*link_good)(void);            /* the game thinks the link is working (counted every frame for the log) */
 } ss22_game;
 
 int ss22_main(int argc, char **argv, const ss22_game *g);            /* engine/ss22_run.c */

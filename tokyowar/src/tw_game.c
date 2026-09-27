@@ -143,6 +143,8 @@ static void link_report(char *buf, int n)
              rr_read(0xE0200Au, 2));
 }
 
+static bool link_good(void) { return rr_read(0xE0200Cu, 2) != 0; }
+
 static const ss22_game game = {
     .name = "Tokyo Wars", .tag = "TW", .lname = "tw", .logname = "tokyowar.log", .zip = "tokyowar.zip",
     .board = &tw_board,
@@ -161,7 +163,7 @@ static const ss22_game game = {
     .autoplay = autoplay,
     .pedal_full = { 0x100, 0x100 },
     .link_id_byte = 9,                  /* link play: the driver (0x92F82) reads EEPROM byte 9, bits 0-1, as the cabinet number */
-    .link_report = link_report,
+    .link_report = link_report, .link_good = link_good,
 };
 
 int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }
