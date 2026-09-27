@@ -1,0 +1,27 @@
+
+ ==================================================================
+  Prop Cycle / Rave Racer / Tokyo Wars / Dirt Dash are installed.  THE GAMES NEED ROM FILES.
+ ==================================================================
+  No game data is included. Put the MAME ROM sets here:
+
+    Prop Cycle:  propcycl.zip
+                 -> ~/.local/share/namco22/propcycle/roms/
+
+    Rave Racer:  raverace.zip  AND  namcoc74.zip
+                 -> ~/.local/share/namco22/raverace/roms/
+
+    Tokyo Wars:  tokyowar.zip
+                 -> ~/.local/share/namco22/tokyowar/roms/
+
+    Dirt Dash:   dirtdash.zip
+                 -> ~/.local/share/namco22/dirtdash/roms/
+
+    If a game says "c71.bin is missing" (Rave Racer, Tokyo Wars, Dirt Dash):
+    also put MAME's namcoc71.zip in that game's roms/ folder (the DSP BIOS).
+
+  (Each user has their own folder. Starting a game once creates it
+   and opens it for you. Zips already in ~/Downloads are found
+   automatically.)  Then start "Prop Cycle", "Rave Racer", "Tokyo Wars" or "Dirt Dash"
+  from the applications menu, or run:  propcycle / raveracer / tokyowars / dirtdash
+ ==================================================================
+
