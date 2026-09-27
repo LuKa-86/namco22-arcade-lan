@@ -57,10 +57,40 @@ void rd_budget_out(void);
  *   --link-cabinets M        how many cabinets the set can have (default 4)
  *   --link-peers A,B,C,D     the cabinets' IPv4 addresses, in cabinet order (default: all on this PC, 127.0.0.1)
  *   --link-port P            UDP port of cabinet 1 (cabinet N uses P + N - 1; default 22220)
+ *   --link-wait S            at start-up, wait up to S seconds for the other cabinets (default 60), then start without the missing ones
  *   --link-test D:J:L[:S]    TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost; S = this copy's clock S ppm fast (headless)
  *   --mute                   no sound (the other copies when several run on one PC)
  * A linked copy keeps its own EEPROM (<lname>_eeprom_cabN.nv) and log (<game>_cabN.log), so copies can share one folder. */
-static lnk_cfg link_cfg = { .id = -1, .nodes = 4, .base_port = 22220 };
+static lnk_cfg link_cfg = { .id = -1, .nodes = 0, .base_port = 22220, .gather_ms = 60000 };
+
+/* start-up: wait for the other cabinets (engine/link_net.h, GATHER), the window's title saying who is missing; then the game starts */
+static void link_gather(const char *title)
+{
+    SDL_Window *w = ss22_host_active() ? SDL_GL_GetCurrentWindow() : NULL;
+    uint32_t shown = 0xFFFFFFFFu; int shown_s = -1;
+    while (lnk_gather() == LNK_GATHERING) {
+        SDL_Event e;
+        while (w && SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
+        uint32_t here = lnk_present_mask(); int left = (lnk_gather_left_ms() + 999) / 1000;
+        if (here != shown || left != shown_s) {
+            char miss[40] = "", t[256]; int k = 0;
+            for (int n = 0; n < link_cfg.nodes; n++) if (!(here >> n & 1)) k += snprintf(miss + k, sizeof miss - (size_t)k, "%s%d", k ? ", " : "", n + 1);
+            snprintf(t, sizeof t, "%s - waiting for cabinet%s %s (%d s)", title, strchr(miss, ',') ? "s" : "", miss, left);
+            if (w) SDL_SetWindowTitle(w, t);
+            if (here != shown) fprintf(stderr, "[LINK] %s\n", t + strlen(title) + 3);
+            shown = here; shown_s = left;
+        }
+        SDL_Delay(5);
+    }
+    char t[256];
+    if (lnk_state() == LNK_ALONE) snprintf(t, sizeof t, "%s - NOT LINKED (it started after the others): restart every cabinet", title);
+    else {
+        char who[40] = ""; int k = 0;
+        for (int n = 0; n < link_cfg.nodes; n++) if (lnk_members() >> n & 1) k += snprintf(who + k, sizeof who - (size_t)k, "%s%d", k ? "+" : "", n + 1);
+        snprintf(t, sizeof t, "%s - linked: cabinets %s", title, who);
+    }
+    if (w) SDL_SetWindowTitle(w, t);
+}
 static bool link_on, mute;
 static int  link_skew_ppm;                                             /* TEST (--link-test D:J:L:S): this copy's clock S ppm fast (negative: slow) */
 static uint32_t link_down_frames, link_down_now;                        /* frames the GAME saw its link down (after it first came up) */
@@ -246,7 +276,6 @@ void rr_tick(void)
     if (++slice % SLICES) return;
     rr_frame++;
     if (link_on) {
-        lnk_set_ready((g_hw.irq_enabled & 4u) && c139_get_stats()->tx >= 60);   /* the game's link driver runs (its IRQ on, a second of sends) */
         if (!ss22_host_active()) link_pace();
         if (g_ss22_game->link_good) {
             if (g_ss22_game->link_good()) { if (++link_up_run >= 120) link_was_up = true; link_down_now = 0; }
@@ -363,6 +392,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         else if (!strcmp(argv[i], "--link-cabinets") && i + 1 < argc) link_cfg.nodes = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--link-peers") && i + 1 < argc) link_cfg.peers = argv[++i];
         else if (!strcmp(argv[i], "--link-port") && i + 1 < argc) link_cfg.base_port = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--link-wait") && i + 1 < argc) link_cfg.gather_ms = atoi(argv[++i]) * 1000;
         else if (!strcmp(argv[i], "--link-test") && i + 1 < argc) sscanf(argv[++i], "%d:%d:%d:%d", &link_cfg.delay_ms, &link_cfg.jitter_ms, &link_cfg.loss_pct, &link_skew_ppm);
         else if (!strcmp(argv[i], "--mute")) mute = true;
         else rom_dir = argv[i];
@@ -400,6 +430,10 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     ss22_hw_init(rom_dir);
     if (link_cfg.id >= 0) {
         link_cfg.tag = g->tag;
+        if (!link_cfg.nodes) {                          /* the set's size: --link-cabinets, else the addresses given, else 4 */
+            link_cfg.nodes = 4;
+            if (link_cfg.peers) { link_cfg.nodes = 1; for (const char *c = link_cfg.peers; *c; c++) link_cfg.nodes += *c == ','; }
+        }
         if (g->link_id_byte < 0) { fprintf(stderr, "[%s] link play: %s's cabinet number is not known yet\n", g->tag, g->name); return 2; }
         if (!lnk_open(&link_cfg)) {
             if (win_scale) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g->name, "The link could not start: see the log file beside the program.", NULL);
@@ -419,6 +453,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         if (!video_on) { fprintf(stderr, "[%s] no picture: video could not start\n", g->tag); if (win_scale) return 2; }
     }
     if (mute) eng_audio_set_volume(0);
+    if (link_on) link_gather(title);                    /* the cabinets start together, as boards switched on together */
     memset(R, 0, RR_REGSPACE);
     RS4(RR_REG_SP, rr_read(0, 4));                      /* reset SP from vector 0 */
     rr_set_sr(0x2700);                                  /* supervisor, IPL 7 */

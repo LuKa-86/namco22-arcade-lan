@@ -24,14 +24,22 @@ typedef int sock_t;
 #endif
 #include "link_net.h"
 
-#define MAGIC     0x4E32324Cu               /* "N22L" */
-#define PROTO     1
-#define T_FRAME   1
-#define T_HELLO   2                         /* + 1 byte: bit 0 = ready (the game is running its link) */
-#define T_BYE     3                         /* this cabinet is closing: step over it at once */
-#define HELLO_MS  25                        /* a hello to every cabinet this often ... */
-#define ALIVE_MS  120                       /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
-#define HDR       16                        /* magic 4, proto 1, type 1, src 1, dst 1, seq 4, tag 4 */
+#define MAGIC      0x4E32324Cu              /* "N22L" */
+#define PROTO      2
+#define T_FRAME    1
+#define T_HELLO    2                        /* + state 1, members 1, pad 2, age/waited ms 4 */
+#define T_BYE      3                        /* this cabinet is closing: step over it at once */
+#define HELLO_MS   25                       /* a hello to every cabinet this often ... */
+#define ALIVE_MS   120                      /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
+#define JOIN_MS    3000                     /* a session this young is one this cabinet was gathered for (it only missed the start) */
+#define HDR        20                       /* magic 4, proto 1, type 1, src 1, dst 1, seq 4, tag 4, session 4 */
+
+typedef struct {
+    uint64_t heard;                         /* SDL ticks of its last packet (0 = never / gone) */
+    int      state;                         /* what its last hello said */
+    uint8_t  members;
+    uint32_t session, ms;                   /* its session and that session's age, or (gathering) how long it has waited */
+} peer_t;
 
 static struct {
     bool on;
@@ -39,8 +47,11 @@ static struct {
     sock_t s;
     struct sockaddr_in addr[LNK_MAX_NODES];
     uint32_t tag;
-    uint64_t heard[LNK_MAX_NODES];          /* SDL ticks of the last packet from each cabinet (0 = never) */
-    bool     ready[LNK_MAX_NODES], ready_self;   /* its game forwards frames: only then is it part of the ring */
+    int      state;
+    uint32_t session;                       /* 0 while gathering */
+    uint8_t  members;
+    uint64_t t_open, t_session;
+    peer_t   p[LNK_MAX_NODES];
     uint32_t seq_to[LNK_MAX_NODES], last_seq[LNK_MAX_NODES];   /* numbered per destination: a gap = packets lost on that path */
     uint64_t next_hello;
     lnk_stats st;
@@ -61,7 +72,7 @@ static bool set_addr(int n, const char *host)
     memset(&L.addr[n], 0, sizeof L.addr[n]);
     L.addr[n].sin_family = AF_INET;
     L.addr[n].sin_port = htons((uint16_t)(L.cfg.base_port + n));
-    if (inet_pton(AF_INET, host, &L.addr[n].sin_addr) != 1) { fprintf(stderr, "[LINK] cabinet %d: '%s' is not an IPv4 address\n", n, host); return false; }
+    if (inet_pton(AF_INET, host, &L.addr[n].sin_addr) != 1) { fprintf(stderr, "[LINK] cabinet %d: '%s' is not an IPv4 address\n", n + 1, host); return false; }
     return true;
 }
 
@@ -69,7 +80,7 @@ bool lnk_open(const lnk_cfg *cfg)
 {
     L.cfg = *cfg;
     if (L.cfg.nodes < 2 || L.cfg.nodes > LNK_MAX_NODES || L.cfg.id < 0 || L.cfg.id >= L.cfg.nodes) {
-        fprintf(stderr, "[LINK] cabinet %d of %d: out of range\n", L.cfg.id, L.cfg.nodes); return false;
+        fprintf(stderr, "[LINK] cabinet %d of %d: out of range\n", L.cfg.id + 1, L.cfg.nodes); return false;
     }
     L.tag = 0;
     for (int i = 0; i < 4 && cfg->tag[i]; i++) L.tag |= (uint32_t)(uint8_t)cfg->tag[i] << (24 - 8 * i);
@@ -101,20 +112,31 @@ bool lnk_open(const lnk_cfg *cfg)
 #else
     fcntl(L.s, F_SETFL, fcntl(L.s, F_GETFL, 0) | O_NONBLOCK);
 #endif
-    L.rng = 0x9E3779B9u ^ (uint32_t)L.cfg.id * 7919u ^ (uint32_t)now_ms();
-    L.heard[L.cfg.id] = UINT64_MAX;                   /* this cabinet is always on */
+    if (L.cfg.gather_ms <= 0) L.cfg.gather_ms = 60000;
+    L.rng = 0x9E3779B9u ^ (uint32_t)L.cfg.id * 7919u ^ (uint32_t)now_ms() ^ (uint32_t)SDL_GetPerformanceCounter();
+    L.state = LNK_GATHERING;
+    L.t_open = now_ms();
     L.on = true;
-    fprintf(stderr, "[LINK] cabinet %d of up to %d, UDP port %d%s\n", L.cfg.id + 1, L.cfg.nodes, L.cfg.base_port + L.cfg.id,
-            cfg->peers ? "" : ", all cabinets on this PC (127.0.0.1)");
+    fprintf(stderr, "[LINK] cabinet %d of up to %d, UDP port %d%s; waiting up to %d s for the others\n", L.cfg.id + 1, L.cfg.nodes,
+            L.cfg.base_port + L.cfg.id, cfg->peers ? "" : ", all cabinets on this PC (127.0.0.1)", L.cfg.gather_ms / 1000);
     if (cfg->delay_ms || cfg->jitter_ms || cfg->loss_pct)
         fprintf(stderr, "[LINK] TEST network: +%d ms, jitter %d ms, %d%% lost\n", cfg->delay_ms, cfg->jitter_ms, cfg->loss_pct);
     return true;
 }
 
 bool lnk_on(void) { return L.on; }
+int  lnk_state(void) { return L.state; }
+uint32_t lnk_members(void) { return L.members; }
 const lnk_stats *lnk_get_stats(void) { return &L.st; }
 
-static bool alive(int n, uint64_t t) { return L.heard[n] == UINT64_MAX || (L.ready[n] && L.heard[n] && t - L.heard[n] < ALIVE_MS); }
+static bool recent(int n, uint64_t t) { return L.p[n].heard && t - L.p[n].heard < ALIVE_MS; }
+
+/* a member of this session that is on now */
+static bool alive(int n, uint64_t t)
+{
+    if (n == L.cfg.id) return L.state == LNK_LINKED;
+    return L.state == LNK_LINKED && (L.members >> n & 1) && recent(n, t) && L.p[n].state == LNK_LINKED && L.p[n].session == L.session;
+}
 
 uint32_t lnk_alive_mask(void)
 {
@@ -123,8 +145,16 @@ uint32_t lnk_alive_mask(void)
     return m;
 }
 
+uint32_t lnk_present_mask(void)
+{
+    uint64_t t = now_ms(); uint32_t m = 1u << L.cfg.id;
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && recent(n, t) && L.p[n].state == LNK_GATHERING) m |= 1u << n;
+    return m;
+}
+
 int lnk_next_hop(void)
 {
+    if (L.state != LNK_LINKED) return -1;
     uint64_t t = now_ms();
     for (int k = 1; k < L.cfg.nodes; k++) { int n = (L.cfg.id + k) % L.cfg.nodes; if (alive(n, t)) return n; }
     return -1;
@@ -159,7 +189,7 @@ static void release_held(void)
 static int header(uint8_t *b, int type, int dst)
 {
     put32(b, MAGIC); b[4] = PROTO; b[5] = (uint8_t)type; b[6] = (uint8_t)L.cfg.id; b[7] = (uint8_t)dst;
-    put32(b + 8, ++L.seq_to[dst]); put32(b + 12, L.tag);
+    put32(b + 8, ++L.seq_to[dst]); put32(b + 12, L.tag); put32(b + 16, L.session);
     return HDR;
 }
 
@@ -181,8 +211,58 @@ static void hellos(void)
     uint64_t t = now_ms();
     if (t < L.next_hello) return;
     L.next_hello = t + HELLO_MS;
-    uint8_t b[HDR + 1];
-    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_HELLO, n); b[HDR] = L.ready_self; raw_send(n, b, HDR + 1); }
+    uint8_t b[HDR + 8];
+    uint32_t ms = (uint32_t)(t - (L.state == LNK_LINKED ? L.t_session : L.t_open));
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
+        header(b, T_HELLO, n);
+        b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = b[HDR + 3] = 0; put32(b + HDR + 4, ms);
+        raw_send(n, b, HDR + 8);
+    }
+}
+
+/* one packet off the socket: hellos and goodbyes are taken in here; returns the frame's word count (0 = not a frame, -1 = none left) */
+static int take(uint16_t *w, int max)
+{
+    uint8_t b[HDR + 2 * LNK_MAX_WORDS + 16];
+    struct sockaddr_in from; socklen_t fl = sizeof from;
+    int len = (int)recvfrom(L.s, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+    if (len < 0) {
+#ifdef _WIN32
+        if (WSAGetLastError() == WSAECONNRESET) return 0;
+#endif
+        return -1;
+    }
+    if (len < HDR || get32(b) != MAGIC || b[4] != PROTO || b[6] >= L.cfg.nodes || b[6] == L.cfg.id) { L.st.bad++; return 0; }
+    if (get32(b + 12) != L.tag) {
+        if (!L.warned_tag) { fprintf(stderr, "[LINK] cabinet %d is running another game: ignored\n", b[6] + 1); L.warned_tag = true; }
+        return 0;
+    }
+    int src = b[6];
+    peer_t *p = &L.p[src];
+    p->heard = now_ms();
+    uint32_t seq = get32(b + 8);
+    /* lost = gaps in the numbering; a late (reordered) packet fills its gap back in */
+    if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) L.st.lost_seq += seq - L.last_seq[src] - 1;
+    else if (seq < L.last_seq[src] && L.last_seq[src] - seq < 1000 && L.st.lost_seq) L.st.lost_seq--;
+    if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
+    switch (b[5]) {
+    case T_HELLO:
+        if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
+        return 0;
+    case T_BYE:
+        p->heard = 0;
+        return 0;
+    case T_FRAME: {
+        if (L.state != LNK_LINKED || !(L.members >> src & 1) || get32(b + 16) != L.session) { L.st.foreign++; return 0; }
+        int n = (len - HDR) / 2;
+        if (n > max) n = max;
+        for (int i = 0; i < n; i++) w[i] = (uint16_t)(b[HDR + 2 * i] << 8 | b[HDR + 2 * i + 1]);
+        L.st.recv++;
+        return n;
+    }
+    default:
+        return 0;
+    }
 }
 
 int lnk_recv(uint16_t *w, int max)
@@ -191,39 +271,56 @@ int lnk_recv(uint16_t *w, int max)
     hellos();
     release_held();
     for (;;) {
-        uint8_t b[HDR + 2 * LNK_MAX_WORDS + 16];
-        struct sockaddr_in from; socklen_t fl = sizeof from;
-        int len = (int)recvfrom(L.s, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
-        if (len < 0) {
-#ifdef _WIN32
-            if (WSAGetLastError() == WSAECONNRESET) continue;
-#endif
-            return 0;                                          /* nothing waiting */
-        }
-        if (len < HDR || get32(b) != MAGIC || b[4] != PROTO || b[6] >= L.cfg.nodes || b[6] == L.cfg.id) { L.st.bad++; continue; }
-        if (get32(b + 12) != L.tag) {
-            if (!L.warned_tag) { fprintf(stderr, "[LINK] cabinet %d is running another game: ignored\n", b[6] + 1); L.warned_tag = true; }
-            continue;
-        }
-        int src = b[6];
-        L.heard[src] = now_ms();
-        uint32_t seq = get32(b + 8);
-        /* lost = gaps in the numbering; a late (reordered) packet fills its gap back in */
-        if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) L.st.lost_seq += seq - L.last_seq[src] - 1;
-        else if (seq < L.last_seq[src] && L.last_seq[src] - seq < 1000 && L.st.lost_seq) L.st.lost_seq--;
-        if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
-        if (b[5] == T_HELLO) { if (len > HDR) L.ready[src] = b[HDR] & 1; continue; }
-        if (b[5] == T_BYE) { L.heard[src] = 0; L.ready[src] = false; continue; }
-        if (b[5] != T_FRAME) continue;
-        int n = (len - HDR) / 2;
-        if (n > max) n = max;
-        for (int i = 0; i < n; i++) w[i] = (uint16_t)(b[HDR + 2 * i] << 8 | b[HDR + 2 * i + 1]);
-        L.st.recv++;
-        return n;
+        int n = take(w, max);
+        if (n < 0) return 0;
+        if (n > 0) return n;
     }
 }
 
-void lnk_set_ready(bool r) { L.ready_self = r; }
+static void start_session(uint32_t id, uint8_t members, uint32_t age_ms, const char *why)
+{
+    L.state = LNK_LINKED; L.session = id; L.members = members; L.t_session = now_ms() - age_ms;
+    char who[40] = ""; int k = 0;
+    for (int n = 0; n < L.cfg.nodes; n++) if (members >> n & 1) k += snprintf(who + k, sizeof who - (size_t)k, "%s%d", k ? ", " : "", n + 1);
+    fprintf(stderr, "[LINK] linked (%s): cabinets %s, session %08X\n", why, who, id);
+}
+
+int lnk_gather_left_ms(void)
+{
+    uint64_t t = now_ms(); uint32_t waited = (uint32_t)(t - L.t_open);
+    for (int n = 0; n < L.cfg.nodes; n++)
+        if (n != L.cfg.id && recent(n, t) && L.p[n].state == LNK_GATHERING && L.p[n].ms > waited) waited = L.p[n].ms;
+    return waited >= (uint32_t)L.cfg.gather_ms ? 0 : L.cfg.gather_ms - (int)waited;
+}
+
+int lnk_gather(void)
+{
+    if (!L.on || L.state != LNK_GATHERING) return L.state;
+    hellos();
+    uint16_t junk[LNK_MAX_WORDS];
+    while (take(junk, LNK_MAX_WORDS) >= 0) {}
+    uint64_t t = now_ms();
+    /* a session already running: ours (we only missed its start) or somebody else's (we are late) */
+    for (int n = 0; n < L.cfg.nodes; n++) {
+        const peer_t *p = &L.p[n];
+        if (n == L.cfg.id || !recent(n, t) || p->state != LNK_LINKED) continue;
+        if ((p->members >> L.cfg.id & 1) && p->ms < JOIN_MS) { start_session(p->session, p->members, p->ms, "joined at the start"); return L.state; }
+        L.state = LNK_ALONE;
+        fprintf(stderr, "[LINK] cabinet %d started after the others (they are already playing): NOT linked -- restart every cabinet to link it\n", L.cfg.id + 1);
+        return L.state;
+    }
+    uint32_t present = lnk_present_mask(), all = (1u << L.cfg.nodes) - 1;
+    int lowest = 0; while (!(present >> lowest & 1)) lowest++;
+    if (lowest == L.cfg.id && (present == all || lnk_gather_left_ms() == 0)) {       /* this cabinet decides */
+        uint32_t id = (uint32_t)(L.cfg.id + 1) << 24 | (rnd() & 0xFFFFFFu);
+        start_session(id, (uint8_t)present, 0, present == all ? "every cabinet is here" : "the wait ran out");
+        L.next_hello = 0; hellos();                                                  /* tell the others at once */
+    } else if (lnk_gather_left_ms() == 0 && t - L.t_open > (uint64_t)L.cfg.gather_ms + 15000) {
+        L.state = LNK_ALONE;                                                         /* nobody opened a session: play alone */
+        fprintf(stderr, "[LINK] no session was opened: NOT linked\n");
+    }
+    return L.state;
+}
 
 void lnk_close(void)
 {
