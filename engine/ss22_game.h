@@ -72,6 +72,10 @@ typedef struct ss22_game {
     bool (*start)(const char *name, long n, uint16_t *pressed, unsigned *wheel, unsigned *pedal1, unsigned *pedal2);
     const char *start_names;                 /* what --stage takes, for the help and the error: "city, jungle, ..." */
     unsigned    pedal_full[2];               /* what --pedal F holds the first pedal at */
+    /* LINK PLAY (--link N, engine/c139.c): the EEPROM byte whose bits 0-1 the game reads as its cabinet number (-1 = not known yet), and
+     * the game's own view of the link for the log (who it hears, the ring size, link good) -- NULL = none */
+    int         link_id_byte;
+    void      (*link_report)(char *buf, int n);
 } ss22_game;
 
 int ss22_main(int argc, char **argv, const ss22_game *g);            /* engine/ss22_run.c */

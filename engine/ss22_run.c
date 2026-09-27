@@ -29,6 +29,9 @@
 #endif
 #include "lift_rt.h"
 #include "lift_cpu.h"
+#include "c139.h"
+#include "link_net.h"
+#include "audio_out.h"
 
 const ss22_game *g_ss22_game;
 static char **g_argv;
@@ -48,6 +51,40 @@ static long dsp_steps_per_frame = 166667;  /* the C71 at 40 MHz retires 10 M ins
 static long serial_acc;                    /* MAME's dsp_serial timer: 100 Hz */
 
 void rd_budget_out(void);
+
+/* ---- LINK PLAY (engine/c139.c, engine/link_net.c, docs/LINK_NOTES.md) ----------------------------------------------------------------
+ *   --link N                 this is cabinet N (1..4) of a linked set
+ *   --link-cabinets M        how many cabinets the set can have (default 4)
+ *   --link-peers A,B,C,D     the cabinets' IPv4 addresses, in cabinet order (default: all on this PC, 127.0.0.1)
+ *   --link-port P            UDP port of cabinet 1 (cabinet N uses P + N - 1; default 22220)
+ *   --link-test D:J:L        TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost
+ *   --mute                   no sound (the other copies when several run on one PC)
+ * A linked copy keeps its own EEPROM (<lname>_eeprom_cabN.nv) and log (<game>_cabN.log), so copies can share one folder. */
+static lnk_cfg link_cfg = { .id = -1, .nodes = 4, .base_port = 22220 };
+static bool link_on, mute;
+static void link_slice(void)
+{
+    for (int k = 0; k < 8 && c139_tick(k == 0); k++) {                /* a frame is taken in and forwarded within the slice */
+        ss22_hw_sci_irq();
+        if (!ss22_env_active()) rr_deliver_irqs(ss22_hw_irq_level);
+    }
+}
+static void link_pace(void)                                            /* headless linked copies: real time, like a window */
+{
+    static uint64_t next; const uint64_t f = SDL_GetPerformanceFrequency(), step = (uint64_t)((double)f / 59.906);
+    uint64_t t = SDL_GetPerformanceCounter();
+    if (!next || t > next + 10 * step) next = t;
+    next += step;
+    while ((t = SDL_GetPerformanceCounter()) < next) { uint64_t left_ms = (next - t) * 1000 / f; if (left_ms > 2) SDL_Delay((Uint32)(left_ms - 1)); }
+}
+static void link_report(void)
+{
+    const lnk_stats *n = lnk_get_stats(); const c139_stats *c = c139_get_stats();
+    char g[200] = "";
+    if (g_ss22_game->link_report) g_ss22_game->link_report(g, sizeof g);
+    fprintf(stderr, "[LINK] frame %u  cabinets on %02X (next %d)  chip tx %u rx %u queue-drop %u unacked %u  net sent %u recv %u lost %u bad %u  | %s\n",
+            rr_frame, lnk_alive_mask(), lnk_next_hop() + 1, c->tx, c->rx, c->rx_dropped, c->rx_unacked, n->sent, n->recv, n->lost_seq, n->bad, g);
+}
 
 #ifdef RR_TRACE
 /* <tag>_PCRING=<frame>: at that frame, the 68K's hottest PCs over its last 8192 instructions (where is it stuck?). Trace build only. */
@@ -200,9 +237,11 @@ void rr_tick(void)
     } else
         ss22_dsp_run(dsp_steps_per_frame / SLICES);       /* the master DSP runs beside the 68K */
     ss22_snd_slice();                                     /* and so does the sound MCU (ports, A-D, the C352) */
+    if (link_on) link_slice();                            /* and the link chip */
     if ((serial_acc += 100) >= 60 * SLICES) { serial_acc -= 60 * SLICES; ss22_dsp_serial(); }
     if (++slice % SLICES) return;
     rr_frame++;
+    if (link_on) { if (!ss22_host_active()) link_pace(); if (rr_frame % 300 == 0) link_report(); }
 #ifdef RR_TRACE
     if (pc_ring_frame >= 0 && (rr_frame == (uint32_t)pc_ring_frame || (pc_ring_frame > 0 && rr_frame > (uint32_t)pc_ring_frame && rr_frame % 300 == 0))) pc_ring_report();
 #endif
@@ -256,7 +295,7 @@ void rr_tick(void)
 
 /* the window's host: the game's name, settings file and cabinet controls (engine/ss22_host.c) */
 static void in_init(void) { ss22_input_init(g_ss22_game->input); }
-static void in_update(void) { if (!start_on) ss22_input_update(); }      /* the start script has the cabinet until it is over */
+static void in_update(void) { if (!start_on && !autoplay && !npress && pedal_from < 0) ss22_input_update(); }   /* the start script (or a --press / --autoplay script) has the cabinet */
 static ss22_host_game host_game;
 
 int ss22_main(int argc, char **argv, const ss22_game *g)
@@ -270,10 +309,18 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     { extern void (*rr_trace_hook)(uint32_t); char pr[64]; snprintf(pr, sizeof pr, "%s_PCRING", g->tag); const char *e = getenv(pr);
       if (e && !getenv(envname)) { pc_ring_frame = atol(e); rr_trace_hook = pc_ring_hook; } }
 #endif
-    eng_win_startup(g->logname);                        /* Windows: the program's own folder, a log file, real pixel sizes */
+    for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--link")) link_cfg.id = atoi(argv[i + 1]) - 1;   /* before the log opens: its name */
+    static char logname[96], title[96];
+    if (link_cfg.id >= 0) {
+        const char *dot = strrchr(g->logname, '.');
+        snprintf(logname, sizeof logname, "%.*s_cab%d%s", dot ? (int)(dot - g->logname) : (int)strlen(g->logname), g->logname, link_cfg.id + 1, dot ? dot : "");
+        snprintf(title, sizeof title, "%s - cabinet %d", g->name, link_cfg.id + 1);
+    } else { snprintf(logname, sizeof logname, "%s", g->logname); snprintf(title, sizeof title, "%s", g->name); }
+    eng_win_startup(logname);                           /* Windows: the program's own folder, a log file, real pixel sizes */
     snprintf(cfgfile, sizeof cfgfile, "%s_controls.cfg", g->lname);
-    snprintf(nvfile, sizeof nvfile, "%s_eeprom.nv", g->lname);
-    host_game = (ss22_host_game){ g->name, cfgfile, g->tag, g->lname, in_init, ss22_input_page, ss22_input_event, in_update,
+    if (link_cfg.id >= 0) snprintf(nvfile, sizeof nvfile, "%s_eeprom_cab%d.nv", g->lname, link_cfg.id + 1);
+    else snprintf(nvfile, sizeof nvfile, "%s_eeprom.nv", g->lname);
+    host_game = (ss22_host_game){ title, cfgfile, g->tag, g->lname, in_init, ss22_input_page, ss22_input_event, in_update,
                                   ss22_input_neutral, ss22_snd_set_output };
     const char *rom_dir = "extracted";
     const char *rd_dir = NULL, *rd_out = NULL; int rd_frame = 0, frames_given = 0;
@@ -300,6 +347,12 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         else if (!strcmp(argv[i], "--pedal") && i + 1 < argc) pedal_from = atol(argv[++i]);
         else if (!strcmp(argv[i], "--clock") && i + 1 < argc) clock_addr = strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--input-offset") && i + 1 < argc) input_offset = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--link") && i + 1 < argc) link_cfg.id = atoi(argv[++i]) - 1;
+        else if (!strcmp(argv[i], "--link-cabinets") && i + 1 < argc) link_cfg.nodes = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--link-peers") && i + 1 < argc) link_cfg.peers = argv[++i];
+        else if (!strcmp(argv[i], "--link-port") && i + 1 < argc) link_cfg.base_port = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--link-test") && i + 1 < argc) sscanf(argv[++i], "%d:%d:%d", &link_cfg.delay_ms, &link_cfg.jitter_ms, &link_cfg.loss_pct);
+        else if (!strcmp(argv[i], "--mute")) mute = true;
         else rom_dir = argv[i];
     }
     /* First run: take the ROMs out of MAME's zip if the ROM folder is incomplete (the shared engine/romzip.c) -- how the installed
@@ -333,6 +386,16 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     ss22_board_use(g->board);
     if (!ss22_load_program(rom_dir)) return 2;
     ss22_hw_init(rom_dir);
+    if (link_cfg.id >= 0) {
+        link_cfg.tag = g->tag;
+        if (g->link_id_byte < 0) { fprintf(stderr, "[%s] link play: %s's cabinet number is not known yet\n", g->tag, g->name); return 2; }
+        if (!lnk_open(&link_cfg)) {
+            if (win_scale) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g->name, "The link could not start: see the log file beside the program.", NULL);
+            return 2;
+        }
+        g_ss22_link_id_byte = g->link_id_byte; g_ss22_link_id = link_cfg.id & 3;
+        link_on = true;
+    }
     if (win_scale) ss22_eeprom_persist(nvfile);         /* a player's session keeps its options and records; headless runs (the gates) never do */
     if (!ss22_dsp_init(rom_dir)) return 2;
     if (!ss22_snd_init(rom_dir)) fprintf(stderr, "[%s] no sound MCU: the game will read no inputs\n", g->tag);
@@ -342,6 +405,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         video_on = ss22_video_init(rom_dir) && (win_scale ? ss22_host_open(&host_game, win_scale, win_full) : ss22_host_open_headless());
         if (!video_on) { fprintf(stderr, "[%s] no picture: video could not start\n", g->tag); if (win_scale) return 2; }
     }
+    if (mute) eng_audio_set_volume(0);
     memset(R, 0, RR_REGSPACE);
     RS4(RR_REG_SP, rr_read(0, 4));                      /* reset SP from vector 0 */
     rr_set_sr(0x2700);                                  /* supervisor, IPL 7 */

@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ss22_board.h"
+#include "c139.h"
 
 static const ss22_board_cfg *cfg;
 static uint32_t ss22_hw_keycus_r(uint32_t unit);
@@ -24,6 +25,7 @@ static int      g_ss22_mbox;
 static void     ss22_mbox_log(uint32_t off, int size, uint32_t v);
 void (*g_ss22_dsp_control)(uint8_t v);
 void (*g_ss22_snd_set_run)(bool run);
+int g_ss22_link_id_byte = -1, g_ss22_link_id;
 
 ss22_sys_t g_ss22;
 #ifdef RR_TRACE
@@ -87,7 +89,8 @@ static void dev_write(uint32_t off, int size, uint32_t v, int w, wr_fn h)
 /* ---- device handlers (namcos22.cpp / namcos22_v.cpp) ---- */
 static uint32_t keycus_h(uint32_t unit) { return ss22_hw_keycus_r(unit); }
 
-static uint32_t sci_h(uint32_t unit) { return unit == 0 ? 0x0004 : 0; }          /* namcos22_sci_r */
+static uint32_t sci_h(uint32_t unit) { return c139_reg_r(unit); }                  /* engine/c139.c (off: MAME namcos22_sci_r) */
+static void     sci_wh(uint32_t unit, uint32_t d, uint32_t m) { c139_reg_w(unit, (uint16_t)d, (uint16_t)m); }
 
 static uint32_t portbit_h(uint32_t unit) { return ss22_hw_portbit_r(unit); }
 static void     portbit_wh(uint32_t unit, uint32_t d, uint32_t m) { (void)d; (void)m; ss22_hw_portbit_w(unit); }
@@ -195,7 +198,10 @@ static uint32_t eeprom_read(uint32_t off, int size)
     uint32_t v = 0;
     for (int i = 0; i < size; i++) {
         uint32_t p = off + (uint32_t)i;
-        v = v << 8 | ((p & 1) ? 0u : g_ss22.eeprom[(p >> 1) & (SS22_EEPROM_SIZE - 1)]);
+        uint32_t n = (p >> 1) & (SS22_EEPROM_SIZE - 1);
+        uint32_t b = g_ss22.eeprom[n];
+        if ((int)n == g_ss22_link_id_byte) b = (b & ~3u) | (uint32_t)g_ss22_link_id;     /* --link-id: the cabinet number the game reads */
+        v = v << 8 | ((p & 1) ? 0u : b);
     }
     return v;
 }
@@ -258,7 +264,7 @@ void rr_write(uint32_t a, int size, uint32_t v)
     } else switch (a >> 16) {
     case 0x40: if (IN(0x400000u, 0x20)) return; break;                              /* keycus_w: ignored */
     case 0x41: if (IN(0x410000u, SS22_SCI_SIZE)) { be_wr(g_ss22.sci, a - 0x410000u, size, v); return; } break;
-    case 0x42: if (IN(0x420000u, 0x10)) return; break;                              /* namcos22_sci_w: nothing */
+    case 0x42: if (IN(0x420000u, 0x10)) { dev_write(a - 0x420000u, size, v, 2, sci_wh); return; } break;   /* engine/c139.c (off: nothing) */
     case 0x43: if (IN(0x430000u, 4)) return; break;                                 /* cpuleds */
     case 0x45: if (IN(0x450008u, 4)) { dev_write(a - 0x450008u, size, v, 2, portbit_wh); return; } break;
     case 0x46: if (IN(0x460000u, 0x4000)) { eeprom_write(a - 0x460000u, size, v); return; } break;
@@ -360,6 +366,7 @@ bool ss22_hw_init(const char *rom_dir)
     g_hw.lcg = 0x2545F491u;
     g_hw.dsw = 0xFFFFFFFFu;
     g_hw.portbits[0] = g_hw.portbits[1] = 0xFFFF;
+    c139_init(g_ss22.sci);
     cfg->load_eeprom(rom_dir);
     snprintf(v, sizeof v, "%s_KEYCUS_FILE", cfg->tag);
     const char *kf = getenv(v);                          /* replay MAME's random keycus reads */
@@ -371,6 +378,12 @@ bool ss22_hw_init(const char *rom_dir)
 void ss22_hw_vblank(void)
 {
     if (g_hw.irq_enabled & 1u) g_hw.irq_state |= 1u;
+}
+
+/* the link chip's IRQ (syscon line 2, SCI): held while the chip wants it, until the game acknowledges */
+void ss22_hw_sci_irq(void)
+{
+    if (g_hw.irq_enabled & 4u) g_hw.irq_state |= 4u;
 }
 
 /* the scanline IRQ (syscon line 1, posirq) */

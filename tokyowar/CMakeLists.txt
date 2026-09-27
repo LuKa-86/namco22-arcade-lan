@@ -70,6 +70,7 @@ if(WIN32)
   add_compile_options(-include ${CMAKE_CURRENT_SOURCE_DIR}/../include/win_compat.h)
   add_link_options(-mwindows -static-libgcc -static)
   set(SDL2_LIBRARIES ${SDL2_STATIC_LDFLAGS})
+  list(APPEND SDL2_LIBRARIES ws2_32)                # link play (engine/link_net.c): Windows sockets
   set(TW_GL_LIB "")
   set(TW_GL_SRC ${NAMCO22_ENGINE_DIR}/gl_dyn.c)
 else()

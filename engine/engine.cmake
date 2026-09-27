@@ -36,6 +36,8 @@ set(NAMCO22_ENGINE_SS22_HOST_SRC
     ${NAMCO22_ENGINE_DIR}/ss22_video.c
     ${NAMCO22_ENGINE_DIR}/ss22_env.c
     ${NAMCO22_ENGINE_DIR}/ss22_run.c
+    ${NAMCO22_ENGINE_DIR}/c139.c
+    ${NAMCO22_ENGINE_DIR}/link_net.c
 )
 # THE MENU AND THE DISPLAY CHOICES (Nuklear): a settings file, the display modes (widescreen, window mode/size, resolution,
 # aspect, scaling) and the menu bar every game's Escape menu is. Its own list because eng_ui.c defines Nuklear's

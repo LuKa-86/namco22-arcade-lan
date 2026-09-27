@@ -226,6 +226,7 @@ static const ss22_game game = {
     .autoplay = autoplay,
     .start = start, .start_names = "city, jungle, hill, mountain, snow",
     .pedal_full = { 0x140, 0x100 },
+    .link_id_byte = -1,                 /* link play: the cabinet number's EEPROM byte is not known yet */
 };
 
 int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }
