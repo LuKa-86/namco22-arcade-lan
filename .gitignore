@@ -44,3 +44,4 @@ __pycache__/
 *.ppm
 /tokyowar/soak/
 /raverace/soak/
+/raverace/gen/rr_c25.c
