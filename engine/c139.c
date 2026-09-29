@@ -44,6 +44,8 @@ bool c139_irq(void)
     return ((C.status & ST_RX) && !(ct & CT_RX_MASK)) || (!C.tx_busy && !(ct & CT_TX_MASK));
 }
 
+bool c139_eof_writes(void) { return lnk_on() && (C.reg[2] & 2); }
+
 uint16_t c139_reg_r(unsigned unit)
 {
     unit &= 7;

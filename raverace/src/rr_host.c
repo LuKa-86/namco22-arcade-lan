@@ -361,6 +361,9 @@ bool rr_host_open(int scale)
     return true;
 }
 
+/* --shots DIR N in a window: the next drawn frame, into DIR (the same read-back as F12) */
+void rr_host_screenshot(const char *dir) { if (dir) shot_dir = dir; shot_pending = true; }
+
 static void screenshot(void)
 {
     mkdir(shot_dir, 0755);

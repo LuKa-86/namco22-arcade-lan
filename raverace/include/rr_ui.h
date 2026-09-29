@@ -29,6 +29,7 @@ const char *rr_host_draw_name(int level);
 void rr_host_set_aspect(int a);          /* 0 stretch, 1 4:3, 2 8:7, 3 16:9 */
 void rr_host_set_scaling(int s);         /* 0 smooth, 1 sharp, 2 integer */
 void rr_host_set_volume(int percent);
+void rr_host_screenshot(const char *dir);   /* the next drawn frame to DIR (--shots in a window) */
 void rr_host_set_freeplay(bool on);
 void rr_host_toggle_record(void);
 void rr_ui_set_hint(const char *text, int frames);   /* a hint line at the bottom of the window while the menu is closed */

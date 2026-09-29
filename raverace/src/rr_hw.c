@@ -19,6 +19,7 @@
 #include "rr_hw.h"
 #include "rr_dsp.h"
 #include "rr_sound.h"
+#include "c139.h"
 
 rr_hw_t g_hw;
 
@@ -41,8 +42,41 @@ static void irqlevel(int line, uint8_t data)
     if ((g_hw.irq_state & bit) && !(g_hw.irq_enabled & bit)) g_hw.irq_state &= ~bit;
 }
 
+/* LINK PLAY (only with --link, so a normal run keeps its plain register RAM): the C139's 16-bit registers at 0x20020000, byte, word or
+ * long wide; and writes into its buffer at 0x20010000 while register 2 bit 1 is set, which carry the 9th bit (end of frame) */
+static bool link_on;
+static uint32_t sci_rd(vaddr_t a, int size)
+{
+    uint32_t v = 0;
+    for (int i = 0; i < size; i++) {
+        uint32_t o = (a + (uint32_t)i) - 0x20020000u;
+        uint16_t w = c139_reg_r(o >> 1);
+        v = v << 8 | ((o & 1) ? (w & 0xFFu) : (uint32_t)(w >> 8));
+    }
+    return v;
+}
+static void sci_wr(vaddr_t a, int size, uint32_t v)
+{
+    for (int i = 0; i < size; ) {
+        uint32_t o = (a + (uint32_t)i) - 0x20020000u;
+        if (!(o & 1) && size - i >= 2) { c139_reg_w(o >> 1, (uint16_t)(v >> ((size - i - 2) * 8)), 0xFFFF); i += 2; continue; }
+        uint16_t b = (uint16_t)((v >> ((size - i - 1) * 8)) & 0xFF);
+        if (o & 1) c139_reg_w(o >> 1, b, 0x00FF); else c139_reg_w(o >> 1, (uint16_t)(b << 8), 0xFF00);
+        i++;
+    }
+}
+static bool sci_buf_wr(vaddr_t a, int size, uint32_t v)
+{
+    uint32_t o = a - 0x20010000u;
+    for (int i = size - 1; i >= 0; i--) { g_rr.sci[(o + (uint32_t)i) & (RR_SCI_SIZE - 1)] = (uint8_t)v; v >>= 8; }
+    for (uint32_t w = o & ~1u; w < o + (uint32_t)size; w += 2) g_rr.sci[w & (RR_SCI_SIZE - 1)] |= 1;   /* bit 8 of each word written */
+    return true;
+}
+void rr_hw_sci_irq(void) { if (g_hw.irq_enabled & 4u) g_hw.irq_state |= 4u; }
+
 static bool io_read(vaddr_t a, int size, uint32_t *out)
 {
+    if (link_on && a >= 0x20020000u && a < 0x20020010u) { *out = sci_rd(a, size); return true; }
     if (a >= 0x20000000u && a < 0x20000010u) { *out = keycus_next(); return true; }
     if (a >= 0x50000000u && a < 0x50000004u) {
         uint32_t d = g_hw.dsw;
@@ -63,6 +97,10 @@ static bool io_read(vaddr_t a, int size, uint32_t *out)
 
 static bool io_write(vaddr_t a, int size, uint32_t v)
 {
+    if (link_on) {
+        if (a >= 0x20020000u && a < 0x20020010u) { sci_wr(a, size, v); return true; }
+        if (a >= 0x20010000u && a < 0x20010000u + RR_SCI_SIZE && c139_eof_writes()) return sci_buf_wr(a, size, v);
+    }
     if (a >= 0x40000000u && a < 0x40000020u) {
         /* byte-wide registers; a word/long write covers several */
         for (int i = 0; i < size; i++) {
@@ -155,6 +193,13 @@ static void eeprom_block_set(uint32_t blk, int byte, uint8_t v)
     sum = 0;
     for (int i = 0; i < 30; i++) sum += b[i];
     b[30] = (uint8_t)((uint16_t)~sum >> 8); b[31] = (uint8_t)~sum;
+}
+void rr_hw_link_on(int cabinet)
+{
+    link_on = true;
+    c139_init(g_rr.sci);
+    eeprom_block_set(0x2C0, 0, (uint8_t)(cabinet & 7));
+    eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));
 }
 void rr_hw_set_freeplay(bool on)
 {

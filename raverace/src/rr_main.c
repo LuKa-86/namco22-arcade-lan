@@ -51,6 +51,8 @@ static bool gl_ok;                             /* a GL context and the video ROM
  * render time, reported as percentiles at exit. Quote these, never one run's fps. */
 #include <time.h>
 #include "tex_bake.h"
+#include "link_host.h"
+#include "rr_ui.h"
 static FILE *perflog;                         /* RR_PERFLOG=<file>: one line per frame -- see the perf block */
 static double perflog_texels;
 static int perf_on;
@@ -153,10 +155,12 @@ void rr_tick(void)
         rr_dsp_run(DSP_STEPS_PER_FRAME / SLICES);
     rr_sound_slice();                              /* the sound program's share of this slice */
     rr_audio_slice();                              /* and the mixer's samples */
+    link_host_slice();                             /* and the link chip */
     serial_acc += 100;                             /* 100 Hz serial pulse */
     if (serial_acc >= 60 * SLICES) { serial_acc -= 60 * SLICES; rr_dsp_serial(); }
     if (++slice % SLICES) return;
     frame++;
+    link_host_frame(frame, !windowed);
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
         rr_gl_prepare(rr_dsp_slave_active());
@@ -193,7 +197,8 @@ void rr_tick(void)
     }
     rr_input_frame(frame);                         /* replay overrides, recorder logs */
     if (perf_on) t_frame_start = now_ms();
-    if (shot_dir && shot_every && frame % shot_every == 0) {
+    if (windowed && shot_dir && shot_every && frame % shot_every == 0) rr_host_screenshot(shot_dir);
+    else if (shot_dir && shot_every && frame % shot_every == 0) {
         char p[1024]; snprintf(p, sizeof p, "%s/f%05u.ppm", shot_dir, frame);
         if (g_rr_gl && gl_ok && !windowed) { rr_gl_draw(gl_w, gl_h); rr_gl_write_ppm(p, gl_w, gl_h); }
 #ifdef RR_ORACLE
@@ -226,12 +231,31 @@ void rr_tick(void)
 }
 
 #ifdef _WIN32
-void rr_win_startup(void);          /* src/rr_win.c */
+void rr_win_startup(const char *logname);          /* src/rr_win.c */
 #endif
+
+/* LINK PLAY (engine/link_host.h): the chip's IRQ is syscon line 2; the game's own view of its link lives at A6 = 0x10008000
+ * (docs/LINK_NOTES.md): +0x11A0 its cabinet number, +0x1104 who it hears (bit per cabinet; its own bit = its frame came back
+ * within 8 frames), +0x1102 how many others it hears, +0x1108 frames since its own frame came back */
+static void link_raise(void) { rr_hw_sci_irq(); }
+static void link_deliver(void) { rr_deliver_irqs(rr_hw_irq_level); }
+static bool link_good(void) { return rr_read(0x10009104u, 2) >> (rr_read(0x100091A0u, 2) & 15) & 1; }
+static void link_report(char *buf, int n)
+{
+    snprintf(buf, (size_t)n, "game: cabinet %u, hears %02X (%u in the ring), link %s, frames since own came back %u",
+             rr_read(0x100091A0u, 2) + 1, rr_read(0x10009104u, 2), rr_read(0x10009102u, 2), link_good() ? "GOOD" : "down", rr_read(0x10009108u, 2));
+}
+static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good };
+
 int main(int argc, char **argv)
 {
+    int frames_given = 0;
+    const int cab = link_host_prescan(argc, argv);    /* a linked copy: its own log (raveracer_cabN.log) */
+    char logname[64], title[64];
+    if (cab > 0) { snprintf(logname, sizeof logname, "raveracer_cab%d.log", cab); snprintf(title, sizeof title, "Rave Racer - cabinet %d", cab); }
+    else { snprintf(logname, sizeof logname, "raveracer.log"); snprintf(title, sizeof title, "Rave Racer"); }
 #ifdef _WIN32
-    rr_win_startup();               /* the program's folder, raveracer.log, DPI */
+    rr_win_startup(logname);        /* the program's folder, the log, DPI */
 #endif
     const char *rom_dir = "extracted";
 #ifdef RR_ORACLE
@@ -241,7 +265,7 @@ int main(int argc, char **argv)
 #endif
     if (argc == 1) windowed = -1;               /* started with no arguments (a double-click): play */
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = (uint32_t)atoi(argv[++i]);
+        if (!strcmp(argv[i], "--frames") && i + 1 < argc) { max_frames = (uint32_t)atoi(argv[++i]); frames_given = 1; }
         else if (!strcmp(argv[i], "--dump") && i + 1 < argc) dump_dir = argv[++i];
         else if (!strcmp(argv[i], "--ppf") && i + 1 < argc) polls_per_frame = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--shots") && i + 2 < argc) { shot_dir = argv[++i]; shot_every = (uint32_t)atoi(argv[++i]); }
@@ -268,6 +292,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--steer") && i + 1 < argc && n_steer < 8) {
             int f, v; if (sscanf(argv[++i], "%d:%i", &f, &v) == 2) { test_steer[n_steer].at = f; test_steer[n_steer].value = v; n_steer++; }
         }
+        else if (link_host_arg(argc, argv, &i)) {}
         else rom_dir = argv[i];
     }
 #ifdef RR_ORACLE
@@ -294,7 +319,7 @@ int main(int argc, char **argv)
     g_rr_gl = use_gl < 0 ? (windowed != 0) : use_gl;
     if (windowed) {
         if (!rr_host_open(windowed > 0 ? windowed : 0)) return 2;
-        max_frames = 0xFFFFFFFFu;
+        if (!frames_given) max_frames = 0xFFFFFFFFu;    /* a window plays until it is closed, unless --frames says */
     } else if (g_rr_gl) {
         const char *e = getenv("RR_RENDER_SIZE"); int w, h;
         if (e && sscanf(e, "%dx%d", &w, &h) == 2 && w >= 64 && h >= 48) { gl_w = w; gl_h = h; }
@@ -329,6 +354,13 @@ int main(int argc, char **argv)
     rr_audio_init(rom_dir);
     rr_sound_init(rom_dir);
     rr_hw_init(rom_dir);
+    if (cab > 0) {
+        if (!link_host_open(&link_game)) {
+            if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", "The link could not start: see the log file beside the program.", NULL);
+            return 2;
+        }
+        rr_hw_link_on(link_host_id());
+    }
     if (freeplay >= 0) rr_hw_set_freeplay(freeplay);
     else if (windowed && g_cfg_freeplay >= 0) {        /* the saved menu choice, windowed runs only */
         rr_hw_set_freeplay(g_cfg_freeplay);
@@ -348,6 +380,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "[RR] reset: SP=%08X PC=%08X\n", (uint32_t)RG4(REG_SP), rr_read(4, 4));
     rr_call_push(0xFFFFFFFEu);                  /* bottom of the shadow stack */
     { extern void rd_init(void); rd_init(); }   /* readable-C replacements (src/rd) */
+    if (g_link_mute) rr_audio_set_volume(0);
+    link_host_gather(title, windowed ? SDL_GL_GetCurrentWindow() : NULL);   /* the cabinets start together, as boards switched on together */
     L_4000();                                   /* entry_reset: never returns */
     fprintf(stderr, "[RR] entry_reset returned?!\n");
     return 1;

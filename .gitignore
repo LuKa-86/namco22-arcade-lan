@@ -43,3 +43,4 @@ __pycache__/
 *.log
 *.ppm
 /tokyowar/soak/
+/raverace/soak/

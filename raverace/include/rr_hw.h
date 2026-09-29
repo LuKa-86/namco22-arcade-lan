@@ -22,5 +22,8 @@ void rr_hw_vblank(void);
 int  rr_hw_irq_level(void);
 void rr_hw_set_freeplay(bool on);     /* the game's own COIN OPTIONS -> FREE PLAY */
 bool rr_hw_freeplay(void);
+/* LINK PLAY (engine/c139.c; only with --link): the C139's registers and buffer, its IRQ (syscon line 2), the cabinet number */
+void rr_hw_link_on(int cabinet);      /* 0-based: settings group 3 byte 0 (EEPROM 0x2C0 -> WRAM 0x10001060), as the test menu sets it */
+void rr_hw_sci_irq(void);
 
 #endif

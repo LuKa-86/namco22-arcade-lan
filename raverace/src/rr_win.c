@@ -18,7 +18,7 @@
 #include <windows.h>
 #include <SDL.h>
 
-void rr_win_startup(void)
+void rr_win_startup(const char *logname)
 {
     static wchar_t p[32768];
     DWORD n = GetModuleFileNameW(NULL, p, 32768);
@@ -26,7 +26,7 @@ void rr_win_startup(void)
         wchar_t *sl = wcsrchr(p, L'\\');
         if (sl) { *sl = 0; _wchdir(p); }
     }
-    if (freopen("raveracer.log", "w", stdout)) {
+    if (freopen(logname, "w", stdout)) {
         setvbuf(stdout, NULL, _IONBF, 0);
         _dup2(_fileno(stdout), _fileno(stderr));
     }
