@@ -24,7 +24,7 @@ Registers (word offset → meaning, from Tokyo Wars' use):
 |---|---|---|
 | 0 | `+0x0` | status. bit 1 = a frame was received. Written 0 by the handler = acknowledge. Interrupt with bit 1 clear = "transmitter idle". |
 | 1 | `+0x2` | control. Values seen `0xF`, `0xD`, `0xB`, `0x9`. bit 1 = mask the receive interrupt, bit 2 = mask the transmit-idle interrupt (level-triggered: the driver masks it whenever its send queue is empty). |
-| 2 | `+0x4` | 0 in TW. Rave Racer writes 0, 1, 3 (mode?) — TODO |
+| 2 | `+0x4` | bit 1 = the CPU's writes into the buffer carry the 9th bit (end of frame). Rave Racer writes 1, then 3 just before its checksum word; Tokyo Wars leaves it 0 and writes the bit itself. |
 | 3 | `+0x6` | written 1 then 0 around starting a send when more sends are queued (strobe; no visible effect needed so far) |
 | 4 | `+0x8` | `0xFF` at init |
 | 5 | `+0xA` | send word count. Write `0x46` (70) starts a send; reads non-zero while the transmitter is busy. |
@@ -44,9 +44,22 @@ Registers (word offset → meaning, from Tokyo Wars' use):
 - Each cabinet sends its own state (authoritative), so there is no lockstep and no "desync" in the lockstep sense:
   a late or lost frame only means the others see slightly old data for that frame.
 
+## Rave Racer's protocol (driver at `0x26B12`–`0x27670`)
+
+- Cabinet number = operator settings group 3 byte 0 (EEPROM `0x2C0`, copied to WRAM `0x10001060`), 0..7.
+- Link state at A6 = `0x10008000`: `+0x11A0` own number, `+0x1104` who is heard (own bit = own frame back within 8 frames),
+  `+0x1102` cabinets in the ring, `+0x1108` frames since the own frame came back.
+- Frame, 40 words: sender/slot in word 0 (low 4 bits), 38 data bytes, the length `0x28`, checksum (byte sum) with bit 8
+  set through register 2. Store-and-forward ring like Tokyo Wars; send queue drained from the transmit-idle interrupt.
+- Interrupt handler `0x26BBE` reads status: bit 0 error (counted), bit 1 frame received, bit 2 transmitter idle.
+- The attract screen offers LINK / SOLO when another cabinet is heard.
+
 ## Emulation approach
 
 Packet-level, not bit-level: when the game starts a send, the model takes the 70 words and delivers them to the next
 cabinet in the ring (UDP over the LAN, or 127.0.0.1 for several instances on one PC). A receiving model writes one frame
 at a time into its ring at reg 6, sets status bit 1 and raises the interrupt; the next queued frame is delivered only
 after the game acknowledges. The ring order skips cabinets that are switched off, so a dead PC does not break the others.
+
+Start-up follows the boards' rule (they look for each other only at power-on): each cabinet waits up to 60 s for the others,
+then the set starts together with a fixed member list; a cabinet started later is not let in (engine/link_net.h).
