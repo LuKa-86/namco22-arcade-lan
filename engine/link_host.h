@@ -10,6 +10,7 @@
  *   --link-wait S            at start-up, wait up to S seconds for the other cabinets (default 60), then start without the missing ones
  *   --link-test D:J:L[:S]    TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost; S = this copy's clock S ppm fast (headless)
  *   --mute                   no sound (the other copies when several run on one PC)
+ * Without any --link option, the settings saved by the menu's Network page (link.cfg beside the program) are used.
  */
 #ifndef ENG_LINK_HOST_H
 #define ENG_LINK_HOST_H
@@ -23,6 +24,8 @@ typedef struct {
     void (*deliver_irqs)(void);              /* take the pending interrupts now */
     void (*report)(char *buf, int n);        /* the game's own view of the link, for the log (NULL = none) */
     bool (*good)(void);                      /* the game thinks its link works (NULL = unknown) */
+    int  (*game_id)(void);                   /* the game's own cabinet ID (its test menu's, 0-based; NULL = unknown): two linked cabinets
+                                              * with the same one cannot work, so it is compared across the set and warned about */
 } link_host_game;
 
 extern bool g_link_mute;
@@ -35,4 +38,14 @@ int  link_host_id(void);                                       /* 0-based cabine
 void link_host_gather(const char *title, SDL_Window *win);     /* start-up: wait for the others, the window's title saying who is missing */
 void link_host_slice(void);                                    /* every scheduler slice */
 void link_host_frame(uint32_t frame, bool headless);           /* every video frame: real-time pacing (headless), the log */
+
+/* THE NETWORK PAGE of the Esc menu (both menus draw it from these): its rows are saved in link.cfg beside the program, which a game
+ * started without --link uses. An address row is typed: Enter starts, then link_page_type() takes each key until it returns false. */
+int  link_page_rows(void);
+bool link_page_has_value(int row);
+void link_page_text(int row, char *label, size_t ln, char *value, size_t vn);
+void link_page_change(int row, int dir);                       /* dir 0 = Enter, -1 / +1 = Left / Right */
+bool link_page_editing(void);
+bool link_page_type(SDL_Scancode sc);
+void link_page_notes(void (*line)(const char *fmt, ...));
 #endif

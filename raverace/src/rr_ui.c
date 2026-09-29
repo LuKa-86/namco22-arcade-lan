@@ -39,6 +39,7 @@
 #include "rr_input.h"
 #include "rr_hw.h"
 #include "rr_sound.h"
+#include "link_host.h"
 
 static struct nk_context *ctx;
 static SDL_Window *uwin;
@@ -46,8 +47,8 @@ static bool open_, quit_req;
 static int rebinding = -1;             /* the action waiting for a key, or -1 */
 static float ui_scale = 1.0f;          /* drawable pixels per window unit (HiDPI) */
 
-enum { T_FILE, T_DISPLAY, T_AUDIO, T_CONTROLS, T_RECORD, T_N };
-static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Record" };
+enum { T_FILE, T_DISPLAY, T_AUDIO, T_CONTROLS, T_RECORD, T_NETWORK, T_N };
+static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Record", "Network" };   /* Network: engine/link_host.c (link.cfg) */
 static int tab = T_DISPLAY;
 static int row = 0;                    /* -1 = the tab strip */
 static bool kb_moved;                  /* keep the selected row in view after a key */
@@ -62,6 +63,7 @@ static int nrows(int t)
     case T_AUDIO: return 1;
     case T_CONTROLS: return 1 + RR_ACT_N;
     case T_RECORD: return 1;
+    case T_NETWORK: return link_page_rows();
     }
     return 0;
 }
@@ -71,6 +73,7 @@ static bool has_value(int t, int r)
     if (t == T_DISPLAY || t == T_AUDIO) return true;
     if (t == T_CONTROLS) return r == 0;
     if (t == T_RECORD) return true;
+    if (t == T_NETWORK) return link_page_has_value(r);
     return false;
 }
 static bool row_enabled(int t, int r)
@@ -120,6 +123,7 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         }
         break;
     case T_RECORD: snprintf(label, ln, "Record input"); snprintf(value, vn, "%s", rr_input_recording() ? "ON  (recording...)" : "OFF"); break;
+    case T_NETWORK: link_page_text(r, label, ln, value, vn); break;
     }
 }
 static int cyc(int v, int d, int n) { return ((v + d) % n + n) % n; }
@@ -164,6 +168,7 @@ static void row_change(int t, int r, int dir)
         else if (dir == 0) rebinding = r - 1;
         break;
     case T_RECORD: rr_host_toggle_record(); break;
+    case T_NETWORK: link_page_change(r, dir); break;
     }
 }
 
@@ -224,6 +229,10 @@ bool rr_ui_event(SDL_Event *e)
         } else if (e->type == SDL_CONTROLLERBUTTONDOWN && e->cbutton.button == SDL_CONTROLLER_BUTTON_B) rebinding = -1;
         return true;
     }
+    if (link_page_editing()) {                          /* an address being typed on the Network page takes the keys */
+        if (e->type == SDL_KEYDOWN) link_page_type(e->key.keysym.scancode);
+        return true;
+    }
     int k = -1;
     if (e->type == SDL_KEYDOWN) {
         const bool rep = e->key.repeat;                  /* held arrows repeat; the rest do not */
@@ -272,6 +281,13 @@ static void labelf(nk_flags align, const char *fmt, ...)
     nk_label(ctx, b, align);
 }
 
+static void note_line(const char *fmt, ...)
+{
+    char b[160];
+    va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
+    nk_label(ctx, b, NK_TEXT_LEFT);
+}
+
 /* a one-line hint at the bottom of the window while the menu is closed (a pad has no Esc: how to reach the menu) */
 static char hint_text[96]; static int hint_left;
 void rr_ui_set_hint(const char *text, int frames) { snprintf(hint_text, sizeof hint_text, "%s", text ? text : ""); hint_left = frames; }
@@ -298,7 +314,7 @@ void rr_ui_draw(bool *quit)
     /* THE MENU BAR across the top of the window, as in Prop Cycle. The chosen
      * page drops down under its title; on the keyboard the bar is the row
      * above the first row of the dropdown. */
-    static const float title_w[T_N] = { 50, 80, 70, 90, 80 };
+    static const float title_w[T_N] = { 50, 80, 70, 90, 80, 80 };
     float title_x[T_N], x = 4;
     for (int t = 0; t < T_N; t++) { title_x[t] = x; x += title_w[t] + 4; }
     if (nk_begin(ctx, "menubar", nk_rect(0, 0, (float)ww, 28), NK_WINDOW_NO_SCROLLBAR)) {
@@ -315,10 +331,10 @@ void rr_ui_draw(bool *quit)
     nk_end(ctx);
 
     /* the dropdown: sized to its page, under its title, inside the window */
-    static const float drop_w[T_N] = { 300, 440, 300, 340, 380 };
+    static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
-    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : 44);
+    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 110 : 44);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = drop_w[tab] < ww - 8 ? drop_w[tab] : (float)ww - 8;
     float dx = title_x[tab];
@@ -339,7 +355,7 @@ void rr_ui_draw(bool *quit)
             row_text(tab, i, label, sizeof label, value, sizeof value);
             const bool en = row_enabled(tab, i), val = has_value(tab, i);
             nk_layout_row_template_begin(ctx, rh);
-            nk_layout_row_template_push_static(ctx, tab == T_CONTROLS ? 120 : tab == T_FILE ? 0 : 120);
+            nk_layout_row_template_push_static(ctx, tab == T_CONTROLS ? 120 : tab == T_FILE ? 0 : tab == T_NETWORK ? 210 : 120);
             if (val) nk_layout_row_template_push_static(ctx, 24);
             nk_layout_row_template_push_dynamic(ctx);
             if (val) nk_layout_row_template_push_static(ctx, 24);
@@ -381,7 +397,7 @@ void rr_ui_draw(bool *quit)
         } else if (tab == T_RECORD) {
             labelf(NK_TEXT_LEFT, "Records the cabinet inputs per frame to recordings/;");
             labelf(NK_TEXT_LEFT, "replay with rr --replay FILE. F9 toggles without the menu.");
-        }
+        } else if (tab == T_NETWORK) link_page_notes(note_line);
 
     }
     nk_end(ctx);

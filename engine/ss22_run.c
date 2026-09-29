@@ -353,14 +353,18 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     ss22_hw_init(rom_dir);
     if (cab > 0) {
         if (g->link_id_byte < 0) { fprintf(stderr, "[%s] link play: %s's cabinet number is not known yet\n", g->tag, g->name); return 2; }
-        static link_host_game lg; lg = (link_host_game){ g->tag, link_raise, link_deliver, g->link_report, g->link_good };
+        static link_host_game lg; lg = (link_host_game){ g->tag, link_raise, link_deliver, g->link_report, g->link_good, g->link_game_id };
         if (!link_host_open(&lg)) {
             if (win_scale) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g->name, "The link could not start: see the log file beside the program.", NULL);
             return 2;
         }
-        g_ss22_link_id_byte = g->link_id_byte; g_ss22_link_id = link_host_id() & 3;
     }
-    if (win_scale) ss22_eeprom_persist(nvfile);         /* a player's session keeps its options and records; headless runs (the gates) never do */
+    const bool nv_loaded = win_scale && ss22_eeprom_persist(nvfile);   /* a player's session keeps its options and records; headless runs (the gates) never do */
+    if (link_host_on() && !nv_loaded) {                 /* a cabinet's first run: its ID from --link; after that the test menu's (GAME OPTIONS) */
+        uint8_t *b = &g_ss22.eeprom[g->link_id_byte];
+        *b = (uint8_t)((*b & ~3u) | (unsigned)(link_host_id() & 3));
+        fprintf(stderr, "[LINK] first run of cabinet %d: the game's own ID set to %d (change it in the test menu)\n", link_host_id() + 1, (link_host_id() & 3) + 1);
+    }
     if (!ss22_dsp_init(rom_dir)) return 2;
     if (!ss22_snd_init(rom_dir)) fprintf(stderr, "[%s] no sound MCU: the game will read no inputs\n", g->tag);
     ss22_env_init(getenv(envname));                     /* dev trace build only */

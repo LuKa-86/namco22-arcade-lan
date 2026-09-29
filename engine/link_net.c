@@ -16,6 +16,7 @@ typedef SOCKET sock_t;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <fcntl.h>
 #include <unistd.h>
 typedef int sock_t;
@@ -27,7 +28,7 @@ typedef int sock_t;
 #define MAGIC      0x4E32324Cu              /* "N22L" */
 #define PROTO      2
 #define T_FRAME    1
-#define T_HELLO    2                        /* + state 1, members 1, pad 2, age/waited ms 4 */
+#define T_HELLO    2                        /* + state 1, members 1, game ID + 1 (0 = unknown) 1, pad 1, age/waited ms 4 */
 #define T_BYE      3                        /* this cabinet is closing: step over it at once */
 #define HELLO_MS   25                       /* a hello to every cabinet this often ... */
 #define ALIVE_MS   120                      /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
@@ -39,6 +40,7 @@ typedef struct {
     int      state;                         /* what its last hello said */
     uint8_t  members;
     uint32_t session, ms;                   /* its session and that session's age, or (gathering) how long it has waited */
+    int      game_id;                       /* its game's own cabinet ID, -1 = unknown */
 } peer_t;
 
 static struct {
@@ -50,6 +52,7 @@ static struct {
     int      state;
     uint32_t session;                       /* 0 while gathering */
     uint8_t  members;
+    int      game_id;                       /* this game's own ID, -1 = unknown */
     uint64_t t_open, t_session;
     peer_t   p[LNK_MAX_NODES];
     uint32_t seq_to[LNK_MAX_NODES], last_seq[LNK_MAX_NODES];   /* numbered per destination: a gap = packets lost on that path */
@@ -115,6 +118,8 @@ bool lnk_open(const lnk_cfg *cfg)
     if (L.cfg.gather_ms <= 0) L.cfg.gather_ms = 60000;
     L.rng = 0x9E3779B9u ^ (uint32_t)L.cfg.id * 7919u ^ (uint32_t)now_ms() ^ (uint32_t)SDL_GetPerformanceCounter();
     L.state = LNK_GATHERING;
+    L.game_id = -1;
+    for (int n = 0; n < LNK_MAX_NODES; n++) L.p[n].game_id = -1;
     L.t_open = now_ms();
     L.on = true;
     fprintf(stderr, "[LINK] cabinet %d of up to %d, UDP port %d%s; waiting up to %d s for the others\n", L.cfg.id + 1, L.cfg.nodes,
@@ -159,6 +164,9 @@ int lnk_next_hop(void)
     for (int k = 1; k < L.cfg.nodes; k++) { int n = (L.cfg.id + k) % L.cfg.nodes; if (alive(n, t)) return n; }
     return -1;
 }
+
+void lnk_set_game_id(int id) { L.game_id = id; }
+int  lnk_peer_game_id(int n) { return n == L.cfg.id ? L.game_id : (n >= 0 && n < L.cfg.nodes && recent(n, now_ms())) ? L.p[n].game_id : -1; }
 
 static void raw_send(int dst, const uint8_t *b, int len)
 {
@@ -215,7 +223,7 @@ static void hellos(void)
     uint32_t ms = (uint32_t)(t - (L.state == LNK_LINKED ? L.t_session : L.t_open));
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
         header(b, T_HELLO, n);
-        b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = b[HDR + 3] = 0; put32(b + HDR + 4, ms);
+        b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = 0; put32(b + HDR + 4, ms);
         raw_send(n, b, HDR + 8);
     }
 }
@@ -247,7 +255,7 @@ static int take(uint16_t *w, int max)
     if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
     switch (b[5]) {
     case T_HELLO:
-        if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
+        if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
         return 0;
     case T_BYE:
         p->heard = 0;
@@ -329,4 +337,29 @@ void lnk_close(void)
     for (int k = 0; k < 3; k++)                               /* a goodbye (three times: it is UDP) */
         for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_BYE, n); raw_send(n, b, HDR); }
     sock_close(L.s); L.on = false;
+}
+
+int lnk_local_addresses(char out[][16], int max)
+{
+#ifdef _WIN32
+    static bool wsa;
+    if (!wsa) { WSADATA wd; wsa = WSAStartup(MAKEWORD(2, 2), &wd) == 0; }
+#endif
+    char host[256];
+    if (gethostname(host, sizeof host) != 0) return 0;
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; hints.ai_socktype = SOCK_DGRAM;
+    if (getaddrinfo(host, NULL, &hints, &res) != 0) return 0;
+    int n = 0;
+    for (struct addrinfo *r = res; r && n < max; r = r->ai_next) {
+        const struct sockaddr_in *a = (const struct sockaddr_in *)r->ai_addr;
+        char s[16];
+        if (!inet_ntop(AF_INET, &a->sin_addr, s, sizeof s) || !strncmp(s, "127.", 4) || !strncmp(s, "169.254.", 8)) continue;   /* loopback; Windows' no-router fallback */
+        bool dup = false;
+        for (int i = 0; i < n; i++) dup |= !strcmp(out[i], s);
+        if (!dup) snprintf(out[n++], 16, "%s", s);
+    }
+    freeaddrinfo(res);
+    return n;
 }

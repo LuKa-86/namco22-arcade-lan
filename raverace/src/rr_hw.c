@@ -194,12 +194,49 @@ static void eeprom_block_set(uint32_t blk, int byte, uint8_t v)
     for (int i = 0; i < 30; i++) sum += b[i];
     b[30] = (uint8_t)((uint16_t)~sum >> 8); b[31] = (uint8_t)~sum;
 }
-void rr_hw_link_on(int cabinet)
+void rr_hw_link_on(int cabinet, bool seed_id)
 {
     link_on = true;
     c139_init(g_rr.sci);
+    if (!seed_id) return;
     eeprom_block_set(0x2C0, 0, (uint8_t)(cabinet & 7));
     eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));
+    fprintf(stderr, "[LINK] first run of cabinet %d: the game's own LINK ID set to %d (change it in the test menu, GAME OPTIONS)\n", cabinet + 1, (cabinet & 7) + 1);
+}
+
+static char    nv_path[512];
+static uint8_t nv_saved[RR_EEPROM_SIZE];
+static bool    nv_on;
+bool rr_hw_eeprom_persist(const char *path)
+{
+    bool loaded = false;
+    snprintf(nv_path, sizeof nv_path, "%s", path);
+    FILE *f = fopen(nv_path, "rb");
+    if (f) {
+        uint8_t buf[RR_EEPROM_SIZE + 1];
+        size_t n = fread(buf, 1, sizeof buf, f);
+        fclose(f);
+        if (n == RR_EEPROM_SIZE) { memcpy(g_rr.eeprom, buf, RR_EEPROM_SIZE); loaded = true; fprintf(stderr, "[HW] EEPROM loaded from %s\n", nv_path); }
+        else fprintf(stderr, "[HW] %s is not an EEPROM image (%zu bytes) -- ignored\n", nv_path, n);
+    }
+    memcpy(nv_saved, g_rr.eeprom, RR_EEPROM_SIZE);
+    nv_on = true;
+    return loaded;
+}
+void rr_hw_eeprom_save(void)
+{
+    if (!nv_on || !memcmp(nv_saved, g_rr.eeprom, RR_EEPROM_SIZE)) return;
+    char tmp[sizeof nv_path + 8];
+    snprintf(tmp, sizeof tmp, "%s.tmp", nv_path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return;
+    bool ok = fwrite(g_rr.eeprom, 1, RR_EEPROM_SIZE, f) == RR_EEPROM_SIZE;
+    ok = (fclose(f) == 0) && ok;
+    if (!ok) { remove(tmp); return; }
+#ifdef _WIN32
+    remove(nv_path);
+#endif
+    if (rename(tmp, nv_path) == 0) memcpy(nv_saved, g_rr.eeprom, RR_EEPROM_SIZE);
 }
 void rr_hw_set_freeplay(bool on)
 {

@@ -24,6 +24,12 @@
 #include "eng_pace.h"
 #include "tex_bake.h"
 #include "ss22_host.h"
+#include "link_host.h"
+
+/* the Esc menu's Network page (engine/link_host.c: the rows, link.cfg); an address row is typed key by key through the menu's key capture */
+static void net_key(SDL_Scancode sc, void *u) { if (link_page_type(sc)) eng_ui_capture_key(net_key, u); }
+static void net_change(int row, int dir) { link_page_change(row, dir); if (link_page_editing() && !eng_ui_capturing()) eng_ui_capture_key(net_key, NULL); }
+static const eng_ui_page network_page = { "Network", 460, 210, 24, link_page_rows, link_page_has_value, NULL, link_page_text, net_change, link_page_notes };
 
 #define FRAME_NS 16693000ull                      /* 1 / 59.906 Hz, 25.6 MHz / 814 / 525 */
 
@@ -81,6 +87,7 @@ bool ss22_host_open(const ss22_host_game *g, int scale, bool fs)      /* scale <
     SDL_SetWindowMinimumSize(win, 320, 240);
     game->input_init();                            /* after the cfg: the key bindings */
     eng_ui_add_page(game->input_page());
+    eng_ui_add_page(&network_page);                /* link play: this cabinet's number and the cabinets' addresses (link.cfg) */
     if (!eng_ui_init(win, game->title)) fprintf(stderr, "[HOST] menu: Nuklear init failed\n");
     else if (eng_pad_present()) eng_ui_set_hint(ENG_PAD_MENU_HINT, 60 * 8);         /* a pad has no Esc: say how to reach the menu */
     tex_bake_window_defaults();                    /* a per-frame budget for cold texture bakes (engine/tex_bake.c; ENG_TEX_BUDGET) */

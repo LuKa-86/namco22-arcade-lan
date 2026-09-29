@@ -144,6 +144,7 @@ static void link_report(char *buf, int n)
 }
 
 static bool link_good(void) { return rr_read(0xE0200Cu, 2) != 0; }
+static int  link_game_id(void) { return (int)(rr_read(0xE02000u, 2) & 3); }
 
 static const ss22_game game = {
     .name = "Tokyo Wars", .tag = "TW", .lname = "tw", .logname = "tokyowar.log", .zip = "tokyowar.zip",
@@ -162,8 +163,8 @@ static const ss22_game game = {
     .presses = presses, .n_presses = (int)(sizeof presses / sizeof *presses),
     .autoplay = autoplay,
     .pedal_full = { 0x100, 0x100 },
-    .link_id_byte = 9,                  /* link play: the driver (0x92F82) reads EEPROM byte 9, bits 0-1, as the cabinet number */
-    .link_report = link_report, .link_good = link_good,
+    .link_id_byte = 9,                  /* link play: GAME OPTIONS -> ID NO. = EEPROM byte 9, bits 0-1 (the driver reads it at 0x92F82) */
+    .link_report = link_report, .link_good = link_good, .link_game_id = link_game_id,
 };
 
 int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }

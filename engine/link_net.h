@@ -49,5 +49,8 @@ void     lnk_send(const uint16_t *w, int n);          /* one chip frame to the n
 int      lnk_recv(uint16_t *w, int max);              /* the next frame received (its word count), 0 = none; also handles the hellos */
 uint32_t lnk_alive_mask(void);                        /* bit n = member n is on now (this one included) */
 int      lnk_next_hop(void);                          /* where a frame goes now, -1 = nobody else is on */
+void     lnk_set_game_id(int id);                     /* the game's own cabinet ID (its test menu's), told to the others in the hellos */
+int      lnk_peer_game_id(int n);                     /* cabinet n's game ID, -1 = not known */
 const lnk_stats *lnk_get_stats(void);
+int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addresses (not 127.x), for the menu: how many */
 #endif

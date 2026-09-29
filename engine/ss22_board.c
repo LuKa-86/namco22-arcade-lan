@@ -25,7 +25,6 @@ static int      g_ss22_mbox;
 static void     ss22_mbox_log(uint32_t off, int size, uint32_t v);
 void (*g_ss22_dsp_control)(uint8_t v);
 void (*g_ss22_snd_set_run)(bool run);
-int g_ss22_link_id_byte = -1, g_ss22_link_id;
 
 ss22_sys_t g_ss22;
 #ifdef RR_TRACE
@@ -198,10 +197,7 @@ static uint32_t eeprom_read(uint32_t off, int size)
     uint32_t v = 0;
     for (int i = 0; i < size; i++) {
         uint32_t p = off + (uint32_t)i;
-        uint32_t n = (p >> 1) & (SS22_EEPROM_SIZE - 1);
-        uint32_t b = g_ss22.eeprom[n];
-        if ((int)n == g_ss22_link_id_byte) b = (b & ~3u) | (uint32_t)g_ss22_link_id;     /* --link-id: the cabinet number the game reads */
-        v = v << 8 | ((p & 1) ? 0u : b);
+        v = v << 8 | ((p & 1) ? 0u : g_ss22.eeprom[(p >> 1) & (SS22_EEPROM_SIZE - 1)]);
     }
     return v;
 }
@@ -411,19 +407,21 @@ static char    nv_path[512];
 static uint8_t nv_saved[SS22_EEPROM_SIZE];
 static bool    nv_on;
 
-void ss22_eeprom_persist(const char *path)
+bool ss22_eeprom_persist(const char *path)
 {
+    bool loaded = false;
     snprintf(nv_path, sizeof nv_path, "%s", path);
     FILE *f = fopen(nv_path, "rb");
     if (f) {
         uint8_t buf[SS22_EEPROM_SIZE + 1];
         size_t n = fread(buf, 1, sizeof buf, f);
         fclose(f);
-        if (n == SS22_EEPROM_SIZE) { memcpy(g_ss22.eeprom, buf, SS22_EEPROM_SIZE); fprintf(stderr, "[%s] EEPROM loaded from %s\n", cfg->tag, nv_path); }
+        if (n == SS22_EEPROM_SIZE) { memcpy(g_ss22.eeprom, buf, SS22_EEPROM_SIZE); loaded = true; fprintf(stderr, "[%s] EEPROM loaded from %s\n", cfg->tag, nv_path); }
         else fprintf(stderr, "[%s] %s is not an EEPROM image (%zu bytes) -- ignored\n", cfg->tag, nv_path, n);
     }
     memcpy(nv_saved, g_ss22.eeprom, SS22_EEPROM_SIZE);
     nv_on = true;
+    return loaded;
 }
 
 void ss22_eeprom_save(void)

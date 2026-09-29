@@ -79,7 +79,6 @@ bool ss22_hw_init(const char *rom_dir);
 void ss22_hw_vblank(void);                          /* the frame's vblank: raise syscon line 0 if the game enabled it */
 void ss22_hw_scanline(void);                        /* the scanline IRQ (line 1) */
 void ss22_hw_sci_irq(void);                         /* the link chip's IRQ (line 2), engine/c139.c */
-extern int g_ss22_link_id_byte, g_ss22_link_id;    /* --link-id: EEPROM byte whose bits 0-1 read as the cabinet number (-1 = off) */
 int  ss22_hw_irq_level(void);                       /* the highest pending, enabled IRQ as a 68K level (0 = none) */
 void ss22_hw_keycus_force(uint32_t v);              /* trace oracle: the next keycus read answers with MAME's value */
 
@@ -92,7 +91,7 @@ extern void (*g_ss22_snd_set_run)(bool run);
 
 /* Interactive runs keep the machine's EEPROM (options, records) in a file beside the game, as MAME's nvram does: loaded at boot when it holds
  * exactly one image, rewritten (temp file + rename) whenever the game changed it. Headless runs never touch it. */
-void ss22_eeprom_persist(const char *path);
+bool ss22_eeprom_persist(const char *path);           /* true = a saved image was loaded (not the set's defaults) */
 void ss22_eeprom_save(void);
 
 /* <tag>_MBOXLOG=<file>: every 68K write into the sound mailbox (shared RAM 0..0x1FF): "frame offset size value" -- the 68K -> sound-MCU

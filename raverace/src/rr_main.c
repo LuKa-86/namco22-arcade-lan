@@ -161,6 +161,7 @@ void rr_tick(void)
     if (++slice % SLICES) return;
     frame++;
     link_host_frame(frame, !windowed);
+    if (frame % 120 == 0) rr_hw_eeprom_save();
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
         rr_gl_prepare(rr_dsp_slave_active());
@@ -240,12 +241,13 @@ void rr_win_startup(const char *logname);          /* src/rr_win.c */
 static void link_raise(void) { rr_hw_sci_irq(); }
 static void link_deliver(void) { rr_deliver_irqs(rr_hw_irq_level); }
 static bool link_good(void) { return rr_read(0x10009104u, 2) >> (rr_read(0x100091A0u, 2) & 15) & 1; }
+static int  link_game_id(void) { return (int)(rr_read(0x100091A0u, 2) & 7); }
 static void link_report(char *buf, int n)
 {
     snprintf(buf, (size_t)n, "game: cabinet %u, hears %02X (%u in the ring), link %s, frames since own came back %u",
              rr_read(0x100091A0u, 2) + 1, rr_read(0x10009104u, 2), rr_read(0x10009102u, 2), link_good() ? "GOOD" : "down", rr_read(0x10009108u, 2));
 }
-static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good };
+static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id };
 
 int main(int argc, char **argv)
 {
@@ -354,12 +356,16 @@ int main(int argc, char **argv)
     rr_audio_init(rom_dir);
     rr_sound_init(rom_dir);
     rr_hw_init(rom_dir);
+    /* the test menu's settings and the records survive a restart (a window or a linked copy; headless test runs start from the set's defaults) */
+    char nvname[64];
+    if (cab > 0) snprintf(nvname, sizeof nvname, "rr_eeprom_cab%d.nv", cab); else snprintf(nvname, sizeof nvname, "rr_eeprom.nv");
+    const bool nv_loaded = windowed ? rr_hw_eeprom_persist(nvname) : false;
     if (cab > 0) {
         if (!link_host_open(&link_game)) {
             if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", "The link could not start: see the log file beside the program.", NULL);
             return 2;
         }
-        rr_hw_link_on(link_host_id());
+        rr_hw_link_on(link_host_id(), !nv_loaded);
     }
     if (freeplay >= 0) rr_hw_set_freeplay(freeplay);
     else if (windowed && g_cfg_freeplay >= 0) {        /* the saved menu choice, windowed runs only */

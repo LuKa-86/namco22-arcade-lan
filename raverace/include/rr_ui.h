@@ -17,7 +17,7 @@ bool rr_ui_quit_requested(void);
 /* headless tests: drive the menu without an input device */
 enum { RR_UI_UP, RR_UI_DOWN, RR_UI_LEFT, RR_UI_RIGHT, RR_UI_OK, RR_UI_BACK, RR_UI_TABPREV, RR_UI_TABNEXT };
 void rr_ui_test_nav(int k);
-void rr_ui_test_goto(int tab, int row);  /* tab: 0 File 1 Display 2 Audio 3 Controls 4 Record */
+void rr_ui_test_goto(int tab, int row);  /* tab: 0 File 1 Display 2 Audio 3 Controls 4 Record 5 Network */
 
 /* rr_host.c: every display/audio/option change, applied and saved */
 void rr_host_set_winmode(int m);         /* 0 windowed, 1 desktop fullscreen, 2 exclusive */
