@@ -304,7 +304,10 @@ bool rr_host_open(int scale)
 {
     rr_input_load("rr_controls.cfg");
     if (scale > 0) g_cfg_scale = scale;                /* --window N overrides the saved size */
-    if (getenv("RR_FULLSCREEN")) { g_cfg_fullscreen = atoi(getenv("RR_FULLSCREEN")) != 0; g_cfg_winmode = g_cfg_fullscreen; }
+    if (getenv("RR_FULLSCREEN")) {                     /* --fullscreen: full screen, the saved kind (exclusive stays exclusive) */
+        g_cfg_fullscreen = atoi(getenv("RR_FULLSCREEN")) != 0;
+        g_cfg_winmode = !g_cfg_fullscreen ? 0 : g_cfg_winmode == 2 ? 2 : 1;
+    }
     if (g_cfg_winmode < 0) g_cfg_winmode = g_cfg_fullscreen ? 1 : 0;
     g_cfg_fullscreen = g_cfg_winmode != 0;
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -645,6 +648,9 @@ bool rr_host_frame(void)
     /* the window may have been resized: keep the render size in step (a
      * native or widescreen size follows the window; it lands next frame) */
     apply_render_size();
+    { static int slow = -1, every = 1, n;           /* RR_SLOWDRAW=<ms>[:<every>]: TEST, a slow graphics chip (every n-th frame takes ms longer) */
+      if (slow < 0) { slow = 0; const char *e = getenv("RR_SLOWDRAW"); if (e) sscanf(e, "%d:%d", &slow, &every); if (every < 1) every = 1; }
+      if (slow && ++n % every == 0) SDL_Delay((Uint32)slow); }
     present_picture();
     if (rr_ui_is_open() || rr_ui_hint_active() || link_lights_on()) {   /* the menu, over the dimmed game (or just the hint, the link lights) */
         int ow, oh; out_size(&ow, &oh);

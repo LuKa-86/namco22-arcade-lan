@@ -63,3 +63,16 @@ after the game acknowledges. The ring order skips cabinets that are switched off
 
 Start-up follows the boards' rule (they look for each other only at power-on): each cabinet waits up to 60 s for the others,
 then the set starts together with a fixed member list; a cabinet started later is not let in (engine/link_net.h).
+
+## Timing: what breaks the link on PCs (found 2026-09-29, 3-device test)
+
+The games want every cabinet to pass the ring's frames on within about 8 frames (~0.13 s), all the time: the real boards on their
+cable always did. On PCs anything that holds one cabinet (or its network) still for longer drops the game's link for a moment, and
+afterwards the frames pile up at the next cabinet (thousands of queue-drops); Tokyo Wars then ends the battle ("BATTLE OVER").
+Seen on a 3-PC Wi-Fi set: in WINDOWS an Intel UHD 630 PC froze 0.1-0.2 s in busy scenes -> hundreds of queue-drops and battles ended;
+the same three in FULL SCREEN (exclusive 640x480) played whole matches. Reproduced here with `--link-test 0:0:0:0:300:120` (Wi-Fi
+bursts: 120 ms of every 300 ms held back): ~120 game link losses in 2.5 min with a 32-frame queue, ~70 with 58.
+A slow-but-steady PC (TW_SLOWDRAW=20:12, ~55 fps in a window) did NOT break it (0-1 drops): the ring paces itself.
+Tried and removed: a "catch-up" (run frames undrawn when behind the board's clock) -- it turned slowness into bursts and made it worse
+(4 link losses and 154 drops against 0 and 0). Kept: the chip's queue at 58 frames (the real ring buffer's size).
+Advice: full screen, cabled network; on Wi-Fi a "best performance" power plan.

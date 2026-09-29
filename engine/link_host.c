@@ -42,7 +42,8 @@ bool link_host_arg(int argc, char **argv, int *i)
     else if (!strcmp(a, "--link-peers") && v) cfg.peers = argv[++*i];
     else if (!strcmp(a, "--link-port") && v) cfg.base_port = atoi(argv[++*i]);
     else if (!strcmp(a, "--link-wait") && v) cfg.gather_ms = atoi(argv[++*i]) * 1000;
-    else if (!strcmp(a, "--link-test") && v) sscanf(argv[++*i], "%d:%d:%d:%d", &cfg.delay_ms, &cfg.jitter_ms, &cfg.loss_pct, &skew_ppm);
+    else if (!strcmp(a, "--link-test") && v) sscanf(argv[++*i], "%d:%d:%d:%d:%d:%d", &cfg.delay_ms, &cfg.jitter_ms, &cfg.loss_pct, &skew_ppm,
+                                                    &cfg.burst_every_ms, &cfg.burst_hold_ms);
     else if (!strcmp(a, "--mute")) g_link_mute = true;
     else return false;
     return true;

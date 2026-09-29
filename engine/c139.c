@@ -6,7 +6,8 @@
 
 #define RING_BASE 0x1000u                   /* the receive ring: words 0x1000..0x1FFF of the buffer */
 #define RING_MASK 0x0FFFu
-#define QMAX      32                        /* frames waiting for the game; beyond this the oldest go (a stalled PC catches up on fresh data) */
+#define QMAX      58                        /* frames waiting for the game (the real ring buffer's 0x1000 words hold about 58 of 70);
+                                             * beyond this the oldest go (a stalled PC catches up on fresh data) */
 #define ACK_SLICES 3                        /* a frame the game has not acknowledged by then is overwritten by the next, as on the real chip */
 
 enum { ST_RX = 0x0002 };                    /* status bit 1: a frame was received */

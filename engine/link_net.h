@@ -29,6 +29,7 @@ typedef struct {
     const char *tag;                        /* the game ("TW"): cabinets of another game are ignored */
     int      gather_ms;                     /* how long to wait at start-up for missing cabinets */
     int      delay_ms, jitter_ms, loss_pct; /* test only: a worse network than the real one */
+    int      burst_every_ms, burst_hold_ms; /* test only: Wi-Fi's bursts -- every E ms, H ms of frames held back and then sent at once */
 } lnk_cfg;
 
 typedef struct {

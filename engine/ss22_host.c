@@ -169,6 +169,9 @@ static void present(void)
               if (eng_gl_write_ppm(p, dw, dh)) fprintf(stderr, "[HOST] saved %s (%dx%d)\n", p, dw, dh);
           }
       } }
+    { static int slow = -1, every = 1, n;           /* <tag>_SLOWDRAW=<ms>[:<every>]: TEST, a slow graphics chip (every n-th frame takes ms longer) */
+      if (slow < 0) { slow = 0; const char *e = genv("SLOWDRAW"); if (e) sscanf(e, "%d:%d", &slow, &every); if (every < 1) every = 1; }
+      if (slow && ++n % every == 0) SDL_Delay((Uint32)slow); }
     if (pace_log) eng_pace_before_swap(pace_log);
     SDL_GL_SwapWindow(win);
 }

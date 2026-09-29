@@ -8,7 +8,8 @@
  *   --link-peers A,B,C,D     the cabinets' IPv4 addresses, in cabinet order (default: all on this PC, 127.0.0.1)
  *   --link-port P            UDP port of cabinet 1 (cabinet N uses P + N - 1; default 22220)
  *   --link-wait S            at start-up, wait up to S seconds for the other cabinets (default 60), then start without the missing ones
- *   --link-test D:J:L[:S]    TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost; S = this copy's clock S ppm fast (headless)
+ *   --link-test D:J:L[:S[:E:H]] TEST: every frame sent D ms late, plus up to J ms of jitter, L% lost; S = this copy's clock S ppm fast
+ *                            (headless); E:H = Wi-Fi bursts: every E ms, H ms of frames held back and then sent at once
  *   --mute                   no sound (the other copies when several run on one PC)
  * Without any --link option, the settings saved by the menu's Network page (link.cfg beside the program) are used.
  */

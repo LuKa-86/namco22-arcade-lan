@@ -138,8 +138,9 @@ bool lnk_open(const lnk_cfg *cfg)
     L.on = true;
     fprintf(stderr, "[LINK] cabinet %d of up to %d, UDP port %d%s; waiting up to %d s for the others\n", L.cfg.id + 1, L.cfg.nodes,
             L.cfg.base_port + L.cfg.id, cfg->peers ? "" : ", all cabinets on this PC (127.0.0.1)", L.cfg.gather_ms / 1000);
-    if (cfg->delay_ms || cfg->jitter_ms || cfg->loss_pct)
-        fprintf(stderr, "[LINK] TEST network: +%d ms, jitter %d ms, %d%% lost\n", cfg->delay_ms, cfg->jitter_ms, cfg->loss_pct);
+    if (cfg->delay_ms || cfg->jitter_ms || cfg->loss_pct || cfg->burst_every_ms)
+        fprintf(stderr, "[LINK] TEST network: +%d ms, jitter %d ms, %d%% lost, bursts: every %d ms %d ms held\n", cfg->delay_ms, cfg->jitter_ms,
+                cfg->loss_pct, cfg->burst_every_ms, cfg->burst_hold_ms);
     return true;
 }
 
@@ -223,6 +224,10 @@ static void send_frame_packet(int dst, const uint8_t *b, int len)
 {
     if (L.cfg.loss_pct && (int)(rnd() % 100) < L.cfg.loss_pct) { L.st.dropped_test++; return; }
     int d = L.cfg.delay_ms + (L.cfg.jitter_ms ? (int)(rnd() % (unsigned)(L.cfg.jitter_ms + 1)) : 0);
+    if (L.cfg.burst_every_ms > 0 && L.cfg.burst_hold_ms > 0) {            /* a radio asleep: held to the end of its nap, then all at once */
+        const int phase = (int)(now_ms() % (uint64_t)L.cfg.burst_every_ms);
+        if (phase < L.cfg.burst_hold_ms) d += L.cfg.burst_hold_ms - phase;
+    }
     if (d <= 0 || L.nheld >= 256) { raw_send(dst, b, len); return; }
     L.held[L.nheld].due = now_ms() + (uint64_t)d; L.held[L.nheld].dst = dst; L.held[L.nheld].len = len;
     memcpy(L.held[L.nheld].b, b, (size_t)len); L.nheld++; L.st.delayed++;
@@ -232,9 +237,9 @@ static void release_held(void)
 {
     uint64_t t = now_ms();
     for (int i = 0; i < L.nheld; ) {
-        if (L.held[i].due <= t) {
+        if (L.held[i].due <= t) {                      /* in the order they were sent (jitter still reorders: its due times differ) */
             raw_send(L.held[i].dst, L.held[i].b, L.held[i].len);
-            L.held[i] = L.held[--L.nheld];             /* jitter may reorder frames, as a bad network would */
+            memmove(&L.held[i], &L.held[i + 1], (size_t)(L.nheld - i - 1) * sizeof L.held[0]); L.nheld--;
         } else i++;
     }
 }
