@@ -23,6 +23,7 @@
 
 #include "eng_ui.h"
 #include "eng_display.h"
+#include "link_lights_nk.h"
 
 #define MAXPAGES 8
 static struct nk_context *ctx;
@@ -300,17 +301,20 @@ void eng_ui_draw(bool *quit)
     if (quit_req && quit) *quit = true;
     if (!ctx) return;
     if (!open_) {                                    /* the menu-button hint (a pad has no Esc), for a few seconds after the start */
+        int hw, hh; SDL_GetWindowSize(uwin, &hw, &hh);
+        bool drew = false;
         if (hint_left > 0 && hint_text[0]) {
             hint_left--;
-            int hw, hh; SDL_GetWindowSize(uwin, &hw, &hh);
             const float w = 440 < hw - 8 ? 440.0f : (float)hw - 8;
             if (nk_begin(ctx, "hint", nk_rect(((float)hw - w) / 2, (float)hh - 36, w, 28), NK_WINDOW_NO_SCROLLBAR)) {
                 nk_layout_row_dynamic(ctx, 18, 1);
                 nk_label(ctx, hint_text, NK_TEXT_CENTERED);
             }
             nk_end(ctx);
-            nk_sdl_render(NK_ANTI_ALIASING_ON);
+            drew = true;
         }
+        drew |= link_lights_nk(ctx, hw, hh);         /* the link lights (Network page), when on */
+        if (drew) nk_sdl_render(NK_ANTI_ALIASING_ON);
         return;
     }
     int ww, wh;
@@ -341,7 +345,7 @@ void eng_ui_draw(bool *quit)
     const int n0 = nrows(tab);
     const float rh = pg->row_h > 0 ? pg->row_h : 26;
     const float lw = pg->label_w > 0 ? pg->label_w : 120;
-    float dh = 48 + n0 * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? 44 : 0);
+    float dh = 48 + n0 * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? (pg->notes_h > 0 ? pg->notes_h : 44) : 0);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = (pg->drop_w > 0 ? pg->drop_w : 340) < ww - 8 ? (pg->drop_w > 0 ? pg->drop_w : 340) : (float)ww - 8;
     float dx = title_x[tab];

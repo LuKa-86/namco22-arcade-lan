@@ -40,6 +40,7 @@
 #include "rr_hw.h"
 #include "rr_sound.h"
 #include "link_host.h"
+#include "link_lights_nk.h"
 
 static struct nk_context *ctx;
 static SDL_Window *uwin;
@@ -296,16 +297,21 @@ bool rr_ui_hint_active(void) { return ctx && !open_ && hint_left > 0 && hint_tex
 void rr_ui_draw(bool *quit)
 {
     if (quit_req) *quit = true;
-    if (rr_ui_hint_active()) {
-        hint_left--;
+    if (ctx && !open_) {                                /* the menu closed: the hint, the link lights */
         int hw, hh; SDL_GetWindowSize(uwin, &hw, &hh);
-        const float w = 440 < hw - 8 ? 440.0f : (float)hw - 8;
-        if (nk_begin(ctx, "hint", nk_rect(((float)hw - w) / 2, (float)hh - 36, w, 28), NK_WINDOW_NO_SCROLLBAR)) {
-            nk_layout_row_dynamic(ctx, 18, 1);
-            nk_label(ctx, hint_text, NK_TEXT_CENTERED);
+        bool drew = false;
+        if (rr_ui_hint_active()) {
+            hint_left--;
+            const float w = 440 < hw - 8 ? 440.0f : (float)hw - 8;
+            if (nk_begin(ctx, "hint", nk_rect(((float)hw - w) / 2, (float)hh - 36, w, 28), NK_WINDOW_NO_SCROLLBAR)) {
+                nk_layout_row_dynamic(ctx, 18, 1);
+                nk_label(ctx, hint_text, NK_TEXT_CENTERED);
+            }
+            nk_end(ctx);
+            drew = true;
         }
-        nk_end(ctx);
-        nk_sdl_render(NK_ANTI_ALIASING_ON);
+        drew |= link_lights_nk(ctx, hw, hh);
+        if (drew) nk_sdl_render(NK_ANTI_ALIASING_ON);
         return;
     }
     if (!ctx || !open_) return;
@@ -334,7 +340,7 @@ void rr_ui_draw(bool *quit)
     static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
-    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 132 : 44);
+    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 176 : 44);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = drop_w[tab] < ww - 8 ? drop_w[tab] : (float)ww - 8;
     float dx = title_x[tab];

@@ -47,6 +47,8 @@ typedef struct {
     uint64_t ever;                          /* its first packet (0 = never heard since this start) */
     uint32_t pkts;
     uint8_t  hears;                         /* who IT hears, from its hellos (bit n = cabinet n+1): a one-way path shows here */
+    uint8_t  nodes;                         /* its "Cabinets in the set" (0 = not told: an older build) */
+    uint32_t list_hash;                     /* a fingerprint of its address list */
     bool     warned_from;
 } peer_t;
 
@@ -56,6 +58,7 @@ static struct {
     sock_t s;
     struct sockaddr_in addr[LNK_MAX_NODES];
     uint32_t tag;
+    uint32_t list_hash;                     /* this PC's set-up, told to the others: the set size and the address list must match */
     int      state;
     uint32_t session;                       /* 0 while gathering */
     uint8_t  members;
@@ -107,6 +110,10 @@ bool lnk_open(const lnk_cfg *cfg)
         if (!set_addr(n, (p && *p) ? p : "127.0.0.1")) return false;
         p = comma ? comma + 1 : NULL;
     }
+    L.list_hash = 2166136261u;                                          /* FNV-1a over the set size, the port and the addresses */
+    { const uint32_t v[2] = { (uint32_t)L.cfg.nodes, (uint32_t)L.cfg.base_port };
+      for (int i = 0; i < 2; i++) for (int k = 0; k < 4; k++) L.list_hash = (L.list_hash ^ (uint8_t)(v[i] >> (8 * k))) * 16777619u;
+      for (int n = 0; n < L.cfg.nodes; n++) { const uint8_t *a = (const uint8_t *)&L.addr[n].sin_addr; for (int k = 0; k < 4; k++) L.list_hash = (L.list_hash ^ a[k]) * 16777619u; } }
     L.s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (L.s == SOCK_BAD) { fprintf(stderr, "[LINK] no socket\n"); return false; }
     struct sockaddr_in me; memset(&me, 0, sizeof me);
@@ -153,6 +160,12 @@ bool lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts)
     *ago_ms = p->heard ? (int)(now_ms() - p->heard) : -1;
     *pkts = p->pkts;
     return true;
+}
+int lnk_peer_setup(int n, bool *same_list)
+{
+    if (n < 0 || n >= L.cfg.nodes || n == L.cfg.id || !L.p[n].nodes || !L.p[n].heard || now_ms() - L.p[n].heard >= HEAR_MS) return 0;
+    *same_list = L.p[n].list_hash == L.list_hash;
+    return L.p[n].nodes;
 }
 uint32_t lnk_hear_mask(void)
 {
@@ -251,14 +264,15 @@ static void hellos(void)
     uint64_t t = now_ms();
     if (t < L.next_hello) return;
     L.next_hello = t + HELLO_MS;
-    uint8_t b[HDR + 8];
+    uint8_t b[HDR + 16];
     uint32_t ms = (uint32_t)(t - (L.state == LNK_LINKED ? L.t_session : L.t_open));
     uint8_t hear = (uint8_t)(1u << L.cfg.id);                           /* who this one hears (the others show it: a one-way path) */
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && L.p[n].heard && t - L.p[n].heard < HEAR_MS) hear |= (uint8_t)(1u << n);
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
         header(b, T_HELLO, n);
         b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = hear; put32(b + HDR + 4, ms);
-        raw_send(n, b, HDR + 8);
+        b[HDR + 8] = (uint8_t)L.cfg.nodes; b[HDR + 9] = 0; b[HDR + 10] = 0; b[HDR + 11] = 0; put32(b + HDR + 12, L.list_hash);
+        raw_send(n, b, HDR + 16);
     }
 }
 
@@ -303,6 +317,7 @@ static int take(uint16_t *w, int max)
     switch (b[5]) {
     case T_HELLO:
         if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->hears = b[HDR + 3]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
+        if (len >= HDR + 16) { p->nodes = b[HDR + 8]; p->list_hash = get32(b + HDR + 12); }
         return 0;
     case T_BYE:
         p->heard = 0;

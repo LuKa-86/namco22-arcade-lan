@@ -32,6 +32,7 @@ typedef struct eng_ui_page {
     void (*text)(int row, char *label, size_t ln, char *value, size_t vn);
     void (*change)(int row, int dir);                    /* dir 0 = Enter / click, -1 / +1 = Left / Right */
     void (*notes)(void (*line)(const char *fmt, ...));   /* lines under the rows; NULL = none */
+    float notes_h;                                       /* the notes' height (0 = two lines) */
 } eng_ui_page;
 
 bool eng_ui_init(SDL_Window *win, const char *title);    /* after the GL context; false = no menu (the game runs without) */

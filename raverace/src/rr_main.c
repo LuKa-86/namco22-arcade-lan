@@ -53,6 +53,7 @@ static bool gl_ok;                             /* a GL context and the video ROM
 #include "tex_bake.h"
 #include "link_host.h"
 #include "rr_ui.h"
+#include "rr_ui.h"
 static FILE *perflog;                         /* RR_PERFLOG=<file>: one line per frame -- see the perf block */
 static double perflog_texels;
 static int perf_on;
@@ -247,7 +248,8 @@ static void link_report(char *buf, int n)
     snprintf(buf, (size_t)n, "game: cabinet %u, hears %02X (%u in the ring), link %s, frames since own came back %u",
              rr_read(0x100091A0u, 2) + 1, rr_read(0x10009104u, 2), rr_read(0x10009102u, 2), link_good() ? "GOOD" : "down", rr_read(0x10009108u, 2));
 }
-static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id };
+static void link_before_restart(void) { rr_hw_eeprom_save(); rr_audio_close(); rr_host_close(); }   /* the safety net's restart */
+static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id, rr_ui_set_hint, link_before_restart };
 
 int main(int argc, char **argv)
 {

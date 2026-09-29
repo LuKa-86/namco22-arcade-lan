@@ -26,6 +26,8 @@ typedef struct {
     bool (*good)(void);                      /* the game thinks its link works (NULL = unknown) */
     int  (*game_id)(void);                   /* the game's own cabinet ID (its test menu's, 0-based; NULL = unknown): two linked cabinets
                                               * with the same one cannot work, so it is compared across the set and warned about */
+    void (*hint)(const char *text, int frames);   /* a line on the screen (the safety net's "LINK LOST - RESTARTING"); NULL = none */
+    void (*before_restart)(void);            /* the safety net restarts the program: save the settings, close the window and sound */
 } link_host_game;
 
 extern bool g_link_mute;
@@ -38,6 +40,7 @@ int  link_host_id(void);                                       /* 0-based cabine
 void link_host_gather(const char *title, SDL_Window *win);     /* start-up: wait for the others, the window's title saying who is missing */
 void link_host_slice(void);                                    /* every scheduler slice */
 void link_host_frame(uint32_t frame, bool headless);           /* every video frame: real-time pacing (headless), the log */
+void link_host_relaunch(void);                                 /* start the program again (same command line; the log continues) */
 bool link_host_take_id_reset(void);                            /* true (once): the Network page's cabinet number changed, so the game's
                                                                 * own ID is to be set to it at this start, as on a first run */
 
@@ -50,4 +53,10 @@ void link_page_change(int row, int dir);                       /* dir 0 = Enter,
 bool link_page_editing(void);
 bool link_page_type(SDL_Scancode sc);
 void link_page_notes(void (*line)(const char *fmt, ...));
+/* the link lights (link_lights_nk.h draws them in either menu's Nuklear) */
+#define LINK_LIGHTS_MAX 8
+enum { LINK_LIGHT_SELF, LINK_LIGHT_GOOD, LINK_LIGHT_ONEWAY, LINK_LIGHT_SILENT, LINK_LIGHT_OUT };
+typedef struct { int cabinet, kind; bool lit; } link_light;
+bool link_lights_on(void);
+int  link_lights(link_light *out);                             /* how many (0 = none to show) */
 #endif

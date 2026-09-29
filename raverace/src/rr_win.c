@@ -28,7 +28,7 @@ void rr_win_startup(const char *logname)
     }
     /* both streams into the log. A GUI program started from Explorer has no stderr at all, so it is opened here rather than
      * _dup2'd onto: a stream that started without a handle stays broken (the log only got stdout). Append, so the two interleave. */
-    FILE *t = fopen(logname, "w");
+    FILE *t = getenv("N22_LOG_APPEND") ? NULL : fopen(logname, "w");     /* (a restart by the link's safety net: the log goes on) */
     if (t) fclose(t);
     if (freopen(logname, "a", stdout)) setvbuf(stdout, NULL, _IONBF, 0);
     if (freopen(logname, "a", stderr)) setvbuf(stderr, NULL, _IONBF, 0);

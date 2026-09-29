@@ -646,7 +646,7 @@ bool rr_host_frame(void)
      * native or widescreen size follows the window; it lands next frame) */
     apply_render_size();
     present_picture();
-    if (rr_ui_is_open() || rr_ui_hint_active()) {            /* the menu, over the dimmed game (or just the menu-button hint) */
+    if (rr_ui_is_open() || rr_ui_hint_active() || link_lights_on()) {   /* the menu, over the dimmed game (or just the hint, the link lights) */
         int ow, oh; out_size(&ow, &oh);
         glViewport(0, 0, ow, oh);
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 0, 1, -1, 1);

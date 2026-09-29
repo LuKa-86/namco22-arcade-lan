@@ -57,4 +57,6 @@ int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addre
 bool     lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts);   /* false = cabinet n never heard since this start */
 uint32_t lnk_hear_mask(void);                         /* bit n = cabinet n+1 heard in the last second */
 uint32_t lnk_heard_by_mask(void);                     /* bit n = cabinet n+1 says it hears this one */
+int      lnk_peer_setup(int n, bool *same_list);      /* cabinet n's "Cabinets in the set" (0 = not heard / not told); *same_list: its
+                                                       * address list (and port) are this PC's */
 #endif
