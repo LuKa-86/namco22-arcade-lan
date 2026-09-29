@@ -16,7 +16,7 @@ cd "$W"
 
 run() {   # run CAB FRAMES [extra args...] in the background, pid in PID_<cab>
     local cab=$1 frames=$2; shift 2
-    ./rr.exe "$ROMS" --frames "$frames" --replay "$REP" --link "$cab" --link-cabinets 4 "$@" 2>/dev/null &
+    ./rr.exe "$ROMS" --frames "$frames" --replay "$REP" --link "$cab" --link-cabinets 4 --link-port 26220 "$@" 2>/dev/null &
     eval "PID_$cab=$!"
 }
 summary() {

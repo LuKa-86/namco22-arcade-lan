@@ -33,6 +33,7 @@ typedef int sock_t;
 #define HELLO_MS   25                       /* a hello to every cabinet this often ... */
 #define ALIVE_MS   120                      /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
 #define JOIN_MS    3000                     /* a session this young is one this cabinet was gathered for (it only missed the start) */
+#define HEAR_MS    1000                     /* the diagnostics' "hears": a packet within the last second */
 #define HDR        20                       /* magic 4, proto 1, type 1, src 1, dst 1, seq 4, tag 4, session 4 */
 
 typedef struct {
@@ -41,6 +42,12 @@ typedef struct {
     uint8_t  members;
     uint32_t session, ms;                   /* its session and that session's age, or (gathering) how long it has waited */
     int      game_id;                       /* its game's own cabinet ID, -1 = unknown */
+    struct sockaddr_in from;                /* where its last packet came from (the diagnostics: a PC set up as the wrong cabinet, two
+                                             * PCs as one cabinet, a list with a wrong address) */
+    uint64_t ever;                          /* its first packet (0 = never heard since this start) */
+    uint32_t pkts;
+    uint8_t  hears;                         /* who IT hears, from its hellos (bit n = cabinet n+1): a one-way path shows here */
+    bool     warned_from;
 } peer_t;
 
 static struct {
@@ -136,6 +143,31 @@ const lnk_stats *lnk_get_stats(void) { return &L.st; }
 
 static bool recent(int n, uint64_t t) { return L.p[n].heard && t - L.p[n].heard < ALIVE_MS; }
 
+/* THE DIAGNOSTICS (the log, the Network page): who this one hears, from where, and who hears it. "Hears" is looser than alive: a
+ * cabinet heard within the last second (a slow path still shows as heard; the link itself needs ALIVE_MS) */
+bool lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts)
+{
+    if (n < 0 || n >= L.cfg.nodes || n == L.cfg.id || !L.p[n].ever) return false;
+    const peer_t *p = &L.p[n];
+    if (!inet_ntop(AF_INET, &p->from.sin_addr, addr, 16)) snprintf(addr, 16, "?");
+    *ago_ms = p->heard ? (int)(now_ms() - p->heard) : -1;
+    *pkts = p->pkts;
+    return true;
+}
+uint32_t lnk_hear_mask(void)
+{
+    uint64_t t = now_ms(); uint32_t m = 0;
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && L.p[n].heard && t - L.p[n].heard < HEAR_MS) m |= 1u << n;
+    return m;
+}
+uint32_t lnk_heard_by_mask(void)
+{
+    uint64_t t = now_ms(); uint32_t m = 0;
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && L.p[n].heard && t - L.p[n].heard < HEAR_MS &&
+                                                   ((L.p[n].hears >> L.cfg.id & 1) || t - L.p[n].ever < 1500)) m |= 1u << n;   /* (just appeared: its hellos saying so are on the way) */
+    return m;
+}
+
 /* a member of this session that is on now */
 static bool alive(int n, uint64_t t)
 {
@@ -221,9 +253,11 @@ static void hellos(void)
     L.next_hello = t + HELLO_MS;
     uint8_t b[HDR + 8];
     uint32_t ms = (uint32_t)(t - (L.state == LNK_LINKED ? L.t_session : L.t_open));
+    uint8_t hear = (uint8_t)(1u << L.cfg.id);                           /* who this one hears (the others show it: a one-way path) */
+    for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && L.p[n].heard && t - L.p[n].heard < HEAR_MS) hear |= (uint8_t)(1u << n);
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
         header(b, T_HELLO, n);
-        b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = 0; put32(b + HDR + 4, ms);
+        b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = hear; put32(b + HDR + 4, ms);
         raw_send(n, b, HDR + 8);
     }
 }
@@ -248,6 +282,19 @@ static int take(uint16_t *w, int max)
     int src = b[6];
     peer_t *p = &L.p[src];
     p->heard = now_ms();
+    if (!p->ever) p->ever = p->heard;
+    p->pkts++;
+    if (from.sin_addr.s_addr != p->from.sin_addr.s_addr && p->from.sin_family) p->warned_from = false;   /* a new sender: check it again */
+    p->from = from;
+    if (!p->warned_from && (from.sin_addr.s_addr != L.addr[src].sin_addr.s_addr || from.sin_port != L.addr[src].sin_port)) {
+        char got[16] = "?", want[16] = "?";
+        inet_ntop(AF_INET, &from.sin_addr, got, sizeof got); inet_ntop(AF_INET, &L.addr[src].sin_addr, want, sizeof want);
+        if (strncmp(got, "127.", 4) || strncmp(want, "127.", 4))       /* (all on one PC: the loopback, any address) */
+            fprintf(stderr, "[LINK] NOTE: messages from cabinet %d come from %s port %u, but this PC's list has cabinet %d at %s port %u "
+                    "(two PCs set up as the same cabinet, or a wrong address in a list?)\n", src + 1, got, ntohs(from.sin_port), src + 1,
+                    want, ntohs(L.addr[src].sin_port));
+        p->warned_from = true;
+    }
     uint32_t seq = get32(b + 8);
     /* lost = gaps in the numbering; a late (reordered) packet fills its gap back in */
     if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) L.st.lost_seq += seq - L.last_seq[src] - 1;
@@ -255,7 +302,7 @@ static int take(uint16_t *w, int max)
     if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
     switch (b[5]) {
     case T_HELLO:
-        if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
+        if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->hears = b[HDR + 3]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
         return 0;
     case T_BYE:
         p->heard = 0;

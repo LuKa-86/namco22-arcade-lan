@@ -53,4 +53,8 @@ void     lnk_set_game_id(int id);                     /* the game's own cabinet 
 int      lnk_peer_game_id(int n);                     /* cabinet n's game ID, -1 = not known */
 const lnk_stats *lnk_get_stats(void);
 int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addresses (not 127.x), for the menu: how many */
+/* the diagnostics: who this cabinet hears (within the last second) and from which address; who hears it (their hellos say) */
+bool     lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts);   /* false = cabinet n never heard since this start */
+uint32_t lnk_hear_mask(void);                         /* bit n = cabinet n+1 heard in the last second */
+uint32_t lnk_heard_by_mask(void);                     /* bit n = cabinet n+1 says it hears this one */
 #endif

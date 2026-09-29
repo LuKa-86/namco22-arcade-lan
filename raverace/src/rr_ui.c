@@ -334,7 +334,7 @@ void rr_ui_draw(bool *quit)
     static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
-    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 110 : 44);
+    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 132 : 44);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = drop_w[tab] < ww - 8 ? drop_w[tab] : (float)ww - 8;
     float dx = title_x[tab];

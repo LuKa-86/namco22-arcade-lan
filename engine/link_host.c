@@ -69,23 +69,52 @@ static void place_window(SDL_Window *w)
     SDL_SetWindowPosition(w, b.x + l + c * (sx > 0 ? sx : 0), b.y + top + rw * (sy > 0 ? sy : 0));
 }
 
+/* "hears 1 (192.168.1.163), 3 (192.168.1.164); not 4 | heard by 1; NOT by 3" -- who this one hears, from where, and who hears it */
+static void hearing(char *buf, size_t n, bool addresses)
+{
+    const uint32_t h = lnk_hear_mask(), by = lnk_heard_by_mask();
+    size_t k = 0; char not_h[40] = "", not_by[40] = ""; int kn = 0, kb = 0;
+    k += (size_t)snprintf(buf + k, n - k, "hears");
+    bool any = false;
+    for (int c = 0; c < cfg.nodes; c++) {
+        if (c == cfg.id) continue;
+        char a[16]; int ago; uint32_t pk;
+        if (h >> c & 1) {
+            if (addresses && lnk_peer_info(c, a, &ago, &pk)) k += (size_t)snprintf(buf + k, n - k, "%s %d (%s)", any ? "," : "", c + 1, a);
+            else k += (size_t)snprintf(buf + k, n - k, "%s %d", any ? "," : "", c + 1);
+            any = true;
+            if (!(by >> c & 1)) kb += snprintf(not_by + kb, sizeof not_by - (size_t)kb, "%s%d", kb ? ", " : "", c + 1);
+        } else kn += snprintf(not_h + kn, sizeof not_h - (size_t)kn, "%s%d", kn ? ", " : "", c + 1);
+        if (k >= n) return;
+    }
+    if (!any) k += (size_t)snprintf(buf + k, n - k, " nobody");
+    if (*not_h && k < n) k += (size_t)snprintf(buf + k, n - k, "; not %s", not_h);
+    if (*not_by && k < n) snprintf(buf + k, n - k, " | NOT heard by %s", not_by);
+}
+
 void link_host_gather(const char *title, SDL_Window *w)
 {
     if (!on) return;
     if (w) place_window(w);
-    uint32_t shown = 0xFFFFFFFFu; int shown_s = -1;
+    uint32_t shown = 0xFFFFFFFFu, shown_deaf = 0; int shown_s = -1;
     while (lnk_gather() == LNK_GATHERING) {
         SDL_Event e;
         while (w && SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
         uint32_t here = lnk_present_mask(); int left = (lnk_gather_left_ms() + 999) / 1000;
-        if (here != shown || left != shown_s) {
-            char miss[40] = "", t[256]; int k = 0;
+        const uint32_t deaf = lnk_hear_mask() & ~lnk_heard_by_mask();   /* cabinets this one hears that cannot hear it */
+        if (here != shown || left != shown_s || deaf != shown_deaf) {
+            char miss[40] = "", t[256], d[64] = ""; int k = 0, kd = 0;
             for (int n = 0; n < cfg.nodes; n++) if (!(here >> n & 1)) k += snprintf(miss + k, sizeof miss - (size_t)k, "%s%d", k ? ", " : "", n + 1);
+            for (int n = 0; n < cfg.nodes; n++) if (deaf >> n & 1) kd += snprintf(d + kd, sizeof d - (size_t)kd, "%s%d", kd ? ", " : "", n + 1);
             if (*miss) snprintf(t, sizeof t, "%s - waiting for cabinet%s %s (%d s)", title, strchr(miss, ',') ? "s" : "", miss, left);
             else snprintf(t, sizeof t, "%s - every cabinet is here: starting", title);
+            if (*d) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - cabinet%s %s cannot hear this PC", strchr(d, ',') ? "s" : "", d); }
             if (w) SDL_SetWindowTitle(w, t);
-            if (here != shown) fprintf(stderr, "[LINK] %s\n", t + strlen(title) + 3);
-            shown = here; shown_s = left;
+            if (here != shown || deaf != shown_deaf) {
+                char hb[200]; hearing(hb, sizeof hb, true);
+                fprintf(stderr, "[LINK] %s  [%s]\n", t + strlen(title) + 3, hb);
+            }
+            shown = here; shown_s = left; shown_deaf = deaf;
         }
         SDL_Delay(5);
     }
@@ -162,7 +191,12 @@ void link_host_frame(uint32_t frame, bool headless)
         else if ((up_run = 0), was_up) { down_frames++; if (++down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", frame); }
     }
     if (frame % 30 == 0 && frame >= 300) check_ids();              /* the games take a moment to read their own ID from their settings: 0 until then */
-    if (frame % 300 == 0) report(frame);
+    if (frame % 300 == 0) {
+        report(frame);
+        char hb[240]; hearing(hb, sizeof hb, true);
+        static char last[240];
+        if (strcmp(hb, last) || frame % 3600 == 0) { fprintf(stderr, "[LINK] frame %u  %s\n", frame, hb); snprintf(last, sizeof last, "%s", hb); }
+    }
 }
 
 /* ---- THE SAVED SETTINGS (link.cfg beside the program) and the menu's Network page -----------------------------------------------
@@ -318,7 +352,11 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         line("Same list on every cabinet; used from the next start.");
         if (F.set_id) line("The game's own ID will then be set to %d too.", F.cabinet);
     }
-    if (on) line("Linked: the game runs on behind this menu.");
+    if (on) {
+        char hb[160]; hearing(hb, sizeof hb, false);
+        line("This cabinet %s", hb);
+        line("Linked: the game runs on behind this menu.");
+    }
     if (on) {
         char who[40] = ""; int j = 0;
         for (int m = 0; m < cfg.nodes; m++) if (lnk_members() >> m & 1) j += snprintf(who + j, sizeof who - (size_t)j, "%s%d", j ? "+" : "", m + 1);
