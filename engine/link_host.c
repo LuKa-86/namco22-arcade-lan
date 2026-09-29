@@ -17,6 +17,7 @@ static bool was_up;
 static SDL_Window *win;                                                /* the window, for the title's warnings */
 static char base_title[256];                                           /* the title after the start-up gathering */
 static uint32_t dup_shown;                                             /* the clash last warned about (bit per cabinet) */
+static bool from_cmdline;                                              /* --link on the command line (a one-PC test launcher): link.cfg is not used */
 
 bool link_host_on(void) { return on; }
 int  link_host_id(void) { return cfg.id; }
@@ -52,9 +53,26 @@ bool link_host_open(const link_host_game *g)
     return true;
 }
 
+/* the copies of a set on one PC (no addresses given): their windows in a grid by cabinet number, so none has to be dragged apart --
+ * while a window is dragged Windows holds its game still, and a cabinet that stops for more than a tenth of a second drops out */
+static void place_window(SDL_Window *w)
+{
+    SDL_Rect b; int ww, wh, top = 0, l = 0, bo = 0, r = 0;
+    if (cfg.peers || SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(w), &b) != 0) return;
+    SDL_GetWindowSize(w, &ww, &wh);
+    SDL_GetWindowBordersSize(w, &top, &l, &bo, &r);
+    const int cols = cfg.nodes <= 1 ? 1 : 2, rows = (cfg.nodes + cols - 1) / cols;
+    const int fw = ww + l + r, fh = wh + top + bo;                        /* the window with its frame */
+    const int sx = cols > 1 ? (b.w - fw < fw ? (b.w - fw) / (cols - 1) : fw) : 0;       /* overlap them when the screen is too small */
+    const int sy = rows > 1 ? (b.h - fh < fh * (rows - 1) ? (b.h - fh) / (rows - 1) : fh) : 0;
+    const int c = cfg.id % cols, rw = cfg.id / cols;
+    SDL_SetWindowPosition(w, b.x + l + c * (sx > 0 ? sx : 0), b.y + top + rw * (sy > 0 ? sy : 0));
+}
+
 void link_host_gather(const char *title, SDL_Window *w)
 {
     if (!on) return;
+    if (w) place_window(w);
     uint32_t shown = 0xFFFFFFFFu; int shown_s = -1;
     while (lnk_gather() == LNK_GATHERING) {
         SDL_Event e;
@@ -143,7 +161,7 @@ void link_host_frame(uint32_t frame, bool headless)
         if (G->good()) { if (++up_run >= 120) was_up = true; down_now = 0; }
         else if ((up_run = 0), was_up) { down_frames++; if (++down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", frame); }
     }
-    if (frame % 30 == 0) check_ids();
+    if (frame % 30 == 0 && frame >= 300) check_ids();              /* the games take a moment to read their own ID from their settings: 0 until then */
     if (frame % 300 == 0) report(frame);
 }
 
@@ -152,7 +170,7 @@ void link_host_frame(uint32_t frame, bool headless)
  * Used when the command line has no --link (a cabinet started by double-clicking the game); --link and friends override it. A change
  * takes effect the next time the game starts: the boards only look for each other when they are switched on. */
 #define CFG_FILE "link.cfg"
-static struct { bool on; int cabinet, cabinets, wait, port; char addr[LNK_MAX_NODES][16]; } F = { false, 1, 2, 60, 22220, { "" } };
+static struct { bool on, set_id; int cabinet, cabinets, wait, port; char addr[LNK_MAX_NODES][16]; } F = { false, false, 1, 2, 60, 22220, { "" } };
 static char peers_buf[LNK_MAX_NODES * 17];
 static int  edit_row = -1;                                             /* the address row being typed, -1 = none */
 static char edit_buf[16];
@@ -170,6 +188,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "cabinets")) F.cabinets = atoi(v);
         else if (!strcmp(k, "wait")) F.wait = atoi(v);
         else if (!strcmp(k, "port")) F.port = atoi(v);
+        else if (!strcmp(k, "set_game_id")) F.set_id = atoi(v) != 0;
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
     fclose(f);
@@ -187,6 +206,7 @@ static void cfg_save(void)
     fprintf(f, "# Link play settings (the game's Esc menu > Network edits this file). Used when the game is started without --link.\n");
     fprintf(f, "link=%s\ncabinet=%d\ncabinets=%d\nwait=%d\nport=%d\n", F.on ? "on" : "off", F.cabinet, F.cabinets, F.wait, F.port);
     for (int n = 0; n < LNK_MAX_NODES; n++) if (F.addr[n][0]) fprintf(f, "address%d=%s\n", n + 1, F.addr[n]);
+    if (F.set_id) fprintf(f, "# the game's own ID (test menu) is set to this cabinet's number when the game next starts\nset_game_id=1\n");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
@@ -198,6 +218,7 @@ int link_host_prescan(int argc, char **argv)
 {
     cfg_load();
     for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--link", 6)) {           /* the command line decides */
+        from_cmdline = true;
         for (int j = 1; j + 1 < argc; j++) if (!strcmp(argv[j], "--link")) return atoi(argv[j + 1]);
         return 0;
     }
@@ -209,11 +230,37 @@ int link_host_prescan(int argc, char **argv)
     return F.cabinet;
 }
 
-/* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait */
-int  link_page_rows(void) { return 3 + F.cabinets + 1; }
-bool link_page_has_value(int row) { return row < 3 || row == 3 + F.cabinets; }
+/* the Network page changed "This cabinet": at the next start the game's own ID follows it (once; the test menu can change it after) */
+bool link_host_take_id_reset(void)
+{
+    if (from_cmdline || !on || !F.set_id) return false;
+    F.set_id = false;
+    cfg_save();
+    return true;
+}
+
+/* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
+ * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
+static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
+int  link_page_rows(void) { return 3 + page_nodes() + 1; }
+bool link_page_has_value(int row) { return row < 3 || row == 3 + page_nodes(); }
+static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
+{
+    if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "On"); }
+    else if (row == 1) { snprintf(label, ln, "This cabinet"); snprintf(value, vn, "%d", cfg.id + 1); }
+    else if (row == 2) { snprintf(label, ln, "Cabinets in the set"); snprintf(value, vn, "%d", cfg.nodes); }
+    else if (row < 3 + cfg.nodes) {
+        const int n = row - 3;
+        if (n == cfg.id) snprintf(label, ln, "Cabinet %d (this PC)", n + 1); else snprintf(label, ln, "Cabinet %d address", n + 1);
+        const char *p = cfg.peers;
+        for (int k = 0; p && k < n; k++) { p = strchr(p, ','); if (p) p++; }
+        if (p) { size_t e = strcspn(p, ","); snprintf(value, vn, "%.*s", (int)(e < 15 ? e : 15), p); }
+        else snprintf(value, vn, "127.0.0.1 (this PC)");
+    } else { snprintf(label, ln, "Wait at start-up"); snprintf(value, vn, "%d s", cfg.gather_ms / 1000); }
+}
 void link_page_text(int row, char *label, size_t ln, char *value, size_t vn)
 {
+    if (from_cmdline) { live_text(row, label, ln, value, vn); return; }
     if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "%s", F.on ? "On" : "Off"); }
     else if (row == 1) { snprintf(label, ln, "This cabinet"); snprintf(value, vn, "%d", F.cabinet); }
     else if (row == 2) { snprintf(label, ln, "Cabinets in the set"); snprintf(value, vn, "%d", F.cabinets); }
@@ -227,9 +274,10 @@ void link_page_text(int row, char *label, size_t ln, char *value, size_t vn)
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 void link_page_change(int row, int dir)
 {
+    if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
     if (row == 0) F.on = !F.on;
-    else if (row == 1) F.cabinet = clampi(F.cabinet + (dir ? dir : 1), 1, F.cabinets);
-    else if (row == 2) { F.cabinets = clampi(F.cabinets + (dir ? dir : 1), 2, LNK_MAX_NODES); F.cabinet = clampi(F.cabinet, 1, F.cabinets); }
+    else if (row == 1) { F.cabinet = clampi(F.cabinet + (dir ? dir : 1), 1, F.cabinets); F.set_id = true; }
+    else if (row == 2) { const int c = F.cabinet; F.cabinets = clampi(F.cabinets + (dir ? dir : 1), 2, LNK_MAX_NODES); F.cabinet = clampi(F.cabinet, 1, F.cabinets); F.set_id |= F.cabinet != c; }
     else if (row < 3 + F.cabinets) {
         if (dir) return;
         edit_row = row; snprintf(edit_buf, sizeof edit_buf, "%s", F.addr[row - 3]);                /* Enter: type the address */
@@ -261,8 +309,16 @@ void link_page_notes(void (*line)(const char *fmt, ...))
     char s[80] = ""; int k = 0;
     for (int i = 0; i < n; i++) k += snprintf(s + k, sizeof s - (size_t)k, "%s%s", i ? ", " : "", a[i]);
     line("This PC's network address: %s", n ? s : "(none found)");
-    if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
-    line("Same list on every cabinet; used from the next start.");
+    if (from_cmdline) {
+        line("Set by the test launcher (cabinet %d of %d),", cfg.id + 1, cfg.nodes);
+        line("so not changed here. On a cabinet PC use");
+        line("the 'play as a cabinet' launcher, then set it here.");
+    } else {
+        if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
+        line("Same list on every cabinet; used from the next start.");
+        if (F.set_id) line("The game's own ID will then be set to %d too.", F.cabinet);
+    }
+    if (on) line("Linked: the game runs on behind this menu.");
     if (on) {
         char who[40] = ""; int j = 0;
         for (int m = 0; m < cfg.nodes; m++) if (lnk_members() >> m & 1) j += snprintf(who + j, sizeof who - (size_t)j, "%s%d", j ? "+" : "", m + 1);

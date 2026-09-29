@@ -19,6 +19,7 @@
 #include "ss22_gl.h"
 #include "audio_out.h"
 #include "eng_display.h"
+#include "link_host.h"
 #include "eng_ui.h"
 #include "eng_pad.h"
 #include "eng_pace.h"
@@ -185,7 +186,10 @@ static bool pump(void)
         if (e.type == SDL_KEYDOWN && !e.key.repeat) {
             const SDL_Scancode sc = e.key.keysym.scancode;
             if (sc == SDL_SCANCODE_ESCAPE) { eng_ui_set_open(true); game->input_neutral(); }
-            if (sc == SDL_SCANCODE_P) { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }
+            if (sc == SDL_SCANCODE_P) {
+                if (link_host_on()) fprintf(stderr, "[HOST] no pause while linked: the other cabinets would drop this one\n");
+                else { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }
+            }
             if (sc == SDL_SCANCODE_F12) shot_pending = true;
             if (sc == SDL_SCANCODE_F11 || (sc == SDL_SCANCODE_RETURN && (e.key.keysym.mod & KMOD_ALT))) eng_disp_toggle_fullscreen();
         }
@@ -234,10 +238,12 @@ bool ss22_host_frame(void)
     static eng_pace pl;
     if (!pump()) return false;
     if (!paused && !eng_ui_is_open()) game->input_update();
+    else if (link_host_on()) game->input_neutral();  /* linked, the menu open: the game plays on, hands off */
     present_with(&pl);
     pace();
     eng_pace_after(&pl, game->tag);
-    while (paused || eng_ui_is_open()) {             /* the game stops (P, or the menu); the window keeps answering */
+    while (!link_host_on() && (paused || eng_ui_is_open())) {   /* the game stops (P, or the menu); the window keeps answering. Not a
+                                                     * linked one: a stopped cabinet goes silent and the others drop it until they restart */
         eng_pace_reset(&pl);
         if (!pump()) return false;
         if (paused || eng_ui_is_open()) {

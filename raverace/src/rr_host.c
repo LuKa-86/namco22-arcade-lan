@@ -35,6 +35,7 @@
 #include "rr_gl.h"
 #include "render_target.h"
 #include "eng_gl.h"
+#include "link_host.h"
 extern int g_rr_gl;     /* rr_main.c: 1 = the engine's GL renderer, 0 = the software oracle */
 
 /* ---- controllers ----------------------------------------------------------
@@ -592,7 +593,10 @@ bool rr_host_frame(void)
         if (pressed(&e, RR_TEST)) rr_host_set_test(!g_test_sw);
         if (pressed(&e, RR_SCREENSHOT)) screenshot();
         if (pressed(&e, RR_RECORD)) toggle_record();
-        if (pressed(&e, RR_PAUSE)) { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }
+        if (pressed(&e, RR_PAUSE)) {
+            if (link_host_on()) fprintf(stderr, "[HOST] no pause while linked: the other cabinets would drop this one\n");
+            else { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }
+        }
     }
     rr_ui_input_end();
     /* RR_MENU_TEST=<frame>: drive the menu from that frame the way the
@@ -734,7 +738,7 @@ bool rr_host_frame(void)
     return true;
 }
 
-bool rr_host_paused(void) { return paused || rr_ui_is_open(); }
+bool rr_host_paused(void) { return (paused || rr_ui_is_open()) && !link_host_on(); }   /* linked: never (a stopped cabinet is dropped) */
 
 void rr_host_close(void)
 {

@@ -38,6 +38,8 @@ int  link_host_id(void);                                       /* 0-based cabine
 void link_host_gather(const char *title, SDL_Window *win);     /* start-up: wait for the others, the window's title saying who is missing */
 void link_host_slice(void);                                    /* every scheduler slice */
 void link_host_frame(uint32_t frame, bool headless);           /* every video frame: real-time pacing (headless), the log */
+bool link_host_take_id_reset(void);                            /* true (once): the Network page's cabinet number changed, so the game's
+                                                                * own ID is to be set to it at this start, as on a first run */
 
 /* THE NETWORK PAGE of the Esc menu (both menus draw it from these): its rows are saved in link.cfg beside the program, which a game
  * started without --link uses. An address row is typed: Enter starts, then link_page_type() takes each key until it returns false. */

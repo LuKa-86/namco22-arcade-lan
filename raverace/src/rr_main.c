@@ -193,7 +193,7 @@ void rr_tick(void)
     for (int i = 0; i < n_steer; i++) if (frame >= (uint32_t)test_steer[i].at) g_hw.steer = (uint16_t)test_steer[i].value;
     if (windowed) {
         do {
-            if (!rr_host_frame()) { perf_report(); rr_audio_close(); rr_host_close(); fprintf(stderr, "[RR] window closed at frame %u\n", frame); exit(0); }
+            if (!rr_host_frame()) { rr_hw_eeprom_save(); perf_report(); rr_audio_close(); rr_host_close(); fprintf(stderr, "[RR] window closed at frame %u\n", frame); exit(0); }
         } while (rr_host_paused());
     }
     rr_input_frame(frame);                         /* replay overrides, recorder logs */
@@ -362,10 +362,10 @@ int main(int argc, char **argv)
     const bool nv_loaded = windowed ? rr_hw_eeprom_persist(nvname) : false;
     if (cab > 0) {
         if (!link_host_open(&link_game)) {
-            if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", "The link could not start: see the log file beside the program.", NULL);
+            if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", "The link could not start.\n\nUsually another copy of the game is still running as the same cabinet (it may be hidden, e.g. the automatic check): close it, or restart the PC, and try again.\n\nDetails are in the log file beside the program.", NULL);
             return 2;
         }
-        rr_hw_link_on(link_host_id(), !nv_loaded);
+        rr_hw_link_on(link_host_id(), link_host_take_id_reset() || !nv_loaded);   /* the ID: first run, or a new number on the Network page */
     }
     if (freeplay >= 0) rr_hw_set_freeplay(freeplay);
     else if (windowed && g_cfg_freeplay >= 0) {        /* the saved menu choice, windowed runs only */

@@ -26,10 +26,12 @@ void rr_win_startup(const char *logname)
         wchar_t *sl = wcsrchr(p, L'\\');
         if (sl) { *sl = 0; _wchdir(p); }
     }
-    if (freopen(logname, "w", stdout)) {
-        setvbuf(stdout, NULL, _IONBF, 0);
-        _dup2(_fileno(stdout), _fileno(stderr));
-    }
+    /* both streams into the log. A GUI program started from Explorer has no stderr at all, so it is opened here rather than
+     * _dup2'd onto: a stream that started without a handle stays broken (the log only got stdout). Append, so the two interleave. */
+    FILE *t = fopen(logname, "w");
+    if (t) fclose(t);
+    if (freopen(logname, "a", stdout)) setvbuf(stdout, NULL, _IONBF, 0);
+    if (freopen(logname, "a", stderr)) setvbuf(stderr, NULL, _IONBF, 0);
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 }
 #endif
