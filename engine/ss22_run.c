@@ -287,7 +287,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     if (cab > 0) {
         const char *dot = strrchr(g->logname, '.');
         snprintf(logname, sizeof logname, "%.*s_cab%d%s", dot ? (int)(dot - g->logname) : (int)strlen(g->logname), g->logname, cab, dot ? dot : "");
-        snprintf(title, sizeof title, "%s - cabinet %d", g->name, cab);
+        snprintf(title, sizeof title, "%s - Cabinet %d", g->name, cab);
     } else { snprintf(logname, sizeof logname, "%s", g->logname); snprintf(title, sizeof title, "%s", g->name); }
     eng_win_startup(logname);                           /* Windows: the program's own folder, a log file, real pixel sizes */
     snprintf(cfgfile, sizeof cfgfile, "%s_controls.cfg", g->lname);
@@ -379,7 +379,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         if (!video_on) { fprintf(stderr, "[%s] no picture: video could not start\n", g->tag); if (win_scale) return 2; }
     }
     if (g_link_mute) eng_audio_set_volume(0);
-    link_host_gather(title, ss22_host_active() ? SDL_GL_GetCurrentWindow() : NULL);                    /* the cabinets start together, as boards switched on together */
+    link_host_gather(title, ss22_host_active() ? SDL_GL_GetCurrentWindow() : NULL, ss22_host_active() ? eng_ui_set_hint : NULL);                    /* the cabinets start together, as boards switched on together */
     memset(R, 0, RR_REGSPACE);
     RS4(RR_REG_SP, rr_read(0, 4));                      /* reset SP from vector 0 */
     rr_set_sr(0x2700);                                  /* supervisor, IPL 7 */

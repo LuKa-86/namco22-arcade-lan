@@ -79,12 +79,12 @@ static void place_window(SDL_Window *w)
     SDL_SetWindowPosition(w, b.x + l + c * (sx > 0 ? sx : 0), b.y + top + rw * (sy > 0 ? sy : 0));
 }
 
-/* "hears 1 (192.168.1.163), 3 (192.168.1.164); not 4 | heard by 1; NOT by 3" -- who this one hears, from where, and who hears it */
+/* "Hears 1 (192.168.1.163), 3 (192.168.1.164) | Can't hear 4 | Not heard by 3" -- who this one hears, from where, who hears it */
 static void hearing(char *buf, size_t n, bool addresses)
 {
     const uint32_t h = lnk_hear_mask(), by = lnk_heard_by_mask();
     size_t k = 0; char not_h[40] = "", not_by[40] = ""; int kn = 0, kb = 0;
-    k += (size_t)snprintf(buf + k, n - k, "hears");
+    k += (size_t)snprintf(buf + k, n - k, "Hears");
     bool any = false;
     for (int c = 0; c < cfg.nodes; c++) {
         if (c == cfg.id) continue;
@@ -98,12 +98,24 @@ static void hearing(char *buf, size_t n, bool addresses)
         if (k >= n) return;
     }
     if (!any) k += (size_t)snprintf(buf + k, n - k, " nobody");
-    if (*not_h && k < n) k += (size_t)snprintf(buf + k, n - k, "; not %s", not_h);
-    if (*not_by && k < n) snprintf(buf + k, n - k, " | NOT heard by %s", not_by);
+    if (*not_h && k < n) k += (size_t)snprintf(buf + k, n - k, " | Can't hear %s", not_h);
+    if (*not_by && k < n) snprintf(buf + k, n - k, " | Not heard by %s", not_by);
 }
 
-void link_host_gather(const char *title, SDL_Window *w)
+static char auto_mine[16];                                             /* automatic numbering: this PC's address, when it is not in the list */
+static bool auto_fail;
+
+void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char *text, int frames))
 {
+    if (auto_fail) {                                                   /* This cabinet = Auto, and this PC is not in the list: not linked */
+        char t[256];
+        snprintf(t, sizeof t, "%s - NOT LINKED: this PC (%s) is not in the address list", title, *auto_mine ? auto_mine : "no address");
+        fprintf(stderr, "[LINK] NOT linked: \"This cabinet\" is Auto, but this PC's address (%s) is not in the Network page's address list\n",
+                *auto_mine ? auto_mine : "none found");
+        if (w) SDL_SetWindowTitle(w, t);
+        if (hint) hint("NOT LINKED: THIS PC IS NOT IN THE ADDRESS LIST", 900);
+        return;
+    }
     if (!on) return;
     if (w) place_window(w);
     uint32_t shown = 0xFFFFFFFFu, shown_deaf = 0; int shown_s = -1;
@@ -119,9 +131,9 @@ void link_host_gather(const char *title, SDL_Window *w)
             char miss[40] = "", t[256], d[64] = ""; int k = 0, kd = 0;
             for (int n = 0; n < cfg.nodes; n++) if (!(here >> n & 1)) k += snprintf(miss + k, sizeof miss - (size_t)k, "%s%d", k ? ", " : "", n + 1);
             for (int n = 0; n < cfg.nodes; n++) if (deaf >> n & 1) kd += snprintf(d + kd, sizeof d - (size_t)kd, "%s%d", kd ? ", " : "", n + 1);
-            if (*miss) snprintf(t, sizeof t, "%s - waiting for cabinet%s %s (%d s)", title, strchr(miss, ',') ? "s" : "", miss, left);
-            else snprintf(t, sizeof t, "%s - every cabinet is here: starting", title);
-            if (*d) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - cabinet%s %s cannot hear this PC", strchr(d, ',') ? "s" : "", d); }
+            if (*miss) snprintf(t, sizeof t, "%s - Waiting for Cabinet%s %s (%d s)", title, strchr(miss, ',') ? "s" : "", miss, left);
+            else snprintf(t, sizeof t, "%s - All cabinets found: starting", title);
+            if (*d) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - Cabinet%s %s can't hear this PC", strchr(d, ',') ? "s" : "", d); }
             if (*sm) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - SET-UP DIFFERS: %s", sm); }
             if (w) SDL_SetWindowTitle(w, t);
             if (here != shown || deaf != shown_deaf) {
@@ -133,12 +145,16 @@ void link_host_gather(const char *title, SDL_Window *w)
         SDL_Delay(5);
     }
     char t[256];
-    if (lnk_state() == LNK_ALONE) snprintf(t, sizeof t, "%s - NOT LINKED (it started after the others): restart every cabinet", title);
-    else if (lnk_members() == 1u << cfg.id) snprintf(t, sizeof t, "%s - no other cabinets found: playing on its own", title);
-    else {
+    if (lnk_state() == LNK_ALONE) {
+        snprintf(t, sizeof t, "%s - NOT LINKED (started late): restart all cabinets to link", title);
+        if (hint) hint("NOT LINKED: STARTED AFTER THE OTHERS", 600);          /* (full screen: the title bar is not seen) */
+    } else if (lnk_members() == 1u << cfg.id) {
+        snprintf(t, sizeof t, "%s - No other cabinets found: playing solo", title);
+        if (hint) hint("NO OTHER CABINETS FOUND: PLAYING SOLO", 600);
+    } else {
         char who[40] = ""; int k = 0;
         for (int n = 0; n < cfg.nodes; n++) if (lnk_members() >> n & 1) k += snprintf(who + k, sizeof who - (size_t)k, "%s%d", k ? "+" : "", n + 1);
-        snprintf(t, sizeof t, "%s - linked: cabinets %s", title, who);
+        snprintf(t, sizeof t, "%s - Linked: %s", title, who);
     }
     win = w; snprintf(base_title, sizeof base_title, "%s", t);
     set_title();
@@ -158,7 +174,7 @@ static void check_ids(void)
     if (clash) {
         char who[40] = ""; int k = 0;
         for (int n = 0; n < LNK_MAX_NODES; n++) if (clash >> n & 1) k += snprintf(who + k, sizeof who - (size_t)k, "%s%d", k ? ", " : "", n + 1);
-        snprintf(dup_msg, sizeof dup_msg, "cabinets %s have the same game ID: give each its own in the test menu", who);
+        snprintf(dup_msg, sizeof dup_msg, "Cabinets %s have the same game ID (change it in the test menu)", who);
         fprintf(stderr, "[LINK] WARNING: cabinets %s have the same game ID (test menu): the game cannot tell them apart\n", who);
     } else {
         dup_msg[0] = 0;
@@ -175,8 +191,8 @@ static void setup_msg(char *m, size_t n)
     for (int c = 0; c < cfg.nodes; c++) {
         bool same = true; const int nodes = lnk_peer_setup(c, &same);
         if (!nodes) continue;
-        if (nodes != cfg.nodes) { snprintf(m, n, "cabinet %d is set up for %d cabinets, this PC for %d", c + 1, nodes, cfg.nodes); return; }
-        if (!same) { snprintf(m, n, "cabinet %d's address list is not the same as this PC's", c + 1); return; }
+        if (nodes != cfg.nodes) { snprintf(m, n, "Cabinet %d is set for %d cabinets, this PC for %d", c + 1, nodes, cfg.nodes); return; }
+        if (!same) { snprintf(m, n, "Cabinet %d has a different address list", c + 1); return; }
     }
 }
 static void check_setup(void)
@@ -308,7 +324,12 @@ void link_host_frame(uint32_t frame, bool headless)
  * Used when the command line has no --link (a cabinet started by double-clicking the game); --link and friends override it. A change
  * takes effect the next time the game starts: the boards only look for each other when they are switched on. */
 #define CFG_FILE "link.cfg"
-static struct { bool on, set_id, lights, carry_on; int cabinet, cabinets, wait, port; char addr[LNK_MAX_NODES][16]; } F = { false, false, false, false, 1, 2, 60, 22220, { "" } };
+/* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
+ * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
+static struct { bool on, set_id, carry_on, cab_auto; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, true, 1, 2, 60, 22220, 0, 0, { "" } };
+static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
+static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
 static int  edit_row = -1;                                             /* the address row being typed, -1 = none */
 static char edit_buf[16];
@@ -322,12 +343,13 @@ static void cfg_load(void)
         char k[32], v[64]; int n;
         if (sscanf(line, " %31[^= ] = %63s", k, v) != 2) continue;
         if (!strcmp(k, "link")) F.on = !strcmp(v, "on");
-        else if (!strcmp(k, "cabinet")) F.cabinet = atoi(v);
+        else if (!strcmp(k, "cabinet")) { F.cab_auto = !strcmp(v, "auto"); if (!F.cab_auto) F.cabinet = atoi(v); }
+        else if (!strcmp(k, "last_auto")) F.last_auto = atoi(v);
         else if (!strcmp(k, "cabinets")) F.cabinets = atoi(v);
         else if (!strcmp(k, "wait")) F.wait = atoi(v);
         else if (!strcmp(k, "port")) F.port = atoi(v);
         else if (!strcmp(k, "set_game_id")) F.set_id = atoi(v) != 0;
-        else if (!strcmp(k, "lights")) F.lights = !strcmp(v, "on");
+        else if (!strcmp(k, "lights")) { F.lights = !strcmp(v, "on") ? 1 : 0; for (int i = 1; i < 7; i++) if (!strcmp(v, light_key[i])) F.lights = i; }
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
@@ -344,15 +366,35 @@ static void cfg_save(void)
     FILE *f = fopen(CFG_FILE ".tmp", "w");
     if (!f) return;
     fprintf(f, "# Link play settings (the game's Esc menu > Network edits this file). Used when the game is started without --link.\n");
-    fprintf(f, "link=%s\ncabinet=%d\ncabinets=%d\nwait=%d\nport=%d\n", F.on ? "on" : "off", F.cabinet, F.cabinets, F.wait, F.port);
+    if (F.cab_auto) fprintf(f, "link=%s\ncabinet=auto\n", F.on ? "on" : "off");
+    else fprintf(f, "link=%s\ncabinet=%d\n", F.on ? "on" : "off", F.cabinet);
+    fprintf(f, "cabinets=%d\nwait=%d\nport=%d\n", F.cabinets, F.wait, F.port);
+    if (F.last_auto) fprintf(f, "last_auto=%d\n", F.last_auto);
     for (int n = 0; n < LNK_MAX_NODES; n++) if (F.addr[n][0]) fprintf(f, "address%d=%s\n", n + 1, F.addr[n]);
     if (F.set_id) fprintf(f, "# the game's own ID (test menu) is set to this cabinet's number when the game next starts\nset_game_id=1\n");
-    fprintf(f, "lights=%s\nif_lost=%s\n", F.lights ? "on" : "off", F.carry_on ? "carry_on" : "restart");
+    fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
 #endif
     rename(CFG_FILE ".tmp", CFG_FILE);
+}
+
+/* automatic numbering: this PC's cabinet = the position of one of its own addresses in the list (0 = none). At start-up it waits up to
+ * 15 s for one to appear: a PC switched on with the cabinet may start the game before its network is up. */
+static int own_cabinet(bool wait)
+{
+    static uint32_t t_last; static int last;                           /* (the menu asks every frame: once a second is enough) */
+    if (!wait && t_last && SDL_GetTicks() - t_last < 1000) return last;
+    if (!wait) t_last = SDL_GetTicks();
+    last = 0;
+    for (int tries = 0; tries < (wait ? 30 : 1); tries++) {
+        char a[8][16]; const int n = lnk_local_addresses(a, 8);
+        for (int c = 0; c < F.cabinets; c++) for (int i = 0; i < n; i++) if (F.addr[c][0] && !strcmp(F.addr[c], a[i])) return last = c + 1;
+        snprintf(auto_mine, sizeof auto_mine, "%s", n ? a[0] : "");
+        if (wait) SDL_Delay(500);
+    }
+    return 0;
 }
 
 int link_host_prescan(int argc, char **argv)
@@ -366,11 +408,18 @@ int link_host_prescan(int argc, char **argv)
         return 0;
     }
     if (!F.on) return 0;
-    cfg.id = F.cabinet - 1; cfg.nodes = F.cabinets; cfg.gather_ms = F.wait * 1000; cfg.base_port = F.port;
+    int cab = F.cabinet;
+    if (F.cab_auto) {                                                  /* where this PC's own address is in the list */
+        cab = own_cabinet(true);
+        if (cab <= 0) { auto_fail = true; return 0; }
+        if (F.last_auto && cab != F.last_auto) F.set_id = true;         /* a new number: the game's own ID follows it */
+        if (cab != F.last_auto) { F.last_auto = cab; cfg_save(); }
+    }
+    cfg.id = cab - 1; cfg.nodes = F.cabinets; cfg.gather_ms = F.wait * 1000; cfg.base_port = F.port;
     int k = 0;
     for (int n = 0; n < F.cabinets; n++) k += snprintf(peers_buf + k, sizeof peers_buf - (size_t)k, "%s%s", n ? "," : "", F.addr[n]);
     cfg.peers = peers_buf;
-    return F.cabinet;
+    return cab;
 }
 
 /* the Network page changed "This cabinet": at the next start the game's own ID follows it (once; the test menu can change it after) */
@@ -390,47 +439,58 @@ bool link_page_has_value(int row) { return row < 3 || row >= 3 + page_nodes(); }
 static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
 {
     const int r = row - (3 + page_nodes() + 1);
-    if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", F.lights ? "On (bottom left)" : "Off"); return true; }
-    if (r == 1) { snprintf(label, ln, "If the link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart (5 s)"); return true; }
+    if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); return true; }
+    if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
     return false;
 }
 static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
 {
     if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "On"); }
     else if (row == 1) { snprintf(label, ln, "This cabinet"); snprintf(value, vn, "%d", cfg.id + 1); }
-    else if (row == 2) { snprintf(label, ln, "Cabinets in the set"); snprintf(value, vn, "%d", cfg.nodes); }
+    else if (row == 2) { snprintf(label, ln, "Cabinets in set"); snprintf(value, vn, "%d", cfg.nodes); }
     else if (row < 3 + cfg.nodes) {
         const int n = row - 3;
-        if (n == cfg.id) snprintf(label, ln, "Cabinet %d (this PC)", n + 1); else snprintf(label, ln, "Cabinet %d address", n + 1);
+        snprintf(label, ln, n == cfg.id ? "Cabinet %d (this PC)" : "Cabinet %d", n + 1);
         const char *p = cfg.peers;
         for (int k = 0; p && k < n; k++) { p = strchr(p, ','); if (p) p++; }
         if (p) { size_t e = strcspn(p, ","); snprintf(value, vn, "%.*s", (int)(e < 15 ? e : 15), p); }
         else snprintf(value, vn, "127.0.0.1 (this PC)");
-    } else { snprintf(label, ln, "Wait at start-up"); snprintf(value, vn, "%d s", cfg.gather_ms / 1000); }
+    } else { snprintf(label, ln, "Start-up wait"); snprintf(value, vn, "%d s", cfg.gather_ms / 1000); }
 }
 void link_page_text(int row, char *label, size_t ln, char *value, size_t vn)
 {
     if (extra_text(row, label, ln, value, vn)) return;
     if (from_cmdline) { live_text(row, label, ln, value, vn); return; }
     if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "%s", F.on ? "On" : "Off"); }
-    else if (row == 1) { snprintf(label, ln, "This cabinet"); snprintf(value, vn, "%d", F.cabinet); }
-    else if (row == 2) { snprintf(label, ln, "Cabinets in the set"); snprintf(value, vn, "%d", F.cabinets); }
+    else if (row == 1) {
+        snprintf(label, ln, "This cabinet");
+        const int c = F.cab_auto ? own_cabinet(false) : F.cabinet;
+        if (!F.cab_auto) snprintf(value, vn, "%d", F.cabinet);
+        else if (c > 0) snprintf(value, vn, "Auto (%d)", c);
+        else snprintf(value, vn, "Auto (not in list)");
+    }
+    else if (row == 2) { snprintf(label, ln, "Cabinets in set"); snprintf(value, vn, "%d", F.cabinets); }
     else if (row < 3 + F.cabinets) {
-        const int n = row - 3;
-        if (n + 1 == F.cabinet) snprintf(label, ln, "Cabinet %d (this PC)", n + 1); else snprintf(label, ln, "Cabinet %d address", n + 1);
+        const int n = row - 3, me = F.cab_auto ? own_cabinet(false) : F.cabinet;
+        snprintf(label, ln, n + 1 == me ? "Cabinet %d (this PC)" : "Cabinet %d", n + 1);
         if (edit_row == row) snprintf(value, vn, "%s_", edit_buf);
         else snprintf(value, vn, "%s", F.addr[n][0] ? F.addr[n] : "(Enter to type)");
-    } else { snprintf(label, ln, "Wait at start-up"); snprintf(value, vn, "%d s", F.wait); }
+    } else { snprintf(label, ln, "Start-up wait"); snprintf(value, vn, "%d s", F.wait); }
 }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 void link_page_change(int row, int dir)
 {
     const int r = row - (3 + page_nodes() + 1);
-    if (r == 0) { F.lights = !F.lights; cfg_save(); return; }
+    if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
     if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
     if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
     if (row == 0) F.on = !F.on;
-    else if (row == 1) { F.cabinet = clampi(F.cabinet + (dir ? dir : 1), 1, F.cabinets); F.set_id = true; }
+    else if (row == 1) {                                               /* Auto, 1 .. N, round */
+        int i = F.cab_auto ? 0 : F.cabinet;
+        i = (i + (dir < 0 ? F.cabinets : 1)) % (F.cabinets + 1);
+        F.cab_auto = i == 0; if (i) F.cabinet = i;
+        F.set_id = true;
+    }
     else if (row == 2) { const int c = F.cabinet; F.cabinets = clampi(F.cabinets + (dir ? dir : 1), 2, LNK_MAX_NODES); F.cabinet = clampi(F.cabinet, 1, F.cabinets); F.set_id |= F.cabinet != c; }
     else if (row < 3 + F.cabinets) {
         if (dir) return;
@@ -462,35 +522,36 @@ void link_page_notes(void (*line)(const char *fmt, ...))
     char a[4][16]; int n = lnk_local_addresses(a, 4);
     char s[80] = ""; int k = 0;
     for (int i = 0; i < n; i++) k += snprintf(s + k, sizeof s - (size_t)k, "%s%s", i ? ", " : "", a[i]);
-    line("This PC's network address: %s", n ? s : "(none found)");
+    line("This PC: %s", n ? s : "no network address found");
     if (from_cmdline) {
-        line("Set by the test launcher (cabinet %d of %d),", cfg.id + 1, cfg.nodes);
-        line("so not changed here. On a cabinet PC use");
-        line("the 'play as a cabinet' launcher, then set it here.");
+        line("Set by the test launcher (Cabinet %d of %d).", cfg.id + 1, cfg.nodes);
+        line("For a real cabinet, use 'play as a cabinet'.");
     } else {
         if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
-        line("Same list on every cabinet; used from the next start.");
-        if (F.set_id) line("The game's own ID will then be set to %d too.", F.cabinet);
+        line("Same list on every cabinet. Used at next start.");
+        if (F.cab_auto) line("Auto: the number is this PC's place in the list.");
+        if (F.set_id) line("The game's own ID will follow at next start.");
     }
-    if (on) {
-        char hb[160]; hearing(hb, sizeof hb, false);
-        line("This cabinet %s", hb);
-        if (*setup_msg_shown) line("SET-UP DIFFERS: %s", setup_msg_shown);
-        line("Linked: the game runs on behind this menu.");
-    }
-    if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out.");
     if (on) {
         char who[40] = ""; int j = 0;
         for (int m = 0; m < cfg.nodes; m++) if (lnk_members() >> m & 1) j += snprintf(who + j, sizeof who - (size_t)j, "%s%d", j ? "+" : "", m + 1);
-        if (lnk_state() == LNK_ALONE) line("Now: cabinet %d, NOT linked (it started after the others)", cfg.id + 1);
-        else line("Now: cabinet %d, linked with cabinets %s", cfg.id + 1, who);
-    } else line("Now: not linked");
+        if (lnk_state() == LNK_ALONE) line("Status: Cabinet %d, NOT linked (started late)", cfg.id + 1);
+        else if (lnk_members() == 1u << cfg.id) line("Status: Cabinet %d, playing solo", cfg.id + 1);
+        else line("Status: Cabinet %d, linked with %s", cfg.id + 1, who);
+        char hb[160]; hearing(hb, sizeof hb, false);
+        line("%s", hb);
+        if (*setup_msg_shown) line("SET-UP DIFFERS: %s", setup_msg_shown);
+        line("The game keeps running while this menu is open.");
+    } else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
+    else line("Status: link off");
+    if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out");
 }
 
 /* THE LINK LIGHTS (Network page > Link lights): one light per cabinet of the set, at the bottom left of the screen. This cabinet is
  * blue and flickers as it sends; another is green (both ways) or amber (one way: it is heard here but does not hear this one, or its
  * set-up differs) and flickers as its messages arrive, red when nothing comes from it, grey when it is not in this set. */
 bool link_lights_on(void) { return on && F.lights && lnk_state() != LNK_GATHERING; }
+int  link_lights_pos(void) { return link_lights_on() ? F.lights : 0; }
 int link_lights(link_light *out)
 {
     if (!link_lights_on()) return 0;

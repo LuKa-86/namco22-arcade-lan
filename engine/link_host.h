@@ -37,7 +37,8 @@ bool link_host_arg(int argc, char **argv, int *i);             /* one of the opt
 bool link_host_open(const link_host_game *g);                  /* after the options: the network; false = it could not start */
 bool link_host_on(void);
 int  link_host_id(void);                                       /* 0-based cabinet number */
-void link_host_gather(const char *title, SDL_Window *win);     /* start-up: wait for the others, the window's title saying who is missing */
+void link_host_gather(const char *title, SDL_Window *win,      /* start-up: wait for the others, the window's title saying who is missing; */
+                      void (*hint)(const char *text, int frames));   /* hint: a line on the screen when this one ends up not linked (or NULL) */
 void link_host_slice(void);                                    /* every scheduler slice */
 void link_host_frame(uint32_t frame, bool headless);           /* every video frame: real-time pacing (headless), the log */
 void link_host_relaunch(void);                                 /* start the program again (same command line; the log continues) */
@@ -58,5 +59,7 @@ void link_page_notes(void (*line)(const char *fmt, ...));
 enum { LINK_LIGHT_SELF, LINK_LIGHT_GOOD, LINK_LIGHT_ONEWAY, LINK_LIGHT_SILENT, LINK_LIGHT_OUT };
 typedef struct { int cabinet, kind; bool lit; } link_light;
 bool link_lights_on(void);
+enum { LINK_LIGHTS_BOTTOM_LEFT = 1, LINK_LIGHTS_BOTTOM_CENTRE, LINK_LIGHTS_BOTTOM_RIGHT, LINK_LIGHTS_TOP_LEFT, LINK_LIGHTS_TOP_CENTRE, LINK_LIGHTS_TOP_RIGHT };
+int  link_lights_pos(void);                                    /* where they are (0 = not shown) */
 int  link_lights(link_light *out);                             /* how many (0 = none to show) */
 #endif

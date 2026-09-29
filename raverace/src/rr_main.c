@@ -256,7 +256,7 @@ int main(int argc, char **argv)
     int frames_given = 0;
     const int cab = link_host_prescan(argc, argv);    /* a linked copy: its own log (raveracer_cabN.log) */
     char logname[64], title[64];
-    if (cab > 0) { snprintf(logname, sizeof logname, "raveracer_cab%d.log", cab); snprintf(title, sizeof title, "Rave Racer - cabinet %d", cab); }
+    if (cab > 0) { snprintf(logname, sizeof logname, "raveracer_cab%d.log", cab); snprintf(title, sizeof title, "Rave Racer - Cabinet %d", cab); }
     else { snprintf(logname, sizeof logname, "raveracer.log"); snprintf(title, sizeof title, "Rave Racer"); }
 #ifdef _WIN32
     rr_win_startup(logname);        /* the program's folder, the log, DPI */
@@ -389,7 +389,7 @@ int main(int argc, char **argv)
     rr_call_push(0xFFFFFFFEu);                  /* bottom of the shadow stack */
     { extern void rd_init(void); rd_init(); }   /* readable-C replacements (src/rd) */
     if (g_link_mute) rr_audio_set_volume(0);
-    link_host_gather(title, windowed ? SDL_GL_GetCurrentWindow() : NULL);   /* the cabinets start together, as boards switched on together */
+    link_host_gather(title, windowed ? SDL_GL_GetCurrentWindow() : NULL, windowed ? rr_ui_set_hint : NULL);   /* the cabinets start together, as boards switched on together */
     L_4000();                                   /* entry_reset: never returns */
     fprintf(stderr, "[RR] entry_reset returned?!\n");
     return 1;

@@ -303,7 +303,7 @@ void rr_ui_draw(bool *quit)
         if (rr_ui_hint_active()) {
             hint_left--;
             const float w = 440 < hw - 8 ? 440.0f : (float)hw - 8;
-            if (nk_begin(ctx, "hint", nk_rect(((float)hw - w) / 2, (float)hh - 36, w, 28), NK_WINDOW_NO_SCROLLBAR)) {
+            if (nk_begin(ctx, "hint", nk_rect(((float)hw - w) / 2, (float)hh - 36 - link_lights_hint_lift(), w, 28), NK_WINDOW_NO_SCROLLBAR)) {
                 nk_layout_row_dynamic(ctx, 18, 1);
                 nk_label(ctx, hint_text, NK_TEXT_CENTERED);
             }
