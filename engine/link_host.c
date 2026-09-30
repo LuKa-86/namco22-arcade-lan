@@ -191,6 +191,8 @@ static void wait_screen(void (*screen)(const char *const *lines, int n), const c
         snprintf(L[n++], sizeof L[0], "Cabinet%s %s can't hear this PC", strchr(d, ',') ? "s" : "", d);
     }
     if (*sm) snprintf(L[n++], sizeof L[0], "%s", sm);
+    snprintf(L[n++], sizeof L[0], " ");
+    snprintf(L[n++], sizeof L[0], "Press S to play without the link");
     for (int i = 0; i < n; i++) lp[i] = L[i];
     screen(lp, n);
 }
@@ -211,11 +213,24 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
     if (!on) return;
     if (w) place_window(w);
     uint32_t shown = 0xFFFFFFFFu, shown_deaf = 0; int shown_s = -1;
-    while (lnk_gather() == LNK_GATHERING) {
+    bool skip = false; uint64_t skip_at = 0;
+    { const char *e = getenv("LINK_TEST_SKIP"); if (e && *e) { skip_at = SDL_GetTicks64() + (uint64_t)atoi(e) * 1000 + 1;   /* TEST: as if S were pressed after E s */
+#ifdef _WIN32
+          _putenv("LINK_TEST_SKIP=");
+#else
+          unsetenv("LINK_TEST_SKIP");
+#endif
+      } }
+    while (!skip && lnk_gather() == LNK_GATHERING) {
         disc_poll();
         if (lnk_restart_request()) { fprintf(stderr, "[LINK] asked to restart while looking for the cabinets: restarting\n"); restart_all_now(); }
         SDL_Event e;
-        while (w && SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
+        while (w && SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
+            if (e.type == SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym == SDLK_s) skip = true;   /* S: play without the link */
+        }
+        if (skip_at && SDL_GetTicks64() >= skip_at) skip = true;
+        if (skip) break;
         uint32_t here = lnk_present_mask(); int left = (lnk_gather_left_ms() + 999) / 1000;
         const uint32_t deaf = lnk_hear_mask() & ~lnk_heard_by_mask();   /* cabinets this one hears that cannot hear it */
         char sm[160]; setup_msg(sm, sizeof sm);
@@ -241,7 +256,12 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         SDL_Delay(5);
     }
     char t[256];
-    if (lnk_state() == LNK_ALONE) {
+    if (skip) {                        /* this run only: the others hear it go (as if switched off) and carry on without it */
+        fprintf(stderr, "[LINK] S pressed while looking for the cabinets: playing without the link (the next start links as usual)\n");
+        lnk_close(); on = false; setup_msg_shown[0] = 0;
+        snprintf(t, sizeof t, "%s - Link skipped (S): playing without the link; start the game again to link", title);
+        if (hint) hint("LINK SKIPPED: PLAYING WITHOUT THE LINK", 600);
+    } else if (lnk_state() == LNK_ALONE) {
         snprintf(t, sizeof t, "%s - NOT LINKED (started late): restart all cabinets to link", title);
         if (hint) hint("NOT LINKED: STARTED AFTER THE OTHERS", 600);          /* (full screen: the title bar is not seen) */
     } else if (lnk_members() == 1u << cfg.id) {
