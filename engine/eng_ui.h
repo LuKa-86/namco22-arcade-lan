@@ -46,6 +46,7 @@ void eng_ui_input_begin(void);                           /* around the host's SD
 void eng_ui_input_end(void);
 bool eng_ui_event(SDL_Event *e);                         /* true = the menu consumed it (it is open) */
 void eng_ui_draw(bool *quit);
+void eng_ui_draw_message(const char *const *lines, int n);      /* a centred box of lines (the link's waiting screen) */
 void eng_ui_set_hint(const char *text, int frames);       /* a one-line hint at the bottom of the window for `frames` frames while the menu is closed */                            /* over the picture, into the window, before the swap */
 /* the next key press is handed to cb (SDL_SCANCODE_UNKNOWN if cancelled with Esc): a key-binding row's "press a key" */
 void eng_ui_capture_key(void (*cb)(SDL_Scancode sc, void *u), void *u);

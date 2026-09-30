@@ -29,4 +29,5 @@ bool ss22_host_active(void);                                                 /* 
 bool ss22_host_frame(void);                                                  /* once per emulated frame, after the video is prepared: events, draw, present, pace; false = quit */
 void ss22_host_shot(const char *path);                                       /* the prepared frame, 640x480, to a PPM (any GL context) */
 void ss22_host_close(void);
+void ss22_host_message(const char *const *lines, int n);         /* a black window with a centred box of lines (the link's waiting screen) */
 #endif

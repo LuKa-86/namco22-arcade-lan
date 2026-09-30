@@ -32,6 +32,7 @@ void rr_host_set_volume(int percent);
 void rr_host_screenshot(const char *dir);   /* the next drawn frame to DIR (--shots in a window) */
 void rr_host_set_freeplay(bool on);
 void rr_host_toggle_record(void);
+void rr_ui_draw_message(const char *const *lines, int n);     /* a centred box of lines (the link's waiting screen) */
 void rr_ui_set_hint(const char *text, int frames);   /* a hint line at the bottom of the window while the menu is closed */
 bool rr_ui_hint_active(void);
 bool rr_host_test_on(void);                 /* the test (service) switch: a toggle, like MAME's */

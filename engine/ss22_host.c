@@ -258,6 +258,16 @@ bool ss22_host_frame(void)
     return true;
 }
 
+void ss22_host_message(const char *const *lines, int n)
+{
+    if (!win) return;
+    int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
+    glViewport(0, 0, dw, dh);
+    glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    eng_ui_draw_message(lines, n);
+    SDL_GL_SwapWindow(win);
+}
+
 void ss22_host_close(void)
 {
     eng_audio_close();

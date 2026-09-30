@@ -294,6 +294,19 @@ static char hint_text[96]; static int hint_left;
 void rr_ui_set_hint(const char *text, int frames) { snprintf(hint_text, sizeof hint_text, "%s", text ? text : ""); hint_left = frames; }
 bool rr_ui_hint_active(void) { return ctx && !open_ && hint_left > 0 && hint_text[0]; }
 
+void rr_ui_draw_message(const char *const *lines, int n)
+{
+    if (!ctx || n <= 0) return;
+    int ww, wh; SDL_GetWindowSize(uwin, &ww, &wh);
+    const float w = 560 < ww - 16 ? 560.0f : (float)ww - 16, h = 24.0f + (float)n * 22;
+    if (nk_begin(ctx, "linkwait", nk_rect(((float)ww - w) / 2, ((float)wh - h) / 2, w, h), NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER | NK_WINDOW_NO_INPUT)) {
+        nk_layout_row_dynamic(ctx, 18, 1);
+        for (int i = 0; i < n; i++) nk_label(ctx, lines[i], NK_TEXT_CENTERED);
+    }
+    nk_end(ctx);
+    nk_sdl_render(NK_ANTI_ALIASING_ON);
+}
+
 void rr_ui_draw(bool *quit)
 {
     if (quit_req) *quit = true;

@@ -379,7 +379,8 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         if (!video_on) { fprintf(stderr, "[%s] no picture: video could not start\n", g->tag); if (win_scale) return 2; }
     }
     if (g_link_mute) eng_audio_set_volume(0);
-    link_host_gather(title, ss22_host_active() ? SDL_GL_GetCurrentWindow() : NULL, ss22_host_active() ? eng_ui_set_hint : NULL);                    /* the cabinets start together, as boards switched on together */
+    link_host_gather(title, ss22_host_active() ? SDL_GL_GetCurrentWindow() : NULL, ss22_host_active() ? eng_ui_set_hint : NULL,
+                     ss22_host_active() ? ss22_host_message : NULL);                    /* the cabinets start together, as boards switched on together */
     memset(R, 0, RR_REGSPACE);
     RS4(RR_REG_SP, rr_read(0, 4));                      /* reset SP from vector 0 */
     rr_set_sr(0x2700);                                  /* supervisor, IPL 7 */

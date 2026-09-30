@@ -36,6 +36,7 @@ bool rr_host_open(int scale);
 bool rr_host_frame(void);
 bool rr_host_paused(void);
 void rr_host_close(void);
+void rr_host_message(const char *const *lines, int n);
 int rr_host_joytest(void);
 static int windowed;
 /* THE RENDERER. 1 = the shared engine's OpenGL pipeline (../engine, src/rr_gl.c):
@@ -389,7 +390,7 @@ int main(int argc, char **argv)
     rr_call_push(0xFFFFFFFEu);                  /* bottom of the shadow stack */
     { extern void rd_init(void); rd_init(); }   /* readable-C replacements (src/rd) */
     if (g_link_mute) rr_audio_set_volume(0);
-    link_host_gather(title, windowed ? SDL_GL_GetCurrentWindow() : NULL, windowed ? rr_ui_set_hint : NULL);   /* the cabinets start together, as boards switched on together */
+    link_host_gather(title, windowed ? SDL_GL_GetCurrentWindow() : NULL, windowed ? rr_ui_set_hint : NULL, windowed ? rr_host_message : NULL);   /* the cabinets start together, as boards switched on together */
     L_4000();                                   /* entry_reset: never returns */
     fprintf(stderr, "[RR] entry_reset returned?!\n");
     return 1;

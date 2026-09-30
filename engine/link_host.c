@@ -106,7 +106,37 @@ static void hearing(char *buf, size_t n, bool addresses)
 static char auto_mine[16];                                             /* automatic numbering: this PC's address, when it is not in the list */
 static bool auto_fail;
 
-void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char *text, int frames))
+/* THE WAITING SCREEN while the cabinets look for each other: who is here, who is not yet, the countdown, the warnings. The lines are
+ * made here; screen() (the game's host) draws them over a black picture. */
+static void wait_screen(void (*screen)(const char *const *lines, int n), const char *title, uint32_t here, uint32_t deaf, int left,
+                        const char *sm)
+{
+    static char L[20][100]; const char *lp[20]; int n = 0;
+    const int dots = (int)(SDL_GetTicks64() / 400 % 4);
+    snprintf(L[n++], sizeof L[0], "%s", title);
+    snprintf(L[n++], sizeof L[0], "LINK PLAY: LOOKING FOR THE OTHER CABINETS");
+    snprintf(L[n++], sizeof L[0], " ");
+    bool all = true;
+    for (int c = 0; c < cfg.nodes && n < 14; c++) {
+        const bool in = here >> c & 1;
+        all &= in;
+        snprintf(L[n++], sizeof L[0], "Cabinet %d:  %s%.*s", c + 1, c == cfg.id ? "this PC" : in ? "found" : "waiting", in || c == cfg.id ? 0 : dots, "...");
+    }
+    snprintf(L[n++], sizeof L[0], " ");
+    if (all) snprintf(L[n++], sizeof L[0], "All cabinets found: starting");
+    else snprintf(L[n++], sizeof L[0], "Starting in %d s, or as soon as all are here", left);
+    if (deaf) {
+        char d[40] = ""; int kd = 0;
+        for (int c = 0; c < cfg.nodes; c++) if (deaf >> c & 1) kd += snprintf(d + kd, sizeof d - (size_t)kd, "%s%d", kd ? ", " : "", c + 1);
+        snprintf(L[n++], sizeof L[0], "Cabinet%s %s can't hear this PC", strchr(d, ',') ? "s" : "", d);
+    }
+    if (*sm) snprintf(L[n++], sizeof L[0], "SET-UP DIFFERS: %s", sm);
+    for (int i = 0; i < n; i++) lp[i] = L[i];
+    screen(lp, n);
+}
+
+void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char *text, int frames),
+                      void (*screen)(const char *const *lines, int n))
 {
     if (auto_fail) {                                                   /* This cabinet = Auto, and this PC is not in the list: not linked */
         char t[256];
@@ -128,6 +158,8 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         char sm[160]; setup_msg(sm, sizeof sm);
         if (strcmp(sm, setup_msg_shown)) { if (*sm) fprintf(stderr, "[LINK] SET-UP DIFFERS: %s (Esc > Network on each cabinet: the same set size and address list)\n", sm);
                                            snprintf(setup_msg_shown, sizeof setup_msg_shown, "%s", sm); shown_s = -1; }
+        static uint64_t next_draw;
+        if (screen && SDL_GetTicks64() >= next_draw) { next_draw = SDL_GetTicks64() + 100; wait_screen(screen, title, here, deaf, left, sm); }
         if (here != shown || left != shown_s || deaf != shown_deaf) {
             char miss[40] = "", t[256], d[64] = ""; int k = 0, kd = 0;
             for (int n = 0; n < cfg.nodes; n++) if (!(here >> n & 1)) k += snprintf(miss + k, sizeof miss - (size_t)k, "%s%d", k ? ", " : "", n + 1);

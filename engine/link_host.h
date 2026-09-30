@@ -39,7 +39,8 @@ bool link_host_open(const link_host_game *g);                  /* after the opti
 bool link_host_on(void);
 int  link_host_id(void);                                       /* 0-based cabinet number */
 void link_host_gather(const char *title, SDL_Window *win,      /* start-up: wait for the others, the window's title saying who is missing; */
-                      void (*hint)(const char *text, int frames));   /* hint: a line on the screen when this one ends up not linked (or NULL) */
+                      void (*hint)(const char *text, int frames),    /* hint: a line on the screen when this one ends up not linked (or NULL); */
+                      void (*screen)(const char *const *lines, int n));   /* screen: draws the waiting screen's lines (or NULL) */
 void link_host_slice(void);                                    /* every scheduler slice */
 void link_host_frame(uint32_t frame, bool headless);           /* every video frame: real-time pacing (headless), the log */
 void link_host_relaunch(void);                                 /* start the program again (same command line; the log continues) */

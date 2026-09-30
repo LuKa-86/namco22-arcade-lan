@@ -546,6 +546,17 @@ static void present_picture(void)
 #endif
 }
 
+/* a black window with a centred box of lines: the link's waiting screen at start-up (full screen: the title bar is not seen) */
+void rr_host_message(const char *const *lines, int n)
+{
+    if (!win) return;
+    int ow, oh; out_size(&ow, &oh);
+    glViewport(0, 0, ow, oh);
+    glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    rr_ui_draw_message(lines, n);
+    SDL_GL_SwapWindow(win);
+}
+
 bool rr_host_frame(void)
 {
     if (!win) return true;
