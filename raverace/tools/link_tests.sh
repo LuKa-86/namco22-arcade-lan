@@ -22,7 +22,7 @@ run() {   # run CAB FRAMES [extra args...] in the background, pid in PID_<cab>
 summary() {
     for c in 1 2 3 4; do
         [ -f raveracer_cab$c.log ] || continue
-        echo "  cabinet $c: $(grep '\[LINK\] frame' raveracer_cab$c.log | tail -1 | sed -E 's/.*frame ([0-9]+)  down ([0-9]+).*game IDs ([0-9: ]+)  chip.*lost ([0-9]+).*\| game: cabinet ([0-9]), hears ([0-9A-F]+) \(([0-9]+) in the ring\), link ([A-Za-z]+).*/frame \1, game ID \5, hears the others: \7 (mask \6), link \8, game saw link down for \2 frames, net lost \4/')"
+        echo "  cabinet $c: $(grep '\[LINK\] frame [0-9]*  down' raveracer_cab$c.log | tail -1 | sed -E 's/.*frame ([0-9]+)  down ([0-9]+).*game IDs ([0-9: ]+)  chip.*lost ([0-9]+).*\| game: cabinet ([0-9]), hears ([0-9A-F]+) \(([0-9]+) in the ring\), link ([A-Za-z]+).*/frame \1, game ID \5, hears the others: \7 (mask \6), link \8, game saw link down for \2 frames, net lost \4/')"
         grep -h "lost the link\|WARNING" raveracer_cab$c.log | head -3 | sed 's/^/      /'
     done
 }

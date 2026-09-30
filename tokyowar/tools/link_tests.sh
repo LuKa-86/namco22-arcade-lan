@@ -21,7 +21,7 @@ run() {   # run CAB FRAMES [extra args...] in the background, pid in PID_<cab>
 summary() {
     for c in 1 2 3 4; do
         [ -f tokyowar_cab$c.log ] || continue
-        echo "  cabinet $c: $(grep '\[LINK\] frame' tokyowar_cab$c.log | tail -2 | head -1 | sed -E 's/.*frame ([0-9]+)  down ([0-9]+).*lost ([0-9]+).*\| game: cabinet [0-9], hears ([0-9A-F]+), ring of ([0-9]+), link ([A-Za-z]+).*/frame \1, game saw link down for \2 frames, net lost \3, ring of \5, link \6/')"
+        echo "  cabinet $c: $(grep '\[LINK\] frame [0-9]*  down' tokyowar_cab$c.log | tail -2 | head -1 | sed -E 's/.*frame ([0-9]+)  down ([0-9]+).*lost ([0-9]+).*\| game: cabinet [0-9], hears ([0-9A-F]+), ring of ([0-9]+), link ([A-Za-z]+).*/frame \1, game saw link down for \2 frames, net lost \3, ring of \5, link \6/')"
         grep -h "lost the link" tokyowar_cab$c.log | head -3 | sed 's/^/      /'
     done
 }

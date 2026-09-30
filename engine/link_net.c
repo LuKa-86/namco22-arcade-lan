@@ -34,6 +34,7 @@ typedef int sock_t;
 #define HELLO_LEN  36
 #define QWIN_MS    2000                     /* the quality figures: over this window */
 #define T_BYE      3                        /* this cabinet is closing: step over it at once */
+#define T_RESTART  4                        /* + address-list hash 4: every cabinet of this set restarts (Network page "Restart all") */
 #define HELLO_MS   25                       /* a hello to every cabinet this often ... */
 #define ALIVE_MS   120                      /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
 #define JOIN_MS    3000                     /* a session this young is one this cabinet was gathered for (it only missed the start) */
@@ -75,6 +76,7 @@ static struct {
     peer_t   p[LNK_MAX_NODES];
     uint32_t seq_to[LNK_MAX_NODES], last_seq[LNK_MAX_NODES];   /* numbered per destination: a gap = packets lost on that path */
     uint64_t next_hello, q_t0;
+    int      restart_from;                  /* a cabinet asked the whole set to restart (its number, 0 = none) */
     lnk_stats st;
     uint32_t rng;
     struct { uint64_t due; int dst, len; uint8_t b[HDR + 2 * LNK_MAX_WORDS]; } held[256];   /* test delay */
@@ -380,6 +382,9 @@ static int take(uint16_t *w, int max)
     case T_BYE:
         p->heard = 0;
         return 0;
+    case T_RESTART:                                                    /* only from a cabinet of this very set-up */
+        if (len >= HDR + 4 && get32(b + HDR) == L.list_hash) L.restart_from = src + 1;
+        return 0;
     case T_FRAME: {
         if (L.state != LNK_LINKED || !(L.members >> src & 1) || get32(b + 16) != L.session) { L.st.foreign++; return 0; }
         int n = (len - HDR) / 2;
@@ -425,6 +430,7 @@ int lnk_gather(void)
 {
     if (!L.on || L.state != LNK_GATHERING) return L.state;
     hellos();
+    release_held();                                                    /* (TEST delays: due while gathering too) */
     uint16_t junk[LNK_MAX_WORDS];
     while (take(junk, LNK_MAX_WORDS) >= 0) {}
     uint64_t t = now_ms();
@@ -449,6 +455,15 @@ int lnk_gather(void)
     }
     return L.state;
 }
+
+void lnk_send_restart(void)
+{
+    if (!L.on) return;
+    uint8_t b[HDR + 4];
+    for (int k = 0; k < 3; k++)                                        /* three times: it is UDP */
+        for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) { header(b, T_RESTART, n); put32(b + HDR, L.list_hash); raw_send(n, b, HDR + 4); }
+}
+int lnk_restart_request(void) { const int r = L.restart_from; L.restart_from = 0; return r; }
 
 void lnk_close(void)
 {

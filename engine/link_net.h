@@ -41,6 +41,8 @@ enum { LNK_GATHERING, LNK_LINKED, LNK_ALONE };
 
 bool     lnk_open(const lnk_cfg *cfg);
 void     lnk_close(void);                             /* also tells the others this cabinet is going */
+void     lnk_send_restart(void);                      /* ask every cabinet of this set (same address list) to restart */
+int      lnk_restart_request(void);                   /* a cabinet asked (its number, once), 0 = none */
 bool     lnk_on(void);
 int      lnk_gather(void);                            /* start-up: call until it is not LNK_GATHERING (every few ms) */
 int      lnk_state(void);

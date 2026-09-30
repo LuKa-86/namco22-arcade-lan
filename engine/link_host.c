@@ -10,6 +10,8 @@
 #include <zlib.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -28,6 +30,13 @@ static char base_title[256];                                           /* the ti
 static uint32_t dup_shown;                                             /* the clash last warned about (bit per cabinet) */
 static bool from_cmdline;                                              /* --link on the command line (a one-PC test launcher): link.cfg is not used */
 static char **argv0;                                                   /* the command line, for a restart */
+static void put_u32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
+static uint32_t get_u32(const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
+static void disc_poll(void);
+static void disc_start_responder(int base_port, const char *title);
+static void restart_all_now(void);
+static int  file_port(void);
+static void disc_find(void);
 static char dup_msg[128], setup_msg_shown[160];                        /* the title's warnings: two cabinets with one game ID; set-ups that differ */
 static void set_title(void);
 static void setup_msg(char *m, size_t n);
@@ -189,6 +198,7 @@ static void wait_screen(void (*screen)(const char *const *lines, int n), const c
 void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char *text, int frames),
                       void (*screen)(const char *const *lines, int n))
 {
+    disc_start_responder(on ? cfg.base_port : file_port(), title);           /* answer "which PCs run this game?" (Find cabinets) */
     if (auto_fail) {                                                   /* This cabinet = Auto, and this PC is not in the list: not linked */
         char t[256];
         snprintf(t, sizeof t, "%s - NOT LINKED: this PC (%s) is not in the address list", title, *auto_mine ? auto_mine : "no address");
@@ -202,6 +212,8 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
     if (w) place_window(w);
     uint32_t shown = 0xFFFFFFFFu, shown_deaf = 0; int shown_s = -1;
     while (lnk_gather() == LNK_GATHERING) {
+        disc_poll();
+        if (lnk_restart_request()) { fprintf(stderr, "[LINK] asked to restart while looking for the cabinets: restarting\n"); restart_all_now(); }
         SDL_Event e;
         while (w && SDL_PollEvent(&e)) if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
         uint32_t here = lnk_present_mask(); int left = (lnk_gather_left_ms() + 999) / 1000;
@@ -394,9 +406,45 @@ void link_host_relaunch(void)
     exit(0);
 }
 
+/* RESTART ALL CABINETS (Network page): this one tells every cabinet of the set, then all restart -- the whole set switched off and on,
+ * so they look for each other again and link as at power-on. A second on the screen first, so everyone sees why. */
+static int restart_in = -1;                                            /* frames until this cabinet restarts (-1 = not asked) */
+static void restart_all_check(void)
+{
+    const int from = lnk_restart_request();
+    if (from && restart_in < 0) {
+        fprintf(stderr, "[LINK] Cabinet %d asked every cabinet to restart: restarting\n", from);
+        if (G && G->hint) G->hint("RESTARTING ALL CABINETS", 120);
+        restart_in = 60;
+    }
+}
+static void restart_all_now(void)
+{
+    fprintf(stderr, "[LINK] restarting (restart all cabinets)\n");
+    if (G && G->before_restart) G->before_restart();
+    link_host_relaunch();
+}
+
 void link_host_frame(uint32_t frame, bool headless)
 {
+    disc_poll();
+    { static long find_at = -2, restart_at = -2;                        /* TEST: LINK_TEST_FIND_AT / LINK_TEST_RESTART_AT = <frame>: the page's
+                                                                         * Find cabinets / Restart all (twice) at that frame, without a menu */
+      if (find_at == -2) { const char *e = getenv("LINK_TEST_FIND_AT"); find_at = e ? atol(e) : -1; }
+      if (restart_at == -2) { const char *e = getenv("LINK_TEST_RESTART_AT"); restart_at = e ? atol(e) : -1; }
+      if (find_at >= 0 && frame == (uint32_t)find_at) disc_find();
+      if (restart_at >= 0 && frame == (uint32_t)restart_at && on) {
+#ifdef _WIN32
+          SetEnvironmentVariableA("LINK_TEST_RESTART_AT", NULL);        /* (the restarted copies must not do it again) */
+#else
+          unsetenv("LINK_TEST_RESTART_AT");
+#endif
+          fprintf(stderr, "[LINK] this cabinet asked every cabinet to restart (test)\n");
+          lnk_send_restart(); restart_in = 60;
+      } }
     if (!on) return;
+    restart_all_check();
+    if (restart_in >= 0 && restart_in-- == 0) restart_all_now();
     if (headless) pace();
     if (G->good) {
         if (G->good()) { if (++up_run >= 120) was_up = true; down_now = 0; }
@@ -432,6 +480,7 @@ static struct { bool on, set_id, carry_on, cab_auto; int cabinet, cabinets, wait
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
+static int file_port(void) { return F.port; }
 static int  edit_row = -1;                                             /* the address row being typed, -1 = none */
 static char edit_buf[16];
 
@@ -532,16 +581,163 @@ bool link_host_take_id_reset(void)
     return true;
 }
 
+/* FIND CABINETS (Network page): "which PCs on this network run this game?" -- a broadcast to the discovery port (UDP 22219), which every running copy answers, linked or not, with its PC's name (a small thread keeps a socket there). The
+ * answers can then fill the address list, sorted by address, so every PC that does the same gets the same list (This cabinet = Auto). */
+#ifdef _WIN32
+typedef SOCKET dsock_t;
+#define DSOCK_BAD INVALID_SOCKET
+#define dsock_close closesocket
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+typedef int dsock_t;
+#define DSOCK_BAD (-1)
+#define dsock_close close
+#endif
+#define DISC_MAGIC 0x4E323244u                                          /* "N22D" */
+static int disc_port;
+static struct { bool searching; uint64_t until; dsock_t s; int n; struct { char ip[16], name[33]; bool me; } f[LNK_MAX_NODES]; bool done; } D = { .s = DSOCK_BAD };
+static uint64_t restart_armed_at;
+static bool restart_armed(void) { return restart_armed_at && SDL_GetTicks64() - restart_armed_at < 5000; }
+static uint32_t disc_game;                                             /* the game (its name's fingerprint): only copies of the same game answer */
+static uint32_t disc_tag(void) { return disc_game; }
+
+static int disc_responder(void *u)                                     /* the thread: answer every question, for as long as the game runs */
+{
+    (void)u;
+    dsock_t s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s == DSOCK_BAD) return 0;
+    int one = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);   /* several copies on one PC */
+    struct sockaddr_in me; memset(&me, 0, sizeof me);
+    me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(INADDR_ANY); me.sin_port = htons((uint16_t)disc_port);
+    if (bind(s, (struct sockaddr *)&me, sizeof me) != 0) { fprintf(stderr, "[LINK] Find cabinets: cannot answer on UDP port %d\n", disc_port); dsock_close(s); return 0; }
+    char host[64] = "PC"; gethostname(host, sizeof host);
+    for (;;) {
+        uint8_t b[64]; struct sockaddr_in from; socklen_t fl = sizeof from;
+        const int len = (int)recvfrom(s, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+        if (len < 12 || get_u32(b) != DISC_MAGIC || b[4] != 'Q' || get_u32(b + 8) != disc_tag()) continue;
+        uint8_t r[48]; memcpy(r, b, 12); r[4] = 'R';                    /* the question's magic, tag and number back, and this PC's name */
+        memset(r + 12, 0, 36); snprintf((char *)r + 12, 33, "%s", host);
+        sendto(s, (const char *)r, sizeof r, 0, (struct sockaddr *)&from, fl);
+    }
+    return 0;
+}
+static void disc_start_responder(int base_port, const char *title)
+{
+    static bool started;
+    if (started) return;
+    started = true;
+    disc_port = 22219; (void)base_port;                                  /* one fixed port: every copy answers there, whatever its link port */
+    disc_game = 2166136261u;                                            /* the game's name: the title up to " - " ("Tokyo Wars") */
+    for (const char *c = title; *c && strncmp(c, " - ", 3); c++) disc_game = (disc_game ^ (uint8_t)*c) * 16777619u;
+#ifdef _WIN32
+    WSADATA wd; WSAStartup(MAKEWORD(2, 2), &wd);
+#endif
+    SDL_Thread *t = SDL_CreateThread(disc_responder, "link-find", NULL);
+    if (t) SDL_DetachThread(t);
+}
+static void disc_find(void)
+{
+    if (D.searching || !disc_port) return;
+    if (D.s == DSOCK_BAD) {
+        D.s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (D.s == DSOCK_BAD) return;
+        int one = 1; setsockopt(D.s, SOL_SOCKET, SO_BROADCAST, (const char *)&one, sizeof one);
+#ifdef _WIN32
+        u_long nb = 1; ioctlsocket(D.s, FIONBIO, &nb);
+#else
+        fcntl(D.s, F_SETFL, fcntl(D.s, F_GETFL, 0) | O_NONBLOCK);
+#endif
+    }
+    D.n = 0; D.done = false; D.searching = true; D.until = SDL_GetTicks64() + 1500;
+    uint8_t q[12]; put_u32(q, DISC_MAGIC); q[4] = 'Q'; q[5] = q[6] = q[7] = 0; put_u32(q + 8, disc_tag());
+    struct sockaddr_in to; memset(&to, 0, sizeof to); to.sin_family = AF_INET; to.sin_port = htons((uint16_t)disc_port);
+    to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    for (int k = 0; k < 2; k++) sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
+    char a[8][16]; const int na = lnk_local_addresses(a, 8);            /* and each of this PC's networks (x.y.z.255) */
+    for (int i = 0; i < na; i++) {
+        struct in_addr ia; if (inet_pton(AF_INET, a[i], &ia) != 1) continue;
+        to.sin_addr.s_addr = ia.s_addr | htonl(0xFFu);
+        for (int k = 0; k < 2; k++) sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
+    }
+    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);                         /* (copies on this PC) */
+    sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
+    fprintf(stderr, "[LINK] Find cabinets: asking the network (UDP port %d)\n", disc_port);
+}
+static int ip_cmp(const void *x, const void *y)
+{
+    struct in_addr a, b; inet_pton(AF_INET, ((const char *)x), &a); inet_pton(AF_INET, ((const char *)y), &b);
+    const uint32_t ha = ntohl(a.s_addr), hb = ntohl(b.s_addr); return ha < hb ? -1 : ha > hb;
+}
+static void disc_poll(void)
+{
+    if (!D.searching) return;
+    for (;;) {
+        uint8_t r[64]; struct sockaddr_in from; socklen_t fl = sizeof from;
+        const int len = (int)recvfrom(D.s, (char *)r, sizeof r, 0, (struct sockaddr *)&from, &fl);
+        if (len < 0) break;
+        if (len < 48 || get_u32(r) != DISC_MAGIC || r[4] != 'R' || get_u32(r + 8) != disc_tag()) continue;
+        char ip[16]; if (!inet_ntop(AF_INET, &from.sin_addr, ip, sizeof ip)) continue;
+        char mine[8][16]; const int nm = lnk_local_addresses(mine, 8); bool me = !strncmp(ip, "127.", 4);
+        for (int i = 0; i < nm; i++) if (!strcmp(mine[i], ip)) me = true;
+        if (me && nm) snprintf(ip, sizeof ip, "%s", mine[0]);              /* this PC: its network address, not the loopback */
+        bool dup = false; for (int i = 0; i < D.n; i++) dup |= !strcmp(D.f[i].ip, ip);
+        if (dup || D.n >= LNK_MAX_NODES) continue;
+        snprintf(D.f[D.n].ip, sizeof D.f[0].ip, "%s", ip); snprintf(D.f[D.n].name, sizeof D.f[0].name, "%.32s", (const char *)r + 12);
+        D.f[D.n].me = me; D.n++;
+    }
+    if (SDL_GetTicks64() >= D.until) {
+        D.searching = false; D.done = true;
+        qsort(D.f, (size_t)D.n, sizeof D.f[0], ip_cmp);                 /* (ip is the first field) */
+        fprintf(stderr, "[LINK] Find cabinets: %d found:", D.n);
+        for (int i = 0; i < D.n; i++) fprintf(stderr, " %s (%s%s)", D.f[i].ip, D.f[i].name, D.f[i].me ? ", this PC" : "");
+        fprintf(stderr, "\n");
+    }
+}
+static bool disc_searching(void) { return D.searching; }
+static int  disc_count(void) { return D.n; }
+static bool disc_found_usable(void) { return D.done && D.n >= 2; }
+static void disc_use(void)                                              /* the found PCs become the address list (Auto numbering) */
+{
+    if (!disc_found_usable()) return;
+    F.cabinets = D.n;
+    for (int i = 0; i < LNK_MAX_NODES; i++) snprintf(F.addr[i], sizeof F.addr[0], "%s", i < D.n ? D.f[i].ip : "");
+    F.cab_auto = true; F.set_id = true; F.on = true;
+    cfg_save();
+    fprintf(stderr, "[LINK] Find cabinets: the %d found are now the address list (This cabinet: Auto)\n", D.n);
+    D.done = false;
+}
+static void disc_notes(void (*line)(const char *fmt, ...))
+{
+    disc_poll();                                                        /* (the menu open: an unlinked game is paused, this is its poll) */
+    if (D.searching) { line("Looking for PCs running this game..."); return; }
+    if (!D.done) return;
+    if (D.n == 0) { line("Found none. Is the game running on the others?"); return; }
+    char s[200] = ""; size_t k = 0;
+    for (int i = 0; i < D.n && k < sizeof s; i++) k += (size_t)snprintf(s + k, sizeof s - k, "%s%s %s%s", i ? ", " : "", D.f[i].ip, D.f[i].name, D.f[i].me ? " (this PC)" : "");
+    line("Found %d: %s", D.n, s);
+    if (D.n >= 2) line("\"Use the %d found\" on every PC gives them all the same list.", D.n);
+}
+
 /* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
  * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
 static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
-int  link_page_rows(void) { return 3 + page_nodes() + 3; }
-bool link_page_has_value(int row) { return row < 3 || row >= 3 + page_nodes(); }
+int  link_page_rows(void) { return 3 + page_nodes() + 5 + (disc_found_usable() ? 1 : 0); }
+bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 2); }
 static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
 {
     const int r = row - (3 + page_nodes() + 1);
     if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); return true; }
     if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
+    if (r == 2) {
+        snprintf(label, ln, "Restart all cabinets");
+        snprintf(value, vn, "%s", !on ? "(link play is off)" : restart_armed() ? "Press Enter AGAIN" : "Enter");
+        return true;
+    }
+    if (r == 3) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
+    if (r == 4) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
     return false;
 }
 static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
@@ -584,6 +780,17 @@ void link_page_change(int row, int dir)
     const int r = row - (3 + page_nodes() + 1);
     if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
     if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
+    if (r == 2) {                                                      /* restart all: Enter twice (not by accident) */
+        if (!on || dir) return;
+        if (!restart_armed()) { restart_armed_at = SDL_GetTicks64(); return; }
+        fprintf(stderr, "[LINK] this cabinet asked every cabinet to restart\n");
+        lnk_send_restart();
+        if (G && G->hint) G->hint("RESTARTING ALL CABINETS", 120);
+        restart_in = 60;
+        return;
+    }
+    if (r == 3) { if (!dir) disc_find(); return; }
+    if (r == 4) { if (!dir && !from_cmdline) disc_use(); return; }
     if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
     if (row == 0) F.on = !F.on;
     else if (row == 1) {                                               /* Auto, 1 .. N, round */
@@ -648,6 +855,7 @@ void link_page_notes(void (*line)(const char *fmt, ...))
     } else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
     else line("Status: link off");
     if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out");
+    disc_notes(line);
 }
 
 /* THE LINK LIGHTS (Network page > Link lights): one light per cabinet of the set, at the bottom left of the screen. This cabinet is
