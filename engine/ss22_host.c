@@ -265,6 +265,9 @@ void ss22_host_message(const char *const *lines, int n)
     glViewport(0, 0, dw, dh);
     glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
     eng_ui_draw_message(lines, n);
+    { static int shot; const char *e = genv("WAITSHOT");       /* <tag>_WAITSHOT=<file.ppm>: TEST, the waiting screen as drawn (a screen
+                                                                   * capture cannot see an exclusive full screen) */
+      if (e && !shot && ++shot) { glReadBuffer(GL_BACK); if (eng_gl_write_ppm(e, dw, dh)) fprintf(stderr, "[HOST] saved %s (%dx%d)\n", e, dw, dh); } }
     SDL_GL_SwapWindow(win);
 }
 
