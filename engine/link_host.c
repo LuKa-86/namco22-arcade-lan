@@ -5,6 +5,9 @@
 #include "link_host.h"
 #include "link_net.h"
 #include "c139.h"
+#include <time.h>
+#include <sys/stat.h>
+#include <zlib.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -49,6 +52,31 @@ bool link_host_arg(int argc, char **argv, int *i)
     return true;
 }
 
+/* THIS PROGRAM: a fingerprint of the file (every copy of the same build has the same) and its date, told to the others (version check) */
+static void own_build(uint32_t *crc, uint32_t *when)
+{
+    char path[1024] = "";
+#ifdef _WIN32
+    wchar_t w[1024]; const DWORD n = GetModuleFileNameW(NULL, w, 1024);
+    if (n > 0 && n < 1024) WideCharToMultiByte(CP_UTF8, 0, w, -1, path, sizeof path, NULL, NULL);
+    FILE *f = _wfopen(w, L"rb");
+#else
+    ssize_t n = readlink("/proc/self/exe", path, sizeof path - 1); if (n > 0) path[n] = 0;
+    FILE *f = fopen(path, "rb");
+#endif
+    uLong c = crc32(0L, Z_NULL, 0);
+    if (f) {
+        static unsigned char buf[1 << 16]; size_t got;
+        while ((got = fread(buf, 1, sizeof buf, f)) > 0) c = crc32(c, buf, (uInt)got);
+        fclose(f);
+    }
+    *crc = (uint32_t)c ? (uint32_t)c : 1;
+    { const char *e = getenv("LINK_TEST_BUILD"); if (e && *e) *crc = (uint32_t)strtoul(e, NULL, 16); }   /* TEST: pretend to be another build */
+    struct stat st; *when = stat(path, &st) == 0 ? (uint32_t)st.st_mtime : 0;
+    char d[32] = "?"; time_t tt = (time_t)*when; struct tm *tm = localtime(&tt); if (tm) strftime(d, sizeof d, "%d %b %H:%M", tm);
+    fprintf(stderr, "[LINK] this program: build %08X, dated %s\n", *crc, d);
+}
+
 bool link_host_open(const link_host_game *g)
 {
     if (cfg.id < 0) return true;                                       /* not linked */
@@ -58,6 +86,7 @@ bool link_host_open(const link_host_game *g)
         cfg.nodes = 4;
         if (cfg.peers) { cfg.nodes = 1; for (const char *c = cfg.peers; *c; c++) cfg.nodes += *c == ','; }
     }
+    own_build(&cfg.build_crc, &cfg.build_time);
     if (!lnk_open(&cfg)) return false;
     atexit(lnk_close);                                                 /* however the game ends, the others hear it go */
     on = true;
@@ -106,6 +135,23 @@ static void hearing(char *buf, size_t n, bool addresses)
 static char auto_mine[16];                                             /* automatic numbering: this PC's address, when it is not in the list */
 static bool auto_fail;
 
+/* THE LINK'S QUALITY to each cabinet (the round trip of the hellos, messages lost), in words. The games give a message about 0.13 s
+ * to go round the whole ring: a path whose worst round trip reaches 100 ms, or that loses 2% or more, is POOR. */
+static const char *quality_word(int rtt_max, int loss)
+{
+    return rtt_max >= 100 || loss >= 2 ? "POOR" : rtt_max >= 40 || loss >= 1 ? "fair" : "good";
+}
+static void quality_text(char *b, size_t n)
+{
+    size_t k = 0; b[0] = 0;
+    for (int c = 0; c < cfg.nodes && k < n; c++) {
+        int ra, rm, lp;
+        if (c == cfg.id || !lnk_peer_quality(c, &ra, &rm, &lp)) continue;
+        char loss[16] = ""; if (lp) snprintf(loss, sizeof loss, " %d%% lost", lp);
+        k += (size_t)snprintf(b + k, n - k, "%s%d: %d ms%s %s", k ? ", " : "", c + 1, ra, loss, quality_word(rm, lp));
+    }
+}
+
 /* THE WAITING SCREEN while the cabinets look for each other: who is here, who is not yet, the countdown, the warnings. The lines are
  * made here; screen() (the game's host) draws them over a black picture. */
 static void wait_screen(void (*screen)(const char *const *lines, int n), const char *title, uint32_t here, uint32_t deaf, int left,
@@ -120,7 +166,12 @@ static void wait_screen(void (*screen)(const char *const *lines, int n), const c
     for (int c = 0; c < cfg.nodes && n < 14; c++) {
         const bool in = here >> c & 1;
         all &= in;
-        snprintf(L[n++], sizeof L[0], "Cabinet %d:  %s%.*s", c + 1, c == cfg.id ? "this PC" : in ? "found" : "waiting", in || c == cfg.id ? 0 : dots, "...");
+        char q[48] = ""; int ra, rm, lp;
+        if (in && c != cfg.id && lnk_peer_quality(c, &ra, &rm, &lp)) {
+            char loss[16] = ""; if (lp) snprintf(loss, sizeof loss, ", %d%% lost", lp);
+            snprintf(q, sizeof q, "   %d ms%s%s", ra, loss, quality_word(rm, lp)[0] == 'P' ? " - POOR" : "");
+        }
+        snprintf(L[n++], sizeof L[0], "Cabinet %d:  %s%.*s%s", c + 1, c == cfg.id ? "this PC" : in ? "found" : "waiting", in || c == cfg.id ? 0 : dots, "...", q);
     }
     snprintf(L[n++], sizeof L[0], " ");
     if (all) snprintf(L[n++], sizeof L[0], "All cabinets found: starting");
@@ -130,7 +181,7 @@ static void wait_screen(void (*screen)(const char *const *lines, int n), const c
         for (int c = 0; c < cfg.nodes; c++) if (deaf >> c & 1) kd += snprintf(d + kd, sizeof d - (size_t)kd, "%s%d", kd ? ", " : "", c + 1);
         snprintf(L[n++], sizeof L[0], "Cabinet%s %s can't hear this PC", strchr(d, ',') ? "s" : "", d);
     }
-    if (*sm) snprintf(L[n++], sizeof L[0], "SET-UP DIFFERS: %s", sm);
+    if (*sm) snprintf(L[n++], sizeof L[0], "%s", sm);
     for (int i = 0; i < n; i++) lp[i] = L[i];
     screen(lp, n);
 }
@@ -156,7 +207,7 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         uint32_t here = lnk_present_mask(); int left = (lnk_gather_left_ms() + 999) / 1000;
         const uint32_t deaf = lnk_hear_mask() & ~lnk_heard_by_mask();   /* cabinets this one hears that cannot hear it */
         char sm[160]; setup_msg(sm, sizeof sm);
-        if (strcmp(sm, setup_msg_shown)) { if (*sm) fprintf(stderr, "[LINK] SET-UP DIFFERS: %s (Esc > Network on each cabinet: the same set size and address list)\n", sm);
+        if (strcmp(sm, setup_msg_shown)) { if (*sm) fprintf(stderr, "[LINK] %s\n", sm);
                                            snprintf(setup_msg_shown, sizeof setup_msg_shown, "%s", sm); shown_s = -1; }
         static uint64_t next_draw;
         if (screen && SDL_GetTicks64() >= next_draw) { next_draw = SDL_GetTicks64() + 100; wait_screen(screen, title, here, deaf, left, sm); }
@@ -167,7 +218,7 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
             if (*miss) snprintf(t, sizeof t, "%s - Waiting for Cabinet%s %s (%d s)", title, strchr(miss, ',') ? "s" : "", miss, left);
             else snprintf(t, sizeof t, "%s - All cabinets found: starting", title);
             if (*d) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - Cabinet%s %s can't hear this PC", strchr(d, ',') ? "s" : "", d); }
-            if (*sm) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - SET-UP DIFFERS: %s", sm); }
+            if (*sm) { size_t tl = strlen(t); snprintf(t + tl, sizeof t - tl, " - %s", sm); }
             if (w) SDL_SetWindowTitle(w, t);
             if (here != shown || deaf != shown_deaf) {
                 char hb[200]; hearing(hb, sizeof hb, true);
@@ -221,18 +272,28 @@ static void check_ids(void)
 static void setup_msg(char *m, size_t n)
 {
     m[0] = 0;
+    for (int c = 0; c < cfg.nodes; c++) {                              /* another build: every cabinet needs the same copy of the game */
+        uint32_t crc, when;
+        if (!lnk_peer_build(c, &crc, &when) || crc == cfg.build_crc) continue;
+        char a[24] = "?", b[24] = "?"; time_t ta = (time_t)when, tb = (time_t)cfg.build_time; struct tm *tm;
+        if ((tm = localtime(&ta))) strftime(a, sizeof a, "%d %b %H:%M", tm);
+        if ((tm = localtime(&tb))) strftime(b, sizeof b, "%d %b %H:%M", tm);
+        if (strcmp(a, b)) snprintf(m, n, "DIFFERENT VERSION: Cabinet %d's game is dated %s, this PC's %s", c + 1, a, b);
+        else snprintf(m, n, "DIFFERENT VERSION: Cabinet %d runs a different build of the game", c + 1);
+        return;
+    }
     for (int c = 0; c < cfg.nodes; c++) {
         bool same = true; const int nodes = lnk_peer_setup(c, &same);
         if (!nodes) continue;
-        if (nodes != cfg.nodes) { snprintf(m, n, "Cabinet %d is set for %d cabinets, this PC for %d", c + 1, nodes, cfg.nodes); return; }
-        if (!same) { snprintf(m, n, "Cabinet %d has a different address list", c + 1); return; }
+        if (nodes != cfg.nodes) { snprintf(m, n, "SET-UP DIFFERS: Cabinet %d is set for %d cabinets, this PC for %d", c + 1, nodes, cfg.nodes); return; }
+        if (!same) { snprintf(m, n, "SET-UP DIFFERS: Cabinet %d has a different address list", c + 1); return; }
     }
 }
 static void check_setup(void)
 {
     char m[160]; setup_msg(m, sizeof m);
     if (!strcmp(m, setup_msg_shown)) return;
-    if (*m) fprintf(stderr, "[LINK] SET-UP DIFFERS: %s (Esc > Network on each cabinet: the same set size and address list)\n", m);
+    if (*m) fprintf(stderr, "[LINK] %s\n", m);
     else if (*setup_msg_shown) fprintf(stderr, "[LINK] every cabinet's set-up matches now\n");
     snprintf(setup_msg_shown, sizeof setup_msg_shown, "%s", m);
     set_title();
@@ -241,7 +302,7 @@ static void set_title(void)
 {
     if (!win) return;
     char t[640]; size_t k = (size_t)snprintf(t, sizeof t, "%s", base_title);
-    if (*setup_msg_shown && k < sizeof t) k += (size_t)snprintf(t + k, sizeof t - k, " - SET-UP DIFFERS: %s", setup_msg_shown);
+    if (*setup_msg_shown && k < sizeof t) k += (size_t)snprintf(t + k, sizeof t - k, " - %s", setup_msg_shown);
     if (*dup_msg && k < sizeof t) snprintf(t + k, sizeof t - k, " - WARNING: %s", dup_msg);
     SDL_SetWindowTitle(win, t);
 }
@@ -344,6 +405,13 @@ void link_host_frame(uint32_t frame, bool headless)
     if (frame % 30 == 0 && frame >= 300) check_ids();              /* the games take a moment to read their own ID from their settings: 0 until then */
     if (frame % 30 == 0) check_setup();
     safety_net(frame, headless);
+    { static char poor_shown[LNK_MAX_NODES];
+      for (int c = 0; c < cfg.nodes; c++) {
+          int ra, rm, lp; const bool poor = c != cfg.id && lnk_peer_quality(c, &ra, &rm, &lp) && quality_word(rm, lp)[0] == 'P';
+          if (poor && !poor_shown[c]) fprintf(stderr, "[LINK] frame %u: the path to Cabinet %d is POOR: round trip %d ms (worst %d), %d%% lost\n", frame, c + 1, ra, rm, lp);
+          poor_shown[c] = poor;
+      } }
+    if (frame % 1800 == 0) { char qb[200]; quality_text(qb, sizeof qb); if (*qb) fprintf(stderr, "[LINK] frame %u  quality: %s\n", frame, qb); }
     if (frame % 300 == 0) {
         report(frame);
         char hb[240]; hearing(hb, sizeof hb, true);
@@ -573,7 +641,9 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         else line("Status: Cabinet %d, linked with %s", cfg.id + 1, who);
         char hb[160]; hearing(hb, sizeof hb, false);
         line("%s", hb);
-        if (*setup_msg_shown) line("SET-UP DIFFERS: %s", setup_msg_shown);
+        if (*setup_msg_shown) line("%s", setup_msg_shown);
+        char qb[160]; quality_text(qb, sizeof qb);
+        if (*qb) line("Link quality: %s", qb);
         line("The game keeps running while this menu is open.");
     } else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
     else line("Status: link off");
@@ -597,6 +667,7 @@ int link_lights(link_light *out)
         char a[16]; int ago; uint32_t pk = 0;
         lnk_peer_info(c, a, &ago, &pk);
         bool same = true; const int nodes = lnk_peer_setup(c, &same);
+        uint32_t bc, bt; if (lnk_peer_build(c, &bc, &bt) && bc != cfg.build_crc) same = false;
         if (!(mem >> c & 1)) l->kind = LINK_LIGHT_OUT;
         else if (!(h >> c & 1)) l->kind = LINK_LIGHT_SILENT;
         else { l->kind = (by >> c & 1) && (!nodes || (nodes == cfg.nodes && same)) ? LINK_LIGHT_GOOD : LINK_LIGHT_ONEWAY; l->lit = (pk / 12) & 1; }

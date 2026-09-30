@@ -30,6 +30,7 @@ typedef struct {
     int      gather_ms;                     /* how long to wait at start-up for missing cabinets */
     int      delay_ms, jitter_ms, loss_pct; /* test only: a worse network than the real one */
     int      burst_every_ms, burst_hold_ms; /* test only: Wi-Fi's bursts -- every E ms, H ms of frames held back and then sent at once */
+    uint32_t build_crc, build_time;         /* this program (a fingerprint, its file date): cabinets on another build are warned about */
 } lnk_cfg;
 
 typedef struct {
@@ -58,6 +59,9 @@ int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addre
 bool     lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts);   /* false = cabinet n never heard since this start */
 uint32_t lnk_hear_mask(void);                         /* bit n = cabinet n+1 heard in the last second */
 uint32_t lnk_heard_by_mask(void);                     /* bit n = cabinet n+1 says it hears this one */
-int      lnk_peer_setup(int n, bool *same_list);      /* cabinet n's "Cabinets in the set" (0 = not heard / not told); *same_list: its
+int      lnk_peer_setup(int n, bool *same_list);
+bool     lnk_peer_build(int n, uint32_t *crc, uint32_t *time);   /* cabinet n's program (false = not heard / not told: an older build) */
+bool     lnk_peer_quality(int n, int *rtt_avg_ms, int *rtt_max_ms, int *loss_pct);   /* the path to cabinet n over the last 2 s:
+                                                       * round trip (average, worst) and messages lost; false = no measurement yet */      /* cabinet n's "Cabinets in the set" (0 = not heard / not told); *same_list: its
                                                        * address list (and port) are this PC's */
 #endif

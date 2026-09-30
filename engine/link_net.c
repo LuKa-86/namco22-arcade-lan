@@ -28,7 +28,11 @@ typedef int sock_t;
 #define MAGIC      0x4E32324Cu              /* "N22L" */
 #define PROTO      2
 #define T_FRAME    1
-#define T_HELLO    2                        /* + state 1, members 1, game ID + 1 (0 = unknown) 1, pad 1, age/waited ms 4 */
+#define T_HELLO    2                        /* + state 1, members 1, game ID + 1 (0 = unknown) 1, hears 1, age/waited ms 4, set size 1, pad 3,
+                                             *   list hash 4, [then] time sent 4, the last time heard from the receiver 4, held since 4,
+                                             *   build fingerprint 4, build date 4 (older builds send the first 16 or 8 bytes only) */
+#define HELLO_LEN  36
+#define QWIN_MS    2000                     /* the quality figures: over this window */
 #define T_BYE      3                        /* this cabinet is closing: step over it at once */
 #define HELLO_MS   25                       /* a hello to every cabinet this often ... */
 #define ALIVE_MS   120                      /* ... and one not heard for this long is off: the game gives up after 8 frames (133 ms) */
@@ -49,6 +53,10 @@ typedef struct {
     uint8_t  hears;                         /* who IT hears, from its hellos (bit n = cabinet n+1): a one-way path shows here */
     uint8_t  nodes;                         /* its "Cabinets in the set" (0 = not told: an older build) */
     uint32_t list_hash;                     /* a fingerprint of its address list */
+    uint32_t build_crc, build_time;         /* its program (0 = not told) */
+    uint32_t echo_t; uint64_t echo_at;      /* its last "time sent", and when it came: sent back in the next hello (the round trip) */
+    uint32_t q_n, q_sum, q_max, q_recv, q_lost;           /* this window: round-trip samples, messages received / missing */
+    int      rtt_avg, rtt_max, loss_pct;    /* the last complete window's (-1 = none) */
     bool     warned_from;
 } peer_t;
 
@@ -66,7 +74,7 @@ static struct {
     uint64_t t_open, t_session;
     peer_t   p[LNK_MAX_NODES];
     uint32_t seq_to[LNK_MAX_NODES], last_seq[LNK_MAX_NODES];   /* numbered per destination: a gap = packets lost on that path */
-    uint64_t next_hello;
+    uint64_t next_hello, q_t0;
     lnk_stats st;
     uint32_t rng;
     struct { uint64_t due; int dst, len; uint8_t b[HDR + 2 * LNK_MAX_WORDS]; } held[256];   /* test delay */
@@ -133,7 +141,7 @@ bool lnk_open(const lnk_cfg *cfg)
     L.rng = 0x9E3779B9u ^ (uint32_t)L.cfg.id * 7919u ^ (uint32_t)now_ms() ^ (uint32_t)SDL_GetPerformanceCounter();
     L.state = LNK_GATHERING;
     L.game_id = -1;
-    for (int n = 0; n < LNK_MAX_NODES; n++) L.p[n].game_id = -1;
+    for (int n = 0; n < LNK_MAX_NODES; n++) { L.p[n].game_id = -1; L.p[n].rtt_avg = L.p[n].rtt_max = L.p[n].loss_pct = -1; }
     L.t_open = now_ms();
     L.on = true;
     fprintf(stderr, "[LINK] cabinet %d of up to %d, UDP port %d%s; waiting up to %d s for the others\n", L.cfg.id + 1, L.cfg.nodes,
@@ -167,6 +175,18 @@ int lnk_peer_setup(int n, bool *same_list)
     if (n < 0 || n >= L.cfg.nodes || n == L.cfg.id || !L.p[n].nodes || !L.p[n].heard || now_ms() - L.p[n].heard >= HEAR_MS) return 0;
     *same_list = L.p[n].list_hash == L.list_hash;
     return L.p[n].nodes;
+}
+bool lnk_peer_build(int n, uint32_t *crc, uint32_t *time)
+{
+    if (n < 0 || n >= L.cfg.nodes || n == L.cfg.id || !L.p[n].build_crc || !L.p[n].heard || now_ms() - L.p[n].heard >= HEAR_MS) return false;
+    *crc = L.p[n].build_crc; *time = L.p[n].build_time;
+    return true;
+}
+bool lnk_peer_quality(int n, int *rtt_avg_ms, int *rtt_max_ms, int *loss_pct)
+{
+    if (n < 0 || n >= L.cfg.nodes || n == L.cfg.id || !L.p[n].heard || now_ms() - L.p[n].heard >= HEAR_MS || L.p[n].rtt_avg < 0) return false;
+    *rtt_avg_ms = L.p[n].rtt_avg; *rtt_max_ms = L.p[n].rtt_max; *loss_pct = L.p[n].loss_pct < 0 ? 0 : L.p[n].loss_pct;
+    return true;
 }
 uint32_t lnk_hear_mask(void)
 {
@@ -220,11 +240,15 @@ static void raw_send(int dst, const uint8_t *b, int len)
 }
 
 /* the test impairments apply to frames only (hellos go straight out) */
-static void send_frame_packet(int dst, const uint8_t *b, int len)
+static void send_impaired(int dst, const uint8_t *b, int len, bool bursts);
+static void send_frame_packet(int dst, const uint8_t *b, int len) { send_impaired(dst, b, len, true); }
+/* TEST (--link-test): a worse network. Frames get all of it; hellos the delay, jitter and loss (a real network treats them alike) but
+ * not the bursts (held 120 ms, a cabinet would count as gone) */
+static void send_impaired(int dst, const uint8_t *b, int len, bool bursts)
 {
     if (L.cfg.loss_pct && (int)(rnd() % 100) < L.cfg.loss_pct) { L.st.dropped_test++; return; }
     int d = L.cfg.delay_ms + (L.cfg.jitter_ms ? (int)(rnd() % (unsigned)(L.cfg.jitter_ms + 1)) : 0);
-    if (L.cfg.burst_every_ms > 0 && L.cfg.burst_hold_ms > 0) {            /* a radio asleep: held to the end of its nap, then all at once */
+    if (bursts && L.cfg.burst_every_ms > 0 && L.cfg.burst_hold_ms > 0) {            /* a radio asleep: held to the end of its nap, then all at once */
         const int phase = (int)(now_ms() % (uint64_t)L.cfg.burst_every_ms);
         if (phase < L.cfg.burst_hold_ms) d += L.cfg.burst_hold_ms - phase;
     }
@@ -269,15 +293,34 @@ static void hellos(void)
     uint64_t t = now_ms();
     if (t < L.next_hello) return;
     L.next_hello = t + HELLO_MS;
-    uint8_t b[HDR + 16];
+    uint8_t b[HDR + HELLO_LEN];
     uint32_t ms = (uint32_t)(t - (L.state == LNK_LINKED ? L.t_session : L.t_open));
+    if (!L.q_t0) L.q_t0 = t;
+    if (t - L.q_t0 >= QWIN_MS) {                                        /* close the quality window */
+        static int windows;                                             /* (the first two are start-up: hellos that waited in the socket
+                                                                         * while the other copy was still loading) */
+        const bool counts = ++windows > 2;
+        for (int n = 0; n < L.cfg.nodes; n++) {
+            peer_t *p = &L.p[n];
+            if (!counts) p->q_n = 0;
+            p->rtt_avg = p->q_n ? (int)(p->q_sum / p->q_n) : -1; p->rtt_max = p->q_n ? (int)p->q_max : -1;
+            p->loss_pct = p->q_recv + p->q_lost ? (int)(p->q_lost * 100u / (p->q_recv + p->q_lost)) : -1;
+            p->q_n = p->q_sum = p->q_max = p->q_recv = p->q_lost = 0;
+        }
+        L.q_t0 = t;
+    }
     uint8_t hear = (uint8_t)(1u << L.cfg.id);                           /* who this one hears (the others show it: a one-way path) */
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id && L.p[n].heard && t - L.p[n].heard < HEAR_MS) hear |= (uint8_t)(1u << n);
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
         header(b, T_HELLO, n);
         b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = hear; put32(b + HDR + 4, ms);
         b[HDR + 8] = (uint8_t)L.cfg.nodes; b[HDR + 9] = 0; b[HDR + 10] = 0; b[HDR + 11] = 0; put32(b + HDR + 12, L.list_hash);
-        raw_send(n, b, HDR + 16);
+        const peer_t *p = &L.p[n];
+        put32(b + HDR + 16, (uint32_t)t); put32(b + HDR + 20, p->echo_at ? p->echo_t : 0);
+        put32(b + HDR + 24, p->echo_at ? (uint32_t)(t - p->echo_at) : 0);
+        put32(b + HDR + 28, L.cfg.build_crc); put32(b + HDR + 32, L.cfg.build_time);
+        if (L.cfg.delay_ms || L.cfg.jitter_ms || L.cfg.loss_pct) send_impaired(n, b, HDR + HELLO_LEN, false);
+        else raw_send(n, b, HDR + HELLO_LEN);
     }
 }
 
@@ -316,13 +359,23 @@ static int take(uint16_t *w, int max)
     }
     uint32_t seq = get32(b + 8);
     /* lost = gaps in the numbering; a late (reordered) packet fills its gap back in */
-    if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) L.st.lost_seq += seq - L.last_seq[src] - 1;
-    else if (seq < L.last_seq[src] && L.last_seq[src] - seq < 1000 && L.st.lost_seq) L.st.lost_seq--;
+    if (L.last_seq[src] && seq > L.last_seq[src] + 1 && seq - L.last_seq[src] < 1000) { L.st.lost_seq += seq - L.last_seq[src] - 1; p->q_lost += seq - L.last_seq[src] - 1; }
+    else if (seq < L.last_seq[src] && L.last_seq[src] - seq < 1000 && L.st.lost_seq) { L.st.lost_seq--; if (p->q_lost) p->q_lost--; }
+    p->q_recv++;
     if (seq > L.last_seq[src] || L.last_seq[src] - seq > 100000) L.last_seq[src] = seq;   /* (a restarted cabinet counts from 1 again) */
     switch (b[5]) {
     case T_HELLO:
         if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->hears = b[HDR + 3]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
         if (len >= HDR + 16) { p->nodes = b[HDR + 8]; p->list_hash = get32(b + HDR + 12); }
+        if (len >= HDR + HELLO_LEN) {
+            p->echo_t = get32(b + HDR + 16); p->echo_at = now_ms();
+            const uint32_t back = get32(b + HDR + 20), held = get32(b + HDR + 24);
+            if (back) {                                                 /* our own time, back: the round trip less its wait before sending */
+                const uint32_t rtt = (uint32_t)p->echo_at - back - held;
+                if (rtt < 5000) { p->q_n++; p->q_sum += rtt; if (rtt > p->q_max) p->q_max = rtt; }
+            }
+            p->build_crc = get32(b + HDR + 28); p->build_time = get32(b + HDR + 32);
+        }
         return 0;
     case T_BYE:
         p->heard = 0;
