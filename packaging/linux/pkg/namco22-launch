@@ -4,33 +4,40 @@
 #   namco22-launch rave [1-9] [args]     Rave Racer (a number = window scale)
 #   namco22-launch tokyo [1-9] [args]    Tokyo Wars (a number = window scale)
 #   namco22-launch dirt [1-9] [args]     Dirt Dash (a number = window scale)
+#   namco22-launch tc [1-9] [args]       Time Crisis (a number = window scale; the mouse is the gun)
 # Each game plays from its own folder under ~/.local/share/namco22/, which holds
 # its roms/, the unpacked chips, the settings, scores and recordings. The ROM zips
 # (MAME sets) go in that roms/ folder; ~/Downloads is checked on first start.
-LIB=/usr/lib/namco22
+# AppImage: zips next to the .AppImage (or in a roms/ folder beside it) are found too,
+# and PORTABLE MODE -- a folder named namco22-data next to the .AppImage -- keeps
+# everything there instead of ~/.local/share (one disk for a Steam Deck and a PC).
+LIB=${NAMCO22_LIB:-/usr/lib/namco22}      # an AppImage points this at its own copy
 game="$1"; [ $# -gt 0 ] && shift
 case "$game" in
     prop|propcycle) title="Prop Cycle"; dir=propcycle; zips="propcycl.zip" ;;
     rave|raverace)  title="Rave Racer"; dir=raverace;  zips="raverace.zip namcoc74.zip" ;;
     tokyo|tokyowar|tokyowars|tw) title="Tokyo Wars"; dir=tokyowar; zips="tokyowar.zip" ;;
     dirt|dirtdash|dd) title="Dirt Dash"; dir=dirtdash; zips="dirtdash.zip" ;;
-    *) sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 1 ;;
+    tc|timecris|timecrisis|crisis) title="Time Crisis"; dir=timecris; zips="timecris.zip" ;;
+    *) sed -n '2,11p' "$0" | sed 's/^# \?//'; exit 1 ;;
 esac
-data="${XDG_DATA_HOME:-$HOME/.local/share}/namco22/$dir"
+# $APPIMAGE is the .AppImage's own path (set by the AppImage runtime, also with --appimage-extract-and-run)
+appdir=""; [ -n "${APPIMAGE:-}" ] && appdir=$(dirname "$APPIMAGE")
+if [ -n "$appdir" ] && [ -d "$appdir/namco22-data" ]; then
+    data="$appdir/namco22-data/$dir"                   # portable: the folder travels with the AppImage
+    echo "[launch] portable mode: $data" >&2
+else
+    data="${XDG_DATA_HOME:-$HOME/.local/share}/namco22/$dir"
+fi
 mkdir -p "$data/roms" || exit 1
 cd "$data" || exit 1
 
-# namcoc71.zip (c71.bin, the DSP BIOS) is only needed when the game's own zip lacks it: copy it when it is lying about, never demand it
-if [ "$dir" != propcycle ]; then
-    for s in "$HOME/Downloads/namcoc71.zip" "$HOME/namcoc71.zip"; do
-        [ -f "roms/namcoc71.zip" ] && break
-        [ -f "$s" ] && cp "$s" roms/ && break
-    done
-fi
+hidden=" ~/.local is hidden: press Ctrl+H in a file manager."
+case "$data" in "${XDG_DATA_HOME:-$HOME/.local/share}"/*) ;; *) hidden="" ;; esac
 missing=""
 for z in $zips; do
     [ -f "roms/$z" ] && continue
-    for s in "$HOME/Downloads/$z" "$HOME/$z"; do
+    for s in ${appdir:+"$appdir/$z" "$appdir/roms/$z"} "$HOME/Downloads/$z" "$HOME/$z"; do
         if [ -f "$s" ]; then cp "$s" roms/ && break; fi
     done
     [ -f "roms/$z" ] || missing="$missing $z"
@@ -42,9 +49,10 @@ if [ -n "$missing" ] && [ -z "$(ls -A extracted 2>/dev/null)" ]; then
 Missing:$missing
 
 Copy the MAME ROM zip(s) into this folder, then start the game again:
-    $data/roms
+    $data/roms${appdir:+
+(or next to the AppImage: $appdir)}
 
-(This folder is now open. ~/.local is hidden: press Ctrl+H in a file manager.)"
+(This folder is now open.$hidden)"
     echo "$msg" >&2
     if [ -n "$DISPLAY$WAYLAND_DISPLAY" ]; then
         if command -v zenity >/dev/null 2>&1; then zenity --error --title="$title" --text="$msg" 2>/dev/null
@@ -76,4 +84,9 @@ case "$dir" in
             exec "$LIB/dd" extracted --window ${1:+"$1"}
         fi
         exec "$LIB/dd" extracted "$@" ;;
+    timecris)
+        if [ $# -eq 0 ] || expr "$1" : '[1-9]$' >/dev/null; then
+            exec "$LIB/tc" extracted --window ${1:+"$1"}
+        fi
+        exec "$LIB/tc" extracted "$@" ;;
 esac

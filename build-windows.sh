@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the WINDOWS versions of Prop Cycle, Rave Racer, Tokyo Wars and Dirt Dash, from Linux.
+# Build the WINDOWS versions of Prop Cycle, Rave Racer, Tokyo Wars, Dirt Dash and Time Crisis, from Linux.
 #
 #   ./build-windows.sh
 #
@@ -8,7 +8,7 @@
 # comes with Windows and the GPU driver), an empty roms/ folder and
 # HOW TO PLAY.txt -- plus windows-release.zip.
 # On Windows: put the MAME ROM sets in roms/ (propcycl.zip for Prop Cycle;
-# raverace.zip + namcoc74.zip for Rave Racer; tokyowar.zip for Tokyo Wars; dirtdash.zip for Dirt Dash; namcoc71.zip too if a game says c71.bin is missing) and
+# raverace.zip + namcoc74.zip for Rave Racer; tokyowar.zip for Tokyo Wars; dirtdash.zip for Dirt Dash; timecris.zip for Time Crisis) and
 # double-click the game. The
 # first start unpacks the ROMs into extracted/ beside it.
 #
@@ -80,22 +80,26 @@ set(ENV{PKG_CONFIG_PATH} "")
 EOF
 cmake -S . -B build-win/cmake -DCMAKE_TOOLCHAIN_FILE="$TOP/build-win/toolchain.cmake" \
       -DCMAKE_BUILD_TYPE=RelWithDebInfo >/dev/null
-cmake --build build-win/cmake --target propcycl -j"$(nproc)"
+cmake --build build-win/cmake --target propcycl -j"${JOBS:-$(nproc)}"
 # Rave Racer (raverace/): the same toolchain; its generated sources (gen/) come
 # with the tree, the sound program is translated at build time with the host python
 cmake -S raverace -B build-win/rr -DCMAKE_TOOLCHAIN_FILE="$TOP/build-win/toolchain.cmake" \
       -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build build-win/rr --target rr -j"$(nproc)"
+cmake --build build-win/rr --target rr -j"${JOBS:-$(nproc)}"
 # Tokyo Wars (tokyowar/): the same toolchain; its lifted program (gen/tw_lifted.c) comes with the tree, the sound and
 # master-DSP programs are translated at build time from the ROM set (tokyowar/extracted/) with the host python
 cmake -S tokyowar -B build-win/tw -DCMAKE_TOOLCHAIN_FILE="$TOP/build-win/toolchain.cmake" \
       -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build build-win/tw --target tw -j"$(nproc)"
+cmake --build build-win/tw --target tw -j"${JOBS:-$(nproc)}"
 # Dirt Dash (dirtdash/): the same again -- gen/dd_lifted.c comes with the tree, the sound and master-DSP programs are
 # translated at build time from the ROM set (dirtdash/extracted/)
 cmake -S dirtdash -B build-win/dd -DCMAKE_TOOLCHAIN_FILE="$TOP/build-win/toolchain.cmake" \
       -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build build-win/dd --target dd -j"$(nproc)"
+cmake --build build-win/dd --target dd -j"${JOBS:-$(nproc)}"
+# Time Crisis (timecris/): the same again (gen/tc_lifted_NN.c comes with the tree; the master DSP and sound programs are translated from timecris/extracted/)
+cmake -S timecris -B build-win/tc -DCMAKE_TOOLCHAIN_FILE="$TOP/build-win/toolchain.cmake" \
+      -DCMAKE_BUILD_TYPE=Release >/dev/null
+cmake --build build-win/tc --target tc -j"${JOBS:-$(nproc)}"
 
 # --- package: windows-release/ ---------------------------------------------------
 # Everything Windows needs, in one folder. The instructions and the roms/
@@ -104,18 +108,20 @@ REL="$TOP/windows-release"
 rm -rf "$REL" "$TOP/windows-release.zip" "$TOP/dist"
 mkdir -p "$REL"
 cp -r "$TOP/packaging/windows/." "$REL/"
+cp "$TOP/LICENSE" "$REL/LICENSE.txt"
 cp build-win/cmake/propcycl.exe "$REL/PropCycle.exe"
 cp build-win/rr/rr.exe "$REL/RaveRacer.exe"
 cp build-win/tw/tw.exe "$REL/TokyoWars.exe"
 cp build-win/dd/dd.exe "$REL/DirtDash.exe"
+cp build-win/tc/tc.exe "$REL/TimeCrisis.exe"
 mkdir -p "$REL/mesa"
 cp "$MESA/opengl32.dll" "$MESA/libgallium_wgl.dll" "$REL/mesa/"
-x86_64-w64-mingw32-strip "$REL/PropCycle.exe" "$REL/RaveRacer.exe" "$REL/TokyoWars.exe" "$REL/DirtDash.exe"
+x86_64-w64-mingw32-strip "$REL/PropCycle.exe" "$REL/RaveRacer.exe" "$REL/TokyoWars.exe" "$REL/DirtDash.exe" "$REL/TimeCrisis.exe"
 # the .exe must need nothing beside it: every DLL it imports must ship with Windows
 # (OPENGL32.dll does -- it hands over to the installed GPU driver and is never bundled)
-for exe in PropCycle.exe RaveRacer.exe TokyoWars.exe DirtDash.exe; do
+for exe in PropCycle.exe RaveRacer.exe TokyoWars.exe DirtDash.exe TimeCrisis.exe; do
     bad=$(x86_64-w64-mingw32-objdump -p "$REL/$exe" | awk '/DLL Name/ {print $3}' |
-          grep -viE '^(kernel32|user32|gdi32|opengl32|advapi32|shell32|ole32|oleaut32|imm32|setupapi|version|winmm|dinput8|api-ms-win-crt-.*)\.dll$' || true)
+          grep -viE '^(kernel32|user32|gdi32|opengl32|advapi32|shell32|ole32|oleaut32|imm32|setupapi|version|winmm|dinput8|ws2_32|api-ms-win-crt-.*)\.dll$' || true)
     [ -z "$bad" ] || { echo "$exe needs DLLs Windows does not ship: $bad"; exit 1; }
 done
 (cd "$TOP" && python3 -c "import shutil; shutil.make_archive('windows-release', 'zip', '.', 'windows-release')")

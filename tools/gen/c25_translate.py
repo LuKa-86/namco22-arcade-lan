@@ -28,10 +28,10 @@ instruction becomes a `case` that
 so the translation can be gated as EQUAL to the oracle. A PC with no
 translation TRAPS LOUDLY (the master stops and says where) -- never skipped.
 """
-import argparse, os, sys
+import argparse, os, re, sys
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--game', required=True, choices=['pc', 'rr', 'tw', 'dd'])
+ap.add_argument('--game', required=True, choices=['pc', 'rr', 'tw', 'dd', 'tc'])
 ap.add_argument('--roms', required=True)
 ap.add_argument('--cov', action='append', default=[])
 ap.add_argument('--out')
@@ -45,12 +45,10 @@ a = ap.parse_args()
 def words_be(b):
     return [(b[2 * i] << 8) | b[2 * i + 1] for i in range(len(b) // 2)]
 
-bp = os.path.join(a.roms, 'c71.bin')
-if os.path.exists(bp):
-    bios_img = {i: w for i, w in enumerate(words_be(open(bp, 'rb').read())[:0x4000])}
-else:   # optional in some ROM sets: the BIOS is then left untranslated (the master cannot boot)
-    print(f'c25_translate: WARNING: no {bp}; the master DSP BIOS is not translated', file=sys.stderr)
-    bios_img = {}
+# the C71 BIOS is built into the games (engine/c25/c71_bios.inc, made by tools/gen/c71_embed.py from MAME's c71.bin): the same words the run-time loads
+_inc = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'engine', 'c25', 'c71_bios.inc')
+bios_img = {i: int(w, 16) for i, w in enumerate(re.findall(r'0x([0-9a-fA-F]{4})', open(_inc).read())[:0x4000])}
+assert len(bios_img) == 0x1000, f'{_inc}: expected 4096 BIOS words, found {len(bios_img)}'
 
 if a.game == 'dd':
     # Dirt Dash (Super System 22): two 2 MB chips, MAME ROM_LOAD32_WORD_SWAP -- dt2vera.2 the high word of every long, dt2vera.1 the
@@ -61,6 +59,12 @@ if a.game == 'dd':
     for i in range(0, len(hi), 2):
         rom[2 * i] = hi[i + 1]; rom[2 * i + 1] = hi[i]; rom[2 * i + 2] = lo[i + 1]; rom[2 * i + 3] = lo[i]
     main_block = 0x57F00
+elif a.game == 'tc':
+    # Time Crisis (Super System 22): the assembled 68K program (timecris/tools/setup_roms.py: four 1 MB chips ROM_LOAD32_BYTE). The upload routine
+    # (0xBBA3C..) copies the master program's block at 0xABA8C to polygon RAM 0xC00C00 before it writes 0xFF to syscon 0x1C; a second block at
+    # 0xBB616 follows the handshake (the slave's, as in Rave Racer / Ace Driver). --main-rom timecris_main.bin
+    rom = open(a.main_rom, 'rb').read() if a.main_rom else open(os.path.join(os.path.dirname(os.path.abspath(a.roms)), 'timecris_main.bin'), 'rb').read()
+    main_block = 0xABA8C
 elif a.game in ('pc', 'tw'):
     # Super System 22: <game>ver-a.1..4 byte-interleaved 4,3,2,1 (src/rom_loader.c; ROM_LOAD32_BYTE).
     #   Prop Cycle: pr2ver-a.*, the game program's count word at 0x43748 (src/master_dsp.c)
@@ -226,12 +230,17 @@ w('    return false;')
 w('}')
 w('')
 w('/* One instruction and its RPT repeats: the step loop of the oracle, with the')
-w(' * opcode a constant. */')
+w(' * opcode a constant. The iter hook exists only in C25_DEV_HOOKS builds. */')
+w('#ifdef C25_DEV_HOOKS')
+w('#define RUN_HOOK_ITER if (c25_hook_iter) c25_hook_iter();')
+w('#else')
+w('#define RUN_HOOK_ITER')
+w('#endif')
 w('#define RUN(PC, OP, O) do { \\')
 w('        d->ops = (O); d->pc = (uint16_t)((PC) + 1); \\')
 w('        const int n_ = d->rpt + 1; d->rpt = 0; \\')
 w('        for (int it_ = 0; it_ < n_; it_++) { \\')
-w('            if (c25_hook_iter) c25_hook_iter(); \\')
+w('            RUN_HOOK_ITER \\')
 w('            if (!c25_exec(d, (PC), (OP), it_)) { d->ops = NULL; return false; } \\')
 w('        } \\')
 w('        d->ops = NULL; return true; \\')

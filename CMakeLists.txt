@@ -81,6 +81,9 @@ if(WIN32)
 endif()
 set(OpenGL_GL_PREFERENCE GLVND)
 find_package(OpenGL REQUIRED)
+if(WIN32)
+  set(ZLIB_USE_STATIC_LIBS ON)   # MSYS2's zlib comes as a DLL too: link the static one, or the .exe needs zlib1.dll (CMake 3.24+)
+endif()
 find_package(ZLIB REQUIRED)
 
 # THE SHARED ENGINE (engine/): one renderer, texture bake, C352 and sound-MCU
@@ -124,6 +127,9 @@ set(PROPCYCL_ENGINE_SRC
     src/game_system.c
     src/game_terrain.c
     src/game_title.c
+    src/test_mode.c
+    src/test_mode_io.c
+    src/test_mode_misc.c
     src/game_core.c
     src/game_stubs.c
     src/rom_decode.c
@@ -162,10 +168,10 @@ include_directories(src/snd)
 add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/pc_c25.c
   COMMAND ${Python3_EXECUTABLE} tools/gen/c25_translate.py --game pc --roms extracted
           --cov tools/gen/c25_pc.cov --out gen/pc_c25.c --func pc_c25_exec
-  DEPENDS tools/gen/c25_translate.py tools/gen/c25_pc.cov
+  DEPENDS tools/gen/c25_translate.py tools/gen/c25_pc.cov engine/c25/c71_bios.inc
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Translating the master DSP program to C")
-set_source_files_properties(gen/pc_c25.c PROPERTIES COMPILE_OPTIONS "-O1;-w")
+set_source_files_properties(gen/pc_c25.c PROPERTIES COMPILE_OPTIONS "-O2;-w")
 
 add_executable(propcycl
     src/main.c
@@ -173,6 +179,7 @@ add_executable(propcycl
 )
 
 target_include_directories(propcycl PRIVATE include ${SDL2_INCLUDE_DIRS})
+target_compile_definitions(propcycl PRIVATE C25_TRACK_WRITTEN)   # master_dsp.c's write stats
 if(WIN32)
     # Windows: no opengl32 import -- src/gl_dyn.c resolves OpenGL at run time, so the
     # game can fall back to the bundled Mesa (mesa/) when there is no real driver
@@ -293,9 +300,11 @@ target_link_libraries(c352_replay PRIVATE m)
 add_executable(master_gate tools/master_gate.c ${NAMCO22_ENGINE_C25_SRC} ${NAMCO22_C25_ORACLE_SRC})
 target_include_directories(master_gate PRIVATE include)
 target_compile_options(master_gate PRIVATE -Wall)
+target_compile_definitions(master_gate PRIVATE C25_DEV_HOOKS C25_TRACK_WRITTEN)
 add_executable(master_seq_gate tools/master_seq_gate.c ${NAMCO22_ENGINE_C25_SRC} ${NAMCO22_C25_ORACLE_SRC})
 target_include_directories(master_seq_gate PRIVATE include)
 target_compile_options(master_seq_gate PRIVATE -Wall)
+target_compile_definitions(master_seq_gate PRIVATE C25_DEV_HOOKS C25_TRACK_WRITTEN)
 
 # TEST ORACLE: the game with the ORIGINAL sound program fetched and decoded from
 # memory in place of gen/snd_driver.c. Never shipped. See tools/sndoracle/.
@@ -306,7 +315,7 @@ list(REMOVE_ITEM PROPCYCL_ORACLE_SRC gen/snd_driver.c src/snd/snd_engine.c)
 add_executable(propcycl_oracle src/main.c ${PROPCYCL_ENGINE_SRC} ${NAMCO22_C25_ORACLE_SRC})
 target_include_directories(propcycl_oracle PRIVATE include ${SDL2_INCLUDE_DIRS})
 target_link_libraries(propcycl_oracle PRIVATE ${SDL2_LINK_LIBRARIES} OpenGL::GL m ZLIB::ZLIB)
-target_compile_definitions(propcycl_oracle PRIVATE PROPCYCL_ORACLE)
+target_compile_definitions(propcycl_oracle PRIVATE PROPCYCL_ORACLE C25_DEV_HOOKS)
 
 add_executable(propcycl_sndoracle src/main.c ${PROPCYCL_ORACLE_SRC} tools/sndoracle/m37710.c tools/sndoracle/sound_oracle.c)
 target_include_directories(propcycl_sndoracle PRIVATE include ${SDL2_INCLUDE_DIRS})

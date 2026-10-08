@@ -14,22 +14,31 @@ void rr_ui_input_end(void);
 bool rr_ui_event(SDL_Event *e);          /* true = the menu took it */
 void rr_ui_draw(bool *quit);             /* after the game picture, before present */
 bool rr_ui_quit_requested(void);
+bool rr_ui_chat_event(SDL_Event *e);    /* online: T opens the quick chat box; while it is open it takes every event (true = consumed) */
+bool rr_ui_chat_typing(void);           /* the quick chat box has the keyboard: the host releases the game's keys */
+bool rr_ui_chat_active(void);           /* the chat overlay is showing (typing, or a line in the last 10 s) */
 /* headless tests: drive the menu without an input device */
 enum { RR_UI_UP, RR_UI_DOWN, RR_UI_LEFT, RR_UI_RIGHT, RR_UI_OK, RR_UI_BACK, RR_UI_TABPREV, RR_UI_TABNEXT };
 void rr_ui_test_nav(int k);
-void rr_ui_test_goto(int tab, int row);  /* tab: 0 File 1 Display 2 Audio 3 Controls 4 Record */
+void rr_ui_test_goto(int tab, int row);  /* tab: 0 File 1 Display 2 Audio 3 Controls 4 Record 5 Online */
 
 /* rr_host.c: every display/audio/option change, applied and saved */
 void rr_host_set_winmode(int m);         /* 0 windowed, 1 desktop fullscreen, 2 exclusive */
 void rr_host_set_scale(int k);           /* windowed size, 1..4 x 640x480 */
 void rr_host_set_res(int w, int h);      /* render size; 0x0 = native */
 void rr_host_set_wide(int on);
+void rr_host_set_hud_edges(int on);                /* widescreen: the HUD at the edges (default) or the original, in the 4:3 centre */
 void rr_host_set_draw(int level);           /* draw distance 0 original .. 3 maximum */
 const char *rr_host_draw_name(int level);
 void rr_host_set_aspect(int a);          /* 0 stretch, 1 4:3, 2 8:7, 3 16:9 */
 void rr_host_set_scaling(int s);         /* 0 smooth, 1 sharp, 2 integer */
 void rr_host_set_volume(int percent);
 void rr_host_set_freeplay(bool on);
+void rr_host_set_ffb_strength(int pct);    /* 0-100, 0 = off; also the game's STEERING MOTOR option */
+void rr_host_set_ffb_invert(bool on);
+bool rr_host_ffb_wheel(void);              /* a force-feedback wheel is bound to steering */
+void rr_host_set_net_server(const char *s);  /* the Online page's server address, saved + resolved */
+void rr_host_set_net_name(const char *s);    /* the lobby name, saved */
 void rr_host_toggle_record(void);
 void rr_ui_set_hint(const char *text, int frames);   /* a hint line at the bottom of the window while the menu is closed */
 bool rr_ui_hint_active(void);

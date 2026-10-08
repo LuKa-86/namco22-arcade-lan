@@ -22,6 +22,7 @@
 #include <string.h>
 #include <SDL.h>
 #include "eng_gl.h"
+#include "rr_game.h"
 #include "eng.h"
 #include "geo_hw.h"
 #include "slave_list.h"
@@ -33,6 +34,7 @@
 #include "rr_dsp.h"
 #include "rr_scene.h"
 #include "rr_gl.h"
+#include "rr_game.h"
 
 #define NW 640
 #define NH 480
@@ -45,10 +47,8 @@ static int32_t pointram_read(uint32_t a) { return rr_dsp_pointram_read(a & 0xfff
 
 bool rr_gl_init(const char *dir)
 {
-    static const char *const cg[8] = { "rv1cg0.1a", "rv1cg1.1c", "rv1cg2.1d", "rv1cg3.1e",
-                                       "rv1cg4.1f", "rv1cg5.1j", "rv1cg6.1k", "rv1cg7.1n" };
-    if (!eng_load_texture_roms(dir, cg, "rv1ccrl.5a", "rv1ccrh.5c")) return false;
-    static const char *gp[3] = { "rr1gam.2d", "rr1gam.3d", "rr1gam.4d" };
+    if (!eng_load_texture_roms(dir, g_rr_game->cg, g_rr_game->ccrl, g_rr_game->ccrh)) return false;
+    const char *const *gp = g_rr_game->gamma;
     for (int i = 0; i < 3; i++) {
         char p[1024]; snprintf(p, sizeof p, "%s/%s", dir, gp[i]);
         FILE *f = fopen(p, "rb");
@@ -199,8 +199,13 @@ static bool build_text(int text_palbase, bool shadow_enabled, bool *any_shadow)
     return any;
 }
 
-static void upload(GLuint *tex, const uint8_t *px, int w, int h)
+/* *last: what the texture holds. A layer that has not changed is not sent again -- 1.2 MB a frame, and ~2 ms of it on Windows */
+static void upload(GLuint *tex, const uint8_t *px, int w, int h, uint8_t **last)
 {
+    const size_t n = (size_t)w * h * 4;
+    if (*tex && *last && !memcmp(*last, px, n)) return;
+    if (!*last) *last = malloc(n);
+    if (*last) memcpy(*last, px, n);
     if (!*tex) {
         glGenTextures(1, tex);
         glBindTexture(GL_TEXTURE_2D, *tex);
@@ -399,7 +404,7 @@ void rr_gl_draw(int vw, int vh)
       if (no) { any_text = false; any_shadow = false; } }
     glEnable(GL_BLEND);
     if (any_shadow) {                                   /* rgb *= mix/256 */
-        upload(&shd_tex, shd_rgba, NW, NH);
+        { static uint8_t *last; upload(&shd_tex, shd_rgba, NW, NH, &last); }
         glDisable(GL_ALPHA_TEST);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
         glBlendFunc(GL_ZERO, GL_SRC_COLOR);
@@ -408,7 +413,7 @@ void rr_gl_draw(int vw, int vh)
         glEnable(GL_ALPHA_TEST);
     }
     if (any_text) {
-        upload(&txt_tex, txt_rgba, NW, NH);
+        { static uint8_t *last; upload(&txt_tex, txt_rgba, NW, NH, &last); }
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
         glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA);
         draw_layer(txt_tex);
@@ -441,8 +446,10 @@ static SDL_GLContext hl_ctx;
 
 bool rr_gl_open_headless(int w, int h)
 {
+#ifndef _WIN32                                          /* Windows: SDL's offscreen driver makes OpenGL only through EGL, which Windows lacks -- the hidden window below does */
     SDL_SetHint("SDL_VIDEODRIVER", "offscreen");
     setenv("SDL_VIDEODRIVER", "offscreen", 1);         /* SDL < 2.0.22 reads only the environment */
+#endif
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_SetHint("SDL_VIDEODRIVER", ""); setenv("SDL_VIDEODRIVER", "", 1);
         if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "[GL] no video: %s\n", SDL_GetError()); return false; }

@@ -1,16 +1,14 @@
-PROP CYCLE, RAVE RACER, TOKYO WARS and DIRT DASH
-================================================
+PROP CYCLE, RAVE RACER, TOKYO WARS, DIRT DASH and TIME CRISIS
+==============================================================
 
 1. Put the MAME ROM sets into the "roms" folder (don't unzip them):
      Prop Cycle   propcycl.zip
      Rave Racer   raverace.zip  and  namcoc74.zip
      Tokyo Wars   tokyowar.zip
      Dirt Dash    dirtdash.zip
-   Rave Racer, Tokyo Wars and Dirt Dash also need c71.bin (the DSP BIOS). Usually it
-   is inside the game's zip. If a game says "c71.bin is missing", put MAME's
-   namcoc71.zip in the same folder (still zipped; nothing needs adding to another zip).
+     Time Crisis  timecris.zip
 
-2. Double-click PropCycle.exe, RaveRacer.exe, TokyoWars.exe or DirtDash.exe.
+2. Double-click PropCycle.exe, RaveRacer.exe, TokyoWars.exe, DirtDash.exe or TimeCrisis.exe.
 
 That's it. The first start takes a few seconds while it unpacks the ROMs.
 Nothing needs installing. Keep the "mesa" folder beside PropCycle.exe: it is
@@ -39,9 +37,18 @@ KEYS -- TOKYO WARS
   5             insert a coin           Enter      start
   Left / Right  steer (or A / D)        Up / Down  forward / backward pedal (or W / S)
   X / Z         right / left trigger    9          service
-  Esc           menu: Display (widescreen, window mode, resolution ...),
+  Esc           menu: Display (widescreen, window mode, resolution, frame rate ...),
                 Audio (volume), Controls (rebind the keys)
   F11           fullscreen              F12        screenshot
+
+KEYS -- TIME CRISIS
+-------------------
+  The MOUSE is the gun: move it to aim.        Left button   shoot (also starts the game)
+  Right button / Z   the foot pedal: step out of cover to attack, step back, reload
+  5   insert a coin (a game costs three)       9 service       F2 the operator's test switch
+  Esc menu     F8   a white border round the picture (some light guns need it)     F11 fullscreen
+  A light gun that acts as an absolute mouse (Sinden, Gun4IR, OpenFIRE, Reaper, AimTrak) works as is: shoot just OUTSIDE the
+  screen (or hold R / the gun's side button) to reload. Arrow keys / a pad's right stick aim too.
 
 KEYS -- DIRT DASH
 -----------------
@@ -49,7 +56,7 @@ KEYS -- DIRT DASH
   Left / Right  steer (or A / D)                     X          gas (throttle)
   Z             brake                                Q / E      shift down / up
   M             motion stop                          9          service
-  Esc           menu: Display (widescreen, window mode, resolution ...),
+  Esc           menu: Display (widescreen, window mode, resolution, frame rate ...),
                 Audio (volume), Controls (rebind the keys)
   F11           fullscreen                           F12        screenshot
 
@@ -65,12 +72,16 @@ PROBLEMS?
                                 "tokyowar" (World, TW2 Ver.A) and
                                 "dirtdash" (World, DT2 Ver.A).
 
-"c71.bin is missing"            Your ROM set keeps the DSP BIOS in a separate MAME
-                                set. Put namcoc71.zip in the roms folder beside
-                                the game's zip and start the game again.
-
 "Windows protected your PC"     Click "More info", then "Run anyway".
                                 (The games are not signed.)
+
+Slow or stuttering              Open the game's log (raveracer.log, tokyowars.log, dirtdash.log, timecris.log,
+                                propcycl.log beside the .exe). The line "[HOST] OpenGL: ..." says which
+                                graphics chip is used: on a laptop with two of them it must be the
+                                fast one (NVIDIA / AMD card). If not, set it by hand: Windows Settings >
+                                System > Display > Graphics > add the .exe > Options > High performance.
+                                "llvmpipe", "GDI Generic" or "Microsoft Basic Render Driver" means no graphics
+                                driver is installed. Plug the laptop in; a 60 Hz screen mode is smoothest.
 
 Black screen or won't start     Update your graphics driver. In a virtual
                                 machine Prop Cycle falls back to the "mesa"
@@ -78,7 +89,7 @@ Black screen or won't start     Update your graphics driver. In a virtual
                                 PropCycle.exe.
 
 Something else                  Each game writes a log beside it, from its
-                                last start: propcycl.log / raveracer.log / tokyowar.log / dirtdash.log.
+                                last start: propcycl.log / raveracer.log / tokyowar.log / dirtdash.log / timecris.log.
                                 It says what went wrong.
 
 Keep the folder somewhere you can write to (Downloads, Desktop, Documents --

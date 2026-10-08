@@ -28,9 +28,12 @@
 #include "rr_scene.h"
 #include "rr_lift_rt.h"
 #include "lift_cpu.h"
+#include "rr_game.h"
 #include "rr_lifted.h"
 #include "rr_input.h"
 #include "rr_sound.h"
+#include "rr_link.h"
+#include "rr_net.h"
 
 bool rr_host_open(int scale);
 bool rr_host_frame(void);
@@ -51,6 +54,7 @@ static bool gl_ok;                             /* a GL context and the video ROM
  * render time, reported as percentiles at exit. Quote these, never one run's fps. */
 #include <time.h>
 #include "tex_bake.h"
+#include "win_gpu.h"          /* Windows: run on the discrete GPU of a two-GPU laptop (Optimus / PowerXpress) */
 static FILE *perflog;                         /* RR_PERFLOG=<file>: one line per frame -- see the perf block */
 static double perflog_texels;
 static int perf_on;
@@ -134,6 +138,46 @@ static uint32_t slice, serial_acc;
 bool g_rr_in_vblank;
 static int vblank_slices;
 
+/* --sndsweep HOLD[:PASS[:SLOT_LO:SLOT_HI[:CMD_MAX[:FROM]]]]: the sound driver's coverage harness (engine/ss22_run.c's, for this board). Rave Racer's
+ * mailbox is the same as the Super 22 games' but at shared 0x1000: command words 0x1000 + slot*2, parameter words 0x1100..0x117E. PASS 0 writes
+ * every command 0x4000|c and 0xC000|c into every slot in turn; PASS 1-4 fill the parameters with 0x0000/0x4000/0x8000/0xFFFF first; PASS >= 5
+ * writes random commands and parameters (xorshift seeded by PASS). Run on rr_sndoracle with SND_COV=<file> (tools/grind_snd.sh). */
+static struct { int on, hold, pass, slot_lo, slot_hi, cmd_max, from; } sweep;
+static void sweep_arg(const char *a)
+{
+    sweep.on = 1; sweep.hold = 6; sweep.pass = 0; sweep.slot_lo = 0; sweep.slot_hi = 31; sweep.cmd_max = 0x7F; sweep.from = 1000;
+    sscanf(a, "%d:%d:%d:%d:%i:%d", &sweep.hold, &sweep.pass, &sweep.slot_lo, &sweep.slot_hi, &sweep.cmd_max, &sweep.from);
+    if (sweep.hold < 1) sweep.hold = 1;
+}
+#define SWEEP_BASE 0x1000
+static void sweep_put16(uint32_t off, uint16_t v) { g_rr.shared[SWEEP_BASE + off] = (uint8_t)(v >> 8); g_rr.shared[SWEEP_BASE + off + 1] = (uint8_t)v; }
+static uint32_t sweep_rnd(uint64_t *s) { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; return (uint32_t)(*s >> 16); }
+static void sweep_tick(void)
+{
+    static const uint16_t par[5] = { 0, 0x0000, 0x4000, 0x8000, 0xFFFF };
+    static long prev_slot = -1;
+    if (!sweep.on || frame < (uint32_t)sweep.from || (frame - (uint32_t)sweep.from) % (uint32_t)sweep.hold) return;
+    if (sweep.pass >= 5) {
+        static uint64_t rs;
+        if (!rs) rs = 0x9E3779B97F4A7C15ull * (uint64_t)sweep.pass;
+        for (int i = 0; i < 4; i++) {
+            uint32_t sl = (uint32_t)sweep.slot_lo + sweep_rnd(&rs) % (uint32_t)(sweep.slot_hi - sweep.slot_lo + 1);
+            uint32_t on = sweep_rnd(&rs), fl = sweep_rnd(&rs), c = sweep_rnd(&rs) % (uint32_t)(sweep.cmd_max + 1);
+            sweep_put16(sl * 2, (on & 3) ? (uint16_t)(((fl & 1) ? 0xC000u : 0x4000u) | c) : 0);
+        }
+        for (uint32_t o = 0x100; o < 0x180; o += 2) { uint32_t v = sweep_rnd(&rs); if (v & 1) sweep_put16(o, (uint16_t)(v >> 1)); }
+        return;
+    }
+    const long per_slot = 2L * (sweep.cmd_max + 1), nslots = sweep.slot_hi - sweep.slot_lo + 1;
+    const long n = (long)((frame - (uint32_t)sweep.from) / (uint32_t)sweep.hold);
+    if (prev_slot >= 0) sweep_put16((uint32_t)prev_slot * 2, 0);
+    if (n >= nslots * per_slot) { if (n == nslots * per_slot) fprintf(stderr, "[SNDSWEEP] done at frame %u\n", frame); prev_slot = -1; return; }
+    const long slot = sweep.slot_lo + n / per_slot, k = n % per_slot;
+    if (sweep.pass > 0) for (uint32_t o = 0x100; o < 0x180; o += 2) sweep_put16(o, par[sweep.pass]);
+    sweep_put16((uint32_t)slot * 2, (uint16_t)(((k & 1) ? 0xC000u : 0x4000u) | (unsigned)(k >> 1)));
+    prev_slot = slot;
+}
+
 void rr_tick(void)
 {
     rd_budget_out();
@@ -157,6 +201,7 @@ void rr_tick(void)
     if (serial_acc >= 60 * SLICES) { serial_acc -= 60 * SLICES; rr_dsp_serial(); }
     if (++slice % SLICES) return;
     frame++;
+    sweep_tick();
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
         rr_gl_prepare(rr_dsp_slave_active());
@@ -185,12 +230,32 @@ void rr_tick(void)
         if (frame == (uint32_t)test_coin + 6) g_hw.inputs |= 0x1000;
     }
     if (test_gas >= 0 && frame >= (uint32_t)test_gas) g_hw.gas = 0x610;
+    { static int nv = -1; static uint32_t vf[16];          /* RR_TEST_VIEW=f1,f2,...: press VIEW CHANGE (active low 0x0040) for 30 frames at each */
+      if (nv < 0) { nv = 0; const char *e = getenv("RR_TEST_VIEW"); while (e && *e && nv < 16) { char *q; const unsigned long v = strtoul(e, &q, 0); if (q == e) break; vf[nv++] = (uint32_t)v; e = q; if (*e == ',') e++; else break; } }
+      for (int i = 0; i < nv; i++) { if (frame == vf[i]) g_hw.inputs &= (uint16_t)~0x0040; if (frame == vf[i] + 30) g_hw.inputs |= 0x0040; } }
     for (int i = 0; i < n_steer; i++) if (frame >= (uint32_t)test_steer[i].at) g_hw.steer = (uint16_t)test_steer[i].value;
     if (windowed) {
+        if (frame % 120 == 0) rr_hw_eeprom_save();     /* the test menu's settings and the records, once the game has changed them */
         do {
-            if (!rr_host_frame()) { perf_report(); rr_audio_close(); rr_host_close(); fprintf(stderr, "[RR] window closed at frame %u\n", frame); exit(0); }
+            if (!rr_host_frame()) { perf_report(); rr_hw_eeprom_save(); rr_audio_close(); rr_host_close(); fprintf(stderr, "[RR] window closed at frame %u\n", frame); exit(0); }
+            /* the Online menu lives in this loop: the built-in host and the lobby (HELLO/WELCOME, ROSTER, READY,
+             * START) must keep running while it is open, or "Host a LAN game" never gets its own HELLO.
+             * In a race session too, as a keepalive (pings, and the built-in host keeps relaying for the
+             * others): without it the server dropped a player whose menu was open for 5 s */
+            if (rr_host_paused()) rr_net_poll_paused();
         } while (rr_host_paused());
     }
+    if (!windowed) {                               /* RR_PACE=1: a headless run at the real 59.9 Hz (network tests: jitter in ms means frames) */
+        static int pace = -1; static uint32_t t0;
+        if (pace < 0) { const char *e = getenv("RR_PACE"); pace = e && *e == '1'; t0 = SDL_GetTicks(); }
+        if (pace) {
+            const uint32_t t = SDL_GetTicks();
+            uint32_t due = t0 + (uint32_t)((double)frame * 1000.0 / 59.9);
+            if ((int32_t)(t - due) > 50) { t0 = t - (uint32_t)((double)frame * 1000.0 / 59.9); due = t; }   /* fell behind (a stall): carry on at 60 Hz, no catch-up burst */
+            if ((int32_t)(due - t) > 0) SDL_Delay(due - t);
+        }
+    }
+    rr_net_apply_inputs();                         /* online: the automatic gas that starts every machine together */
     rr_input_frame(frame);                         /* replay overrides, recorder logs */
     if (perf_on) t_frame_start = now_ms();
     if (shot_dir && shot_every && frame % shot_every == 0) {
@@ -202,8 +267,18 @@ void rr_tick(void)
     }
     vblank_slices = 2;
     rr_dsp_vblank();
-    rr_hw_vblank();
-    rr_deliver_irqs(rr_hw_irq_level);
+    if (!rr_env_active()) rr_hw_vblank();      /* (a trace oracle refreshes at MAME's own vblank interrupt: rr_env.c) */
+    rr_net_poll();                       /* online play: peer FRAMEs into the link queue before the poll injects one */
+    rr_link_poll();                      /* a received link packet's SCI IRQ lands at this frame edge */
+    if (!rr_env_active()) {                  /* a trace oracle lands the interrupts itself */
+        rr_deliver_irqs(rr_hw_irq_level);
+        /* online: the other pending rivals' packets, each through the game's own SCI handler (offline nothing is pending) */
+        for (int k = 0; k < 7; k++) {
+            if (g_hw.irq_state & ~(1u << 2)) break;      /* only while the SCI is all that is pending: never re-run another, unacknowledged handler */
+            if (!rr_link_inject_next()) break;
+            rr_deliver_irqs(rr_hw_irq_level);
+        }
+    }
     if (dump_dir) {             /* RR_DUMP_EVERY=n (default 60), RR_DUMP_FROM=f: dump cadence */
         static unsigned every, from; static int init;
         if (!init) { const char *e = getenv("RR_DUMP_EVERY"), *f = getenv("RR_DUMP_FROM");
@@ -252,6 +327,7 @@ int main(int argc, char **argv)
             if (i + 1 < argc && argv[i + 1][0] >= '1' && argv[i + 1][0] <= '9' && !argv[i + 1][1]) windowed = atoi(argv[++i]);
         }
         else if (!strcmp(argv[i], "--perf")) perf_on = 1;
+        else if (!strcmp(argv[i], "--sndsweep") && i + 1 < argc) sweep_arg(argv[++i]);
         else if (!strcmp(argv[i], "--perflog") && i + 1 < argc) { perflog = fopen(argv[++i], "w"); perf_on = perflog != NULL; }
         else if (!strcmp(argv[i], "--gl")) use_gl = 1;
 #ifdef RR_ORACLE
@@ -305,9 +381,9 @@ int main(int argc, char **argv)
     /* First run: take the ROMs out of MAME's raverace.zip + namcoc74.zip if the ROM
      * folder is incomplete (src/rr_romzip.c) -- how the Windows build is set up;
      * chips unzipped loose into roms/ work too. */
-    if (rr_romzip_missing(rom_dir) && !strcmp(rom_dir, "extracted") && !rr_romzip_missing("roms"))
+    if (g_rr_game->autosetup && rr_romzip_missing(rom_dir) && !strcmp(rom_dir, "extracted") && !rr_romzip_missing("roms"))
         rom_dir = "roms";
-    if (rr_romzip_missing(rom_dir)) {
+    if (g_rr_game->autosetup && rr_romzip_missing(rom_dir)) {
         char err[512], *base = SDL_GetBasePath();
         if (!rr_romzip_autosetup(rom_dir, base, err, sizeof err)) {
             fprintf(stderr, "Rave Racer needs its ROMs: %s\n", err);
@@ -316,8 +392,7 @@ int main(int argc, char **argv)
                 snprintf(msg, sizeof msg,
                          "Rave Racer needs its ROMs.\n\n"
                          "Put raverace.zip and namcoc74.zip (the MAME ROM sets) in the \"roms\" "
-                         "folder next to this program, then start it again. (If it says c71.bin is missing, "
-                         "put MAME's namcoc71.zip there too.)\n\n(%s)", err);
+                         "folder next to this program, then start it again.\n\n(%s)", err);
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", msg, NULL);
             }
             SDL_free(base);
@@ -329,11 +404,36 @@ int main(int argc, char **argv)
     rr_audio_init(rom_dir);
     rr_sound_init(rom_dir);
     rr_hw_init(rom_dir);
+#ifdef RR_TRACE
+    rr_env_init();                         /* RR_ENV: the trace oracle's environment (dev builds) */
+#endif
+    if (windowed) rr_hw_eeprom_persist("rr_eeprom.nv");   /* a player's session keeps its settings and records; headless runs never do */
     if (freeplay >= 0) rr_hw_set_freeplay(freeplay);
     else if (windowed && g_cfg_freeplay >= 0) {        /* the saved menu choice, windowed runs only */
         rr_hw_set_freeplay(g_cfg_freeplay);
         fprintf(stderr, "[RR] %s (rr_controls.cfg)\n", g_cfg_freeplay ? "free play" : "coins required");
     }
+    if (windowed) rr_hw_set_steering_motor(g_cfg_ffb_strength > 0);   /* the game only drives the motor with its own option ON */
+    { const char *e = getenv("RR_LINK_CABINET");              /* temporary: the lobby/config will drive this */
+      if (e) rr_hw_set_link_cabinet(atoi(e)); }
+    if (g_cfg_net_name[0]) rr_net_set_name(g_cfg_net_name);        /* the saved lobby name (windowed: from rr_controls.cfg) */
+    if (windowed && g_cfg_net_server[0]) rr_net_preset_server(g_cfg_net_server);  /* remembered, but connecting stays a menu action */
+    { const char *srv = getenv("RR_NET_SERVER");            /* headless/test bootstrap: connect at boot (env wins over cfg) */
+      if (srv && *srv) {
+          const char *nm = getenv("RR_NET_NAME");
+          if (nm && *nm) rr_net_set_name(nm);
+          if (rr_net_set_server(srv)) rr_net_connect();
+      }
+      const char *hst = getenv("RR_NET_HOST");                /* headless/test: host a LAN game (the built-in server) */
+      if (hst && *hst == '1') {
+          const char *nm = getenv("RR_NET_NAME"); if (nm && *nm) rr_net_set_name(nm);
+          rr_net_host_start();
+      }
+      const char *dsc = getenv("RR_NET_DISCOVER");            /* headless/test: search the LAN and join the first host */
+      if (dsc && *dsc == '1') {
+          const char *nm = getenv("RR_NET_NAME"); if (nm && *nm) rr_net_set_name(nm);
+          rr_net_discover_autojoin(1); rr_net_discover();
+      } }
 #ifdef RR_ORACLE
     if (!g_rr_gl && !rr_video_init(rom_dir)) fprintf(stderr, "[RR] video ROMs missing\n");
 #endif
@@ -348,7 +448,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "[RR] reset: SP=%08X PC=%08X\n", (uint32_t)RG4(REG_SP), rr_read(4, 4));
     rr_call_push(0xFFFFFFFEu);                  /* bottom of the shadow stack */
     { extern void rd_init(void); rd_init(); }   /* readable-C replacements (src/rd) */
-    L_4000();                                   /* entry_reset: never returns */
+    g_rr_game->entry();                         /* entry_reset (this game's reset PC): never returns */
     fprintf(stderr, "[RR] entry_reset returned?!\n");
     return 1;
 }

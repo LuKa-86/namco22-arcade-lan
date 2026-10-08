@@ -21,9 +21,11 @@ __pycache__/
 /raverace/build/
 /raverace/extracted/
 /raverace/gen/snd_driver.c
+/raverace/gen/rr_c25.c
 /raverace/rr_controls.cfg
 /raverace/screenshots/
 /raverace/recordings/
+/raverace/server/target/
 /tokyowar/build/
 /tokyowar/extracted/
 /tokyowar/tokyowar_main.bin
@@ -40,5 +42,14 @@ __pycache__/
 /dirtdash/dd_eeprom.nv
 /dirtdash/dd_eeprom.nv.tmp
 /dirtdash/screenshots/
+/timecris/build/
+/timecris/extracted/
+/timecris/timecris_main.bin
+/timecris/gen/tc_c25.c
+/timecris/gen/tc_snd_driver.c
+/timecris/tc_controls.cfg
+/timecris/tc_eeprom.nv
+/timecris/tc_eeprom.nv.tmp
+/timecris/screenshots/
 *.log
 *.ppm

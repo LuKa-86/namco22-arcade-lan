@@ -27,9 +27,13 @@ set(NAMCO22_ENGINE_SS22_SRC
 # THE HOST of the Super 22 games whose 68K is a lifted program (Tokyo Wars, Dirt Dash): the window, the controls, the board (memory map
 # and devices), the master DSP and sound-MCU hosts, the video RAM -> engine, the trace environment and the scheduler/command line
 # (ss22_run.c). A game is one table (src/<game>_game.c, engine/ss22_game.h). Needs the menu group below
+# a cabinet's steering motor on a force-feedback wheel (SDL haptic): Dirt Dash through ss22_input.c, Rave Racer's own host
+set(NAMCO22_ENGINE_FFB_SRC ${NAMCO22_ENGINE_DIR}/eng_ffb.c)
 set(NAMCO22_ENGINE_SS22_HOST_SRC
     ${NAMCO22_ENGINE_DIR}/ss22_host.c
+    ${NAMCO22_ENGINE_DIR}/ss22_out.c
     ${NAMCO22_ENGINE_DIR}/ss22_input.c
+    ${NAMCO22_ENGINE_FFB_SRC}
     ${NAMCO22_ENGINE_DIR}/ss22_board.c
     ${NAMCO22_ENGINE_DIR}/ss22_dsp.c
     ${NAMCO22_ENGINE_DIR}/ss22_snd.c
@@ -55,6 +59,7 @@ set(NAMCO22_ENGINE_ROMZIP_SRC
 set(NAMCO22_ENGINE_C25_SRC
     ${NAMCO22_ENGINE_DIR}/c25/c25_bus.c
     ${NAMCO22_ENGINE_DIR}/c25/c25_core.c
+    ${NAMCO22_ENGINE_DIR}/c25/c71_bios.c      # the DSP BIOS, built in: no c71.bin / namcoc71.zip needed
 )
 # the interpreter ORACLE the translations are gated against: dev builds only
 get_filename_component(NAMCO22_TOOLS_DIR ${NAMCO22_ENGINE_DIR}/../tools ABSOLUTE)
@@ -63,6 +68,7 @@ set(NAMCO22_C25_ORACLE_SRC ${NAMCO22_TOOLS_DIR}/c25oracle/c25_interp.c)
 # trace hook); the memory map, devices and scheduler stay with each game
 set(NAMCO22_ENGINE_LIFT_SRC
     ${NAMCO22_ENGINE_DIR}/lift_cpu.c
+    ${NAMCO22_ENGINE_DIR}/lift_env.c
 )
 set(NAMCO22_ENGINE_SND_SRC
     ${NAMCO22_ENGINE_DIR}/c352.c

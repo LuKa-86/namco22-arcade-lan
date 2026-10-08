@@ -6,7 +6,7 @@
  * programs are translated at build time (gen/tw_c25.c, gen/tw_snd_driver.c).
  *
  * The ROM chip list is tools/setup_roms.py's REQUIRED: names and sizes, checked before anything is written. tokyowar.zip is the whole set
- * (the sound BIOS c71.bin and the default EEPROM included); its Japanese program set under tokyowarj/ is not taken.
+ * (the default EEPROM included; the DSP BIOS, c71.bin, is built into the engine: engine/c25/c71_bios.c); its Japanese program set under tokyowarj/ is not taken.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +17,6 @@
 bool tw_c25_exec(c71_t *d, int pc);          /* gen/tw_c25.c */
 
 static const eng_rom_t k_roms[] = {
-    {"c71.bin", 0x2000},
     {"tokyowar_defaults.nv", 0x2000},
     {"tw1ccrh.1d", 0x80000},
     {"tw1ccrl.3d", 0x200000},
@@ -47,10 +46,12 @@ static const eng_rom_t k_roms[] = {
     {"tw1scg2.8f", 0x200000},
     {"tw1scg3.7f", 0x200000},
     {"tw1wavea.2l", 0x400000},
-    {"tw2ver-a.1", 0x100000},
-    {"tw2ver-a.2", 0x100000},
-    {"tw2ver-a.3", 0x100000},
-    {"tw2ver-a.4", 0x100000},
+    /* current MAME sets (this project's own reference namcos22.cpp among them) ship these as tw2vera.1-.4, no hyphen; older
+     * archived sets used tw2ver-a.1-.4. Same data either way -- `alt` takes whichever spelling the zip actually has. */
+    {"tw2ver-a.1", 0x100000, NULL, "tw2vera.1"},
+    {"tw2ver-a.2", 0x100000, NULL, "tw2vera.2"},
+    {"tw2ver-a.3", 0x100000, NULL, "tw2vera.3"},
+    {"tw2ver-a.4", 0x100000, NULL, "tw2vera.4"},
 };
 #define NROMS ((int)(sizeof k_roms / sizeof k_roms[0]))
 
@@ -137,10 +138,12 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
 
 static const ss22_game game = {
     .name = "Tokyo Wars", .tag = "TW", .lname = "tw", .logname = "tokyowar.log", .zip = "tokyowar.zip",
+    .out_gain = 1.4,      /* the chip runs ~4x hotter than Rave Racer's (raw median RMS 2369 against 563): x6 put 15% of the samples above the limiter's knee; 1.4 lands on Rave Racer's level (~3400 RMS) */
     .board = &tw_board,
     .dsp = { { {"tw1ptrl0.18k", "tw1ptrl1.16k", "tw1ptrl2.15k", "tw1ptrl3.14k"},
                {"tw1ptrm0.18j", "tw1ptrm1.16j", "tw1ptrm2.15j", "tw1ptrm3.14j"},
-               {"tw1ptru0.18f", "tw1ptru1.16f", "tw1ptru2.15f", "tw1ptru3.14f"} }, 4, tw_c25_exec },
+               {"tw1ptru0.18f", "tw1ptru1.16f", "tw1ptru2.15f", "tw1ptru3.14f"} }, 4, tw_c25_exec,
+               .spin_pc = 0x45BB, .spin_op = 0x2000 },   /* the upload routine's LAC *0 / BNEZ poll of polygon-RAM word 0 (~34% of all retired steps) */
     .snd = { "tw1data.8k", { "tw1wavea.2l", NULL }, { 0, 0 }, 0x400000, 0xFFFF, { 2, 3 } },
     .video = { { "tw1cg0.8d", "tw1cg1.10d", "tw1cg2.12d", "tw1cg3.13d", "tw1cg4.14d", "tw1cg5.16d", "tw1cg6.18d", "tw1cg7.19d" },
                "tw1ccrl.3d", "tw1ccrh.1d", { "tw1scg0.12f", "tw1scg1.10f", "tw1scg2.8f", "tw1scg3.7f" }, 4, 4 * 0x200000, 0x00,
