@@ -5,6 +5,7 @@
 #include "link_host.h"
 #include "link_net.h"
 #include "c139.h"
+#include "eng_timing.h"
 #include <time.h>
 #include <sys/stat.h>
 #include <zlib.h>
@@ -57,6 +58,7 @@ bool link_host_arg(int argc, char **argv, int *i)
     else if (!strcmp(a, "--link-test") && v) sscanf(argv[++*i], "%d:%d:%d:%d:%d:%d", &cfg.delay_ms, &cfg.jitter_ms, &cfg.loss_pct, &skew_ppm,
                                                     &cfg.burst_every_ms, &cfg.burst_hold_ms);
     else if (!strcmp(a, "--mute")) g_link_mute = true;
+    else if (!strcmp(a, "--timing") && v) ++*i;                       /* (read by link_host_prescan) */
     else return false;
     return true;
 }
@@ -495,8 +497,8 @@ void link_host_frame(uint32_t frame, bool headless)
 #define CFG_FILE "link.cfg"
 /* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
  * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
-static struct { bool on, set_id, carry_on, cab_auto; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
-    F = { false, false, false, true, 1, 2, 60, 22220, 0, 0, { "" } };
+static struct { bool on, set_id, carry_on, cab_auto, classic; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, true, false, 1, 2, 60, 22220, 0, 0, { "" } };
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
@@ -521,6 +523,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "set_game_id")) F.set_id = atoi(v) != 0;
         else if (!strcmp(k, "lights")) { F.lights = !strcmp(v, "on") ? 1 : 0; for (int i = 1; i < 7; i++) if (!strcmp(v, light_key[i])) F.lights = i; }
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
+        else if (!strcmp(k, "timing")) F.classic = !strcmp(v, "classic");
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
     fclose(f);
@@ -543,6 +546,8 @@ static void cfg_save(void)
     for (int n = 0; n < LNK_MAX_NODES; n++) if (F.addr[n][0]) fprintf(f, "address%d=%s\n", n + 1, F.addr[n]);
     if (F.set_id) fprintf(f, "# the game's own ID (test menu) is set to this cabinet's number when the game next starts\nset_game_id=1\n");
     fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
+    fprintf(f, "# frame timing: new = 0.5.4's (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
+            F.classic ? "classic" : "new");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
@@ -572,6 +577,15 @@ int link_host_prescan(int argc, char **argv)
     argv0 = argv;
     cfg_load();
     lost_carry_on = F.carry_on;
+    { const char *t = F.classic ? "classic" : "new";                  /* FRAME TIMING (engine/eng_vsync.h reads N22_TIMING): link.cfg, or --timing */
+      for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--timing")) t = argv[i + 1];
+      if (!getenv("N22_TIMING")) {
+#ifdef _WIN32
+          char e[40]; snprintf(e, sizeof e, "N22_TIMING=%s", t); _putenv(e);
+#else
+          setenv("N22_TIMING", t, 1);
+#endif
+      } }
     for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--link", 6)) {           /* the command line decides */
         from_cmdline = true;
         for (int j = 1; j + 1 < argc; j++) if (!strcmp(argv[j], "--link")) return atoi(argv[j + 1]);
@@ -744,20 +758,25 @@ static void disc_notes(void (*line)(const char *fmt, ...))
 /* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
  * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
 static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
-int  link_page_rows(void) { return 3 + page_nodes() + 5 + (disc_found_usable() ? 1 : 0); }
-bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 2); }
+int  link_page_rows(void) { return 3 + page_nodes() + 6 + (disc_found_usable() ? 1 : 0); }
+bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 3); }
 static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
 {
     const int r = row - (3 + page_nodes() + 1);
     if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); return true; }
     if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
     if (r == 2) {
+        snprintf(label, ln, "Frame timing");
+        snprintf(value, vn, "%s%s", F.classic ? "Classic (0.4.0)" : "New (0.5.4)", eng_timing_classic() != F.classic ? " - at next start" : "");
+        return true;
+    }
+    if (r == 3) {
         snprintf(label, ln, "Restart all cabinets");
         snprintf(value, vn, "%s", !on ? "(link play is off)" : restart_armed() ? "Press Enter AGAIN" : "Enter");
         return true;
     }
-    if (r == 3) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
-    if (r == 4) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
+    if (r == 4) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
+    if (r == 5) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
     return false;
 }
 static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
@@ -800,7 +819,8 @@ void link_page_change(int row, int dir)
     const int r = row - (3 + page_nodes() + 1);
     if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
     if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
-    if (r == 2) {                                                      /* restart all: Enter twice (not by accident) */
+    if (r == 2) { F.classic = !F.classic; cfg_save(); return; }        /* frame timing: used at the next start */
+    if (r == 3) {                                                      /* restart all: Enter twice (not by accident) */
         if (!on || dir) return;
         if (!restart_armed()) { restart_armed_at = SDL_GetTicks64(); return; }
         fprintf(stderr, "[LINK] this cabinet asked every cabinet to restart\n");
@@ -809,8 +829,8 @@ void link_page_change(int row, int dir)
         restart_in = 60;
         return;
     }
-    if (r == 3) { if (!dir) disc_find(); return; }
-    if (r == 4) { if (!dir && !from_cmdline) disc_use(); return; }
+    if (r == 4) { if (!dir) disc_find(); return; }
+    if (r == 5) { if (!dir && !from_cmdline) disc_use(); return; }
     if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
     if (row == 0) F.on = !F.on;
     else if (row == 1) {                                               /* Auto, 1 .. N, round */

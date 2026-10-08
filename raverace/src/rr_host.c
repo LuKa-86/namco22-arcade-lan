@@ -23,19 +23,23 @@
 #include <math.h>
 #include <time.h>
 #include <sys/stat.h>
+#include "eng_vsync.h"
 #include "rr_hw.h"
 #include "rr_video.h"
 #include "rr_input.h"
 #include "rr_font.h"
 #include "rr_sound.h"
 #include "rr_ui.h"
+#include "rr_net.h"
 #include "eng_pad.h"
 #include "eng_pace.h"
+#include "eng_ffb.h"
 #include "tex_bake.h"
 #include "rr_gl.h"
 #include "render_target.h"
 #include "eng_gl.h"
 #include "link_host.h"
+#include "gl_warn.h"
 extern int g_rr_gl;     /* rr_main.c: 1 = the engine's GL renderer, 0 = the software oracle */
 
 /* ---- controllers ----------------------------------------------------------
@@ -44,7 +48,7 @@ extern int g_rr_gl;     /* rr_main.c: 1 = the engine's GL renderer, 0 = the soft
  * anything in a gamecontrollerdb.txt next to the binary), otherwise as a RAW
  * joystick mapped by axis/button number from rr_controls.cfg (wheels, pedals,
  * arcade sticks). Hot-plug either way. */
-#define MAX_DEV 4
+#define MAX_DEV 16
 static struct { SDL_GameController *gc; SDL_Joystick *js; SDL_JoystickID id; } dev[MAX_DEV];
 
 static void dev_scan(void)
@@ -69,18 +73,15 @@ static void dev_scan(void)
 }
 static void dev_remove(SDL_JoystickID id)
 {
+    g_joy_gas.rest_valid = g_joy_brake.rest_valid = false;
     for (int d = 0; d < MAX_DEV; d++)
         if ((dev[d].gc || dev[d].js) && dev[d].id == id) {
             fprintf(stderr, "[HOST] controller %d removed\n", d);
+            eng_ffb_forget(id);                              /* the haptic side goes before its joystick */
             if (dev[d].gc) SDL_GameControllerClose(dev[d].gc);
             if (dev[d].js) SDL_JoystickClose(dev[d].js);
             dev[d].gc = NULL; dev[d].js = NULL;
         }
-}
-static bool dev_is_raw(SDL_JoystickID id)
-{
-    for (int d = 0; d < MAX_DEV; d++) if (dev[d].js && dev[d].id == id) return true;
-    return false;
 }
 static void load_pad_db(void)
 {
@@ -97,15 +98,7 @@ static void out_size(int *w, int *h)   /* the window's drawable, in pixels */
     *w = 640; *h = 480;
     if (win) SDL_GL_GetDrawableSize(win, w, h);
 }
-static uint64_t next_ns;
-static bool vsync;                    /* presenting paces us (display ~60 Hz) */
-/* the board: PIXEL_CLOCK 25.6 MHz / (HTOTAL 814 x VTOTAL 525) = 59.906 Hz */
-#define FRAME_NS 16692969ull
-static uint64_t now_ns(void)          /* split the scaling: counter * 1e9 overflows 64 bits */
-{
-    const uint64_t c = SDL_GetPerformanceCounter(), f = SDL_GetPerformanceFrequency();
-    return c / f * 1000000000ull + c % f * 1000000000ull / f;
-}
+static eng_vsync vs;                  /* the frame pacer (engine/eng_vsync.h): vsync on a ~60 Hz display while it blocks, else 59.906 Hz */
 static int paused;
 
 static const char *scaling_name[3];
@@ -188,12 +181,19 @@ void rr_host_set_draw(int level)
     fprintf(stderr, "[HOST] draw distance: %s\n", draw_label[g_cfg_draw]);
 }
 
+void rr_host_set_hud_edges(int on)
+{
+    extern int g_eng_hud_edges_on;
+    g_eng_hud_edges_on = on != 0; save_opt("wide_hud", on ? "1" : "0");
+}
+
 void rr_host_set_wide(int on)
 {
     g_cfg_wide = on != 0; save_opt("widescreen", g_cfg_wide ? "1" : "0");
     if (!g_cfg_fullscreen) apply_fullscreen();     /* a window takes the new shape */
     apply_render_size();
 }
+void rr_host_set_fps(int fps) { g_cfg_fps = eng_vsync_rate_valid(fps); char v[8]; snprintf(v, sizeof v, "%d", g_cfg_fps); save_opt("frame_rate", v); }
 void rr_host_set_aspect(int a) { g_cfg_aspect = a < 0 ? 0 : a > 3 ? 3 : a; save_opt("aspect", aspect_name[g_cfg_aspect]); }
 void rr_host_set_scaling(int sc) { g_cfg_scaling = sc < 0 ? 0 : sc > 2 ? 2 : sc; apply_scaling(); save_opt("scaling", scaling_name[g_cfg_scaling]); }
 void rr_host_set_volume(int pct)
@@ -208,6 +208,16 @@ void rr_host_set_freeplay(bool on)
     save_opt("free_play", on ? "1" : "0");
     fprintf(stderr, "[HOST] %s (saved to rr_controls.cfg)\n", on ? "free play" : "coins required");
 }
+void rr_host_set_ffb_strength(int pct)
+{
+    g_cfg_ffb_strength = pct < 0 ? 0 : pct > 100 ? 100 : pct;
+    rr_hw_set_steering_motor(g_cfg_ffb_strength > 0);
+    char v[8]; snprintf(v, sizeof v, "%d", g_cfg_ffb_strength); save_opt("ffb_strength", v);
+}
+void rr_host_set_ffb_invert(bool on) { g_cfg_ffb_invert = on; save_opt("ffb_invert", on ? "1" : "0"); }
+/* the Online page: the address/name are saved and handed to the RRN1 client; connecting stays a menu action */
+void rr_host_set_net_server(const char *s) { snprintf(g_cfg_net_server, sizeof g_cfg_net_server, "%s", s); save_opt("net_server", g_cfg_net_server); rr_net_set_server(g_cfg_net_server); }
+void rr_host_set_net_name(const char *s) { snprintf(g_cfg_net_name, sizeof g_cfg_net_name, "%s", s); save_opt("net_name", g_cfg_net_name); rr_net_set_name(g_cfg_net_name); }
 void rr_host_toggle_record(void) { toggle_record(); }
 int  rr_host_res_count(void) { return NRES; }
 void rr_host_res_get(int i, int *w, int *h) { if (i < 0 || i >= NRES) i = 0; *w = res_list[i].w; *h = res_list[i].h; }
@@ -311,19 +321,13 @@ bool rr_host_open(int scale)
     if (g_cfg_winmode < 0) g_cfg_winmode = g_cfg_fullscreen ? 1 : 0;
     g_cfg_fullscreen = g_cfg_winmode != 0;
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    eng_ffb_start();                                 /* before the joysticks, or Windows never lists a wheel as haptic (engine/eng_ffb.h) */
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) { fprintf(stderr, "[HOST] SDL: %s\n", SDL_GetError()); return false; }
     rr_gl_context_attributes();
     win = SDL_CreateWindow("Rave Racer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, rr_host_win_w(g_cfg_scale), rr_host_win_h(g_cfg_scale),
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
                            (g_cfg_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return false; }
-    /* vsync only on a ~60 Hz display: elsewhere it would run the game at the
-     * display's rate. RR_VSYNC=0/1 forces it. */
-    SDL_DisplayMode dm;
-    int hz = SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(win), &dm) == 0 ? dm.refresh_rate : 0;
-    vsync = hz >= 59 && hz <= 61;
-    const char *ev = getenv("RR_VSYNC");
-    if (ev) vsync = atoi(ev) != 0;
 #ifdef _WIN32
     /* Windows: OpenGL through pointers (engine/gl_dyn.c), the bundled Mesa if
      * the system has no usable driver */
@@ -341,11 +345,11 @@ bool rr_host_open(int scale)
 #endif
     if (!glc) { fprintf(stderr, "[HOST] OpenGL context: %s\n", SDL_GetError()); return false; }
     SDL_GL_MakeCurrent(win, glc);
-    if (vsync && SDL_GL_SetSwapInterval(1) != 0) vsync = false;
-    if (!vsync) SDL_GL_SetSwapInterval(0);
+    eng_vsync_init(&vs, win, getenv("RR_VSYNC"));   /* vsync only on a ~60 Hz display, else 59.906 Hz; RR_VSYNC=0/1 forces it */
     fprintf(stderr, "[HOST] OpenGL: %s (%s renderer)\n", (const char *)glGetString(GL_RENDERER),
             g_rr_gl ? "engine" : "software oracle");
-    fprintf(stderr, "[HOST] display %d Hz, %s\n", hz, vsync ? "vsync" : "timer-paced at 59.906 Hz");
+    fprintf(stderr, "[HOST] display %d Hz, %s\n", vs.hz, eng_vsync_mode(&vs));
+    eng_gl_warn_software((const char *)glGetString(GL_RENDERER));
     tex_bake_window_defaults();      /* a per-frame budget for cold texture bakes: a new scene sharpens over a few frames instead of one long one (ENG_TEX_BUDGET) */
 
     tex_w = 640; tex_h = 480;
@@ -358,7 +362,7 @@ bool rr_host_open(int scale)
     apply_render_size();
     apply_scaling();
     if (g_cfg_fullscreen) SDL_ShowCursor(SDL_DISABLE);
-    next_ns = now_ns();
+    eng_vsync_resync(&vs);
     load_pad_db();
     dev_scan();
     if (rr_audio_output_open()) rr_audio_set_volume(g_cfg_volume);
@@ -410,10 +414,11 @@ static void ramp(uint16_t *v, int toward, int lo, int hi, int step)
 static bool held(int act)
 {
     const Uint8 *k = SDL_GetKeyboardState(NULL);
-    for (int i = 0; i < g_bind[act].nkeys; i++) if (k[g_bind[act].keys[i]]) return true;
+    if (!rr_ui_chat_typing()) for (int i = 0; i < g_bind[act].nkeys; i++) if (k[g_bind[act].keys[i]]) return true;
     for (int d = 0; d < MAX_DEV; d++) {
         if (dev[d].gc && g_bind[act].pad != SDL_CONTROLLER_BUTTON_INVALID && SDL_GameControllerGetButton(dev[d].gc, g_bind[act].pad)) return true;
-        if (dev[d].js && g_joy_button[act] >= 0 && SDL_JoystickGetButton(dev[d].js, g_joy_button[act])) return true;
+        SDL_Joystick *js = dev[d].gc ? SDL_GameControllerGetJoystick(dev[d].gc) : dev[d].js;
+        if (rr_input_button_matches(act, js, g_joy_button[act]) && SDL_JoystickGetButton(js, g_joy_button[act])) return true;
     }
     return false;
 }
@@ -423,9 +428,10 @@ static bool pressed(const SDL_Event *e, int act)
         for (int i = 0; i < g_bind[act].nkeys; i++) if (e->key.keysym.scancode == g_bind[act].keys[i]) return true;
     }
     if (e->type == SDL_CONTROLLERBUTTONDOWN && g_bind[act].pad != SDL_CONTROLLER_BUTTON_INVALID && e->cbutton.button == g_bind[act].pad) return true;
-    return e->type == SDL_JOYBUTTONDOWN && dev_is_raw(e->jbutton.which) && g_joy_button[act] >= 0 && e->jbutton.button == g_joy_button[act];
+    return e->type == SDL_JOYBUTTONDOWN && rr_input_button_matches(act, SDL_JoystickFromInstanceID(e->jbutton.which), e->jbutton.button);
 }
 
+#define WHEEL_DEADZONE 32             /* of 32767 (0.1% of the lock, 0.3 degrees of the cabinet's 270): a wheel's own sensor noise, nothing more */
 /* analog sources, strongest wins; returns false when every source is neutral */
 static bool pad_steer(int *out)                   /* -32767..32767 */
 {
@@ -436,10 +442,14 @@ static bool pad_steer(int *out)                   /* -32767..32767 */
             v = SDL_GameControllerGetAxis(dev[d].gc, SDL_CONTROLLER_AXIS_LEFTX);
             if (v > -g_pad_deadzone && v < g_pad_deadzone) v = 0;
             else v = (v > 0 ? v - g_pad_deadzone : v + g_pad_deadzone) * 32767 / (32767 - g_pad_deadzone);
-        } else if (dev[d].js && g_joy_steer.axis >= 0) {
-            v = SDL_JoystickGetAxis(dev[d].js, g_joy_steer.axis);   /* a wheel: no deadzone beyond 1000 */
+        } else if (rr_input_axis_device(&g_joy_steer, dev[d].js) && g_joy_steer.axis >= 0 && g_joy_steer.axis < SDL_JoystickNumAxes(dev[d].js)) {
+            /* a wheel: only a sliver of deadzone, and rescaled to START at its edge. A cut-off +-1000 without the rescale left 3% of
+             * the lock dead and then jumped the steering 0x2B at once: a step exactly at the centre, which the steering motor's
+             * centring then held the wheel against */
+            v = SDL_JoystickGetAxis(dev[d].js, g_joy_steer.axis);
             if (g_joy_steer.invert) v = -v;
-            if (v > -1000 && v < 1000) v = 0;
+            if (v > -WHEEL_DEADZONE && v < WHEEL_DEADZONE) v = 0;
+            else v = (v > 0 ? v - WHEEL_DEADZONE : v + WHEEL_DEADZONE) * 32767 / (32767 - WHEEL_DEADZONE);
         }
         if (abs(v) > abs(best)) best = v;
     }
@@ -448,19 +458,51 @@ static bool pad_steer(int *out)                   /* -32767..32767 */
     *out = best;
     return best != 0;
 }
+/* THE WHEEL MOTOR: the drive byte the game leaves for the I/O board (rr_hw_motor_byte), played on the raw
+ * device the steering axis is bound to; no force while paused or in the menu */
+static bool ffb_wheel;
+bool rr_host_ffb_wheel(void) { return ffb_wheel; }
+/* Rave Racer never sends 0 while driving: its command is linear in the wheel's offset but keeps a hold of 2 (of 63) in
+ * the direction last steered -- -2 at 0x7F0, +-2 at the centre, +2 at 0x810, +5 at 0x830, +10 at 0x860 -- so the force
+ * flips from -2 to +2 exactly as the wheel crosses the middle. The cabinet's motor and gearbox lost that in friction; a
+ * modern wheel plays it as a notch at the centre. The hold comes off every command (full scale kept), so the force passes
+ * through zero instead. */
+static int motor_hold_off(int m)
+{
+    if (m > 2) return (m - 2) * 63 / 61;
+    if (m < -2) return (m + 2) * 63 / 61;
+    return 0;
+}
+static void wheel_motor(bool hold)
+{
+    /* the candidates: the devices sharing the steering binding's GUID -- the bound one first, then those SDL calls haptic, then
+     * the rest. A Fanatec DD base is two "FANATEC Wheel"s under one GUID and the motor need not sit on the steering axis' one;
+     * eng_ffb_device_from() opens the first that takes a force */
+    SDL_Joystick *cand[MAX_DEV];
+    int n = 0;
+    for (int pass = 0; pass < 3 && g_cfg_ffb_strength > 0 && g_joy_steer.axis >= 0; pass++)
+        for (int d = 0; d < MAX_DEV; d++) {
+            SDL_Joystick *js = dev[d].js;
+            if (!js || !rr_input_device_matches(js, g_joy_steer.guid)) continue;
+            const bool bound = rr_input_axis_device(&g_joy_steer, js), capable = eng_ffb_capable(js);
+            if (pass == 0 ? bound : pass == 1 ? !bound && capable : !bound && !capable) cand[n++] = js;
+        }
+    ffb_wheel = eng_ffb_device_from(cand, n);
+    if (ffb_wheel)
+        eng_ffb_force(hold ? 0 : motor_hold_off(eng_ffb_decode(rr_hw_motor_byte())), g_cfg_ffb_strength, g_joy_steer.invert != (g_cfg_ffb_invert != 0));
+}
 static bool pad_pedal(bool gas, int *out)         /* 0..0x610 */
 {
     int best = 0;
-    const rr_joyaxis_t *ax = gas ? &g_joy_gas : &g_joy_brake;
+    rr_joyaxis_t *ax = gas ? &g_joy_gas : &g_joy_brake;
     for (int d = 0; d < MAX_DEV; d++) {
         int v = 0;
         if (dev[d].gc) {
             int t = SDL_GameControllerGetAxis(dev[d].gc, gas ? SDL_CONTROLLER_AXIS_TRIGGERRIGHT : SDL_CONTROLLER_AXIS_TRIGGERLEFT);
             if (t > 1000) v = (t - 1000) * 0x610 / (32767 - 1000);
-        } else if (dev[d].js && ax->axis >= 0) {
+        } else if (rr_input_axis_device(ax, dev[d].js) && ax->axis >= 0 && ax->axis < SDL_JoystickNumAxes(dev[d].js)) {
             int r = SDL_JoystickGetAxis(dev[d].js, ax->axis);
-            double f = ax->half ? (r < 0 ? 0.0 : r / 32767.0) : (r + 32768) / 65535.0;
-            if (ax->invert) f = 1.0 - f;
+            double f = rr_input_pedal_value(ax, r);
             if (f > 0.03) v = (int)((f - 0.03) / 0.97 * 0x610);
         }
         if (v > best) best = v;
@@ -598,6 +640,7 @@ bool rr_host_frame(void)
             save_opt("fullscreen", g_cfg_fullscreen ? "1" : "0"); save_opt("window_mode", g_cfg_winmode ? "1" : "0");
             continue;
         }
+        if (rr_ui_chat_event(&e)) continue;
         if (rr_ui_is_open()) { rr_ui_event(&e); if (!rr_ui_is_open()) fprintf(stderr, "[HOST] menu closed\n"); continue; }
         if (pressed(&e, RR_QUIT) ||
             (e.type == SDL_CONTROLLERBUTTONDOWN && (e.cbutton.button == SDL_CONTROLLER_BUTTON_START ||
@@ -635,6 +678,8 @@ bool rr_host_frame(void)
           }
       } }
     if (rr_ui_quit_requested()) return false;
+    { const int want = (!g_cfg_fullscreen || rr_ui_is_open()) ? SDL_ENABLE : SDL_DISABLE;   /* fullscreen hides the pointer for the game, but the menu needs it */
+      if (SDL_ShowCursor(SDL_QUERY) != want) SDL_ShowCursor(want); }
     if (!paused && !rr_ui_is_open() && !rr_input_replaying()) {
         set_bit(0x1000, held(RR_COIN1));
         set_bit(0x0200, held(RR_COIN2));
@@ -655,6 +700,7 @@ bool rr_host_frame(void)
         if (!held(RR_BRAKE) && pad_pedal(false, &pv)) g_hw.brake = (uint16_t)pv;
         else ramp(&g_hw.brake, held(RR_BRAKE) ? 0x610 : 0, 0, 0x610, 160);
     }
+    wheel_motor(paused || rr_ui_is_open());
 
     /* the window may have been resized: keep the render size in step (a
      * native or widescreen size follows the window; it lands next frame) */
@@ -663,17 +709,14 @@ bool rr_host_frame(void)
       if (slow < 0) { slow = 0; const char *e = getenv("RR_SLOWDRAW"); if (e) sscanf(e, "%d:%d", &slow, &every); if (every < 1) every = 1; }
       if (slow && ++n % every == 0) SDL_Delay((Uint32)slow); }
     present_picture();
-    if (rr_ui_is_open() || rr_ui_hint_active() || link_lights_on()) {   /* the menu, over the dimmed game (or just the hint, the link lights) */
+    if (rr_ui_is_open() || rr_ui_hint_active() || rr_ui_chat_active() || link_lights_on()) {   /* the menu over the game (or just the hint / chat, the link lights) */
         int ow, oh; out_size(&ow, &oh);
         glViewport(0, 0, ow, oh);
         glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 0, 1, -1, 1);
         glMatrixMode(GL_MODELVIEW); glLoadIdentity();
         glDisable(GL_TEXTURE_2D); glDisable(GL_SCISSOR_TEST); glDisable(GL_ALPHA_TEST);
         glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        if (rr_ui_is_open()) {
-            glColor4f(0, 0, 0, 150 / 255.0f);
-            glBegin(GL_QUADS); glVertex2f(0, 0); glVertex2f(1, 0); glVertex2f(1, 1); glVertex2f(0, 1); glEnd();
-        }
+        /* the menu draws over the picture as it is: no dimming layer (it used to darken the whole game while Esc was open) */
         glDisable(GL_BLEND);
         bool q = false; rr_ui_draw(&q);
     }
@@ -726,31 +769,12 @@ bool rr_host_frame(void)
     static eng_pace pace_log;
     if (rr_ui_is_open() || paused) eng_pace_reset(&pace_log);
     eng_pace_before_swap(&pace_log);
-    SDL_GL_SwapWindow(win);
+    eng_vsync_want(&vs, g_cfg_fps);                  /* Display > Frame rate: a lock shows only some frames, or each one again */
+    if (eng_vsync_show(&vs)) { eng_vsync_capture(&vs, win); SDL_GL_SwapWindow(win); }
 
-    /* TRUST VSYNC ONLY IF IT BLOCKS (Tokyo Wars' host learnt this first): a window the compositor does not throttle (an unmapped or
-     * occluded one, Wayland, some gamescope set-ups) swaps at once, and the game would then run as fast as the CPU allows -- measured
-     * over 50 frames after the first 10; a frame under 12 ms means it does not block, and the timer takes over at 59.906 Hz. */
-    { static int vs_frames; static uint64_t vs_t0;
-      if (vsync && vs_frames < 60) {
-          if (vs_frames++ == 10) vs_t0 = now_ns();
-          if (vs_frames == 60 && (now_ns() - vs_t0) / 50 < 12000000ull) {
-              vsync = false; SDL_GL_SetSwapInterval(0); next_ns = now_ns();
-              fprintf(stderr, "[HOST] vsync does not block here (%.1f ms a frame): timer-paced at 59.906 Hz\n", (double)((now_ns() - vs_t0) / 50) / 1e6);
-          }
-      } }
-
-    /* pacing: vsync blocks in RenderPresent; otherwise sleep to the board's
-     * 59.906 Hz, the last millisecond spun for precision */
-    if (!vsync) {
-        next_ns += FRAME_NS;
-        uint64_t now = now_ns();
-        if (next_ns > now) {
-            uint64_t left = next_ns - now;
-            if (left > 2000000ull) SDL_Delay((Uint32)((left - 1500000ull) / 1000000ull));
-            while (now_ns() < next_ns) ;
-        } else if (now - next_ns > 100000000ull) next_ns = now;   /* fell behind: resync, no catch-up burst */
-    }
+    /* pacing (engine/eng_vsync.h): vsync only while it BLOCKS -- re-measured every 50 frames, not only the first 60 (a window
+     * minimised later, or the driver's vsync turned off, swaps at once: GitHub #26) -- otherwise sleep to the board's 59.906 Hz */
+    eng_vsync_after_frame(&vs, win);
     eng_pace_after(&pace_log, "rr");
     return true;
 }
@@ -760,6 +784,7 @@ bool rr_host_paused(void) { return (paused || rr_ui_is_open()) && !link_host_on(
 void rr_host_close(void)
 {
     rr_input_record_stop();
+    eng_ffb_close();                                 /* no force left on the wheel after we are gone */
     for (int d = 0; d < MAX_DEV; d++) if (dev[d].gc || dev[d].js) dev_remove(dev[d].id);
     if (win) { rr_ui_shutdown(); if (glc) SDL_GL_DeleteContext(glc); SDL_DestroyWindow(win); SDL_Quit(); win = NULL; glc = NULL; }
 }

@@ -88,6 +88,25 @@ static const eng_hud_cfg *hud_cfg;           /* the game's HUD description, set 
 
 void ss22_gl_set_hud(const eng_hud_cfg *h) { hud_cfg = h; }
 
+/* THE GUN SHOT FLASH (Time Crisis): a light-gun cabinet whitens the whole screen for the frame after the trigger so the gun's
+ * photodiode can find the beam -- the mixer's screen fade at full strength in white, switched on for ONE frame with no ramp
+ * (measured: fade FFFFFF x FF, flags 03, the frames either side 00). Our gun is the pointer and needs no flash; with the option
+ * off, such an instant white is not drawn for up to 2 frames. A real fade to white ramps (the factor climbs over frames) and
+ * is left alone; one that STARTS at full white shows from its third frame. The game itself is untouched. */
+static bool gun_flash = true;
+void ss22_gl_set_gun_flash(bool on) { gun_flash = on; }
+static void gun_flash_filter(void)
+{
+    static int prev_fade, run, env = -1;
+    if (env < 0) { const char *e = getenv("ENG_GUN_FLASH"); env = e ? 1 : 0; if (e) gun_flash = atoi(e) != 0; }   /* tests (headless has no settings page) */
+    const int fade = (g_fog.mixer_flags & 3) && g_fog.screen_fade_factor;
+    const int white = fade && g_fog.screen_fade_factor >= 0xF0 && g_fog.screen_fade[0] >= 0xF0 && g_fog.screen_fade[1] >= 0xF0 && g_fog.screen_fade[2] >= 0xF0;
+    if (!white) run = 0;
+    else if (run || !prev_fade) run++;                   /* white straight out of no fade: a flash (a ramp reaching white has prev_fade set) */
+    prev_fade = fade;
+    if (!gun_flash && run && run <= 2) g_fog.screen_fade_factor = 0;
+}
+
 void ss22_prepare(const ss22_regs *r)
 {
     if (!frames) {
@@ -100,6 +119,7 @@ void ss22_prepare(const ss22_regs *r)
     spot_src = r->spotram; spot_on = r->spotram && r->spot_enabled;
 
     fog_load_regs(r->mixer, r->czattr, r->czram);
+    gun_flash_filter();
     eng_palette_from_planar(r->pal, 0x8000);
 
     /* the text model indexes cg[0x1E000:0x20000] as textram, and a board keeps the two regions apart */
@@ -379,7 +399,11 @@ static void draw_text(void)
     glBindTexture(GL_TEXTURE_2D, txt_tex);
     const bool split = shade_split && g_eng_hud_e != 0;             /* a moving HUD over a shade: the text alone here, the shade in its own texture */
     static bool tex_split;
-    if (txt_dirty || prio_any || tex_masked || split != tex_split) {          /* upload: the text as rendered, less what a sprite over the text layer covers */
+    /* the texture already holds this text under this mask: a race's HUD sprites mask it every frame, and re-sending the same 1.2 MB each
+     * time cost ~2 ms a frame on Windows */
+    static uint8_t last_mask[SPR_W * SPR_H];
+    const bool mask_changed = prio_any != tex_masked || (prio_any && memcmp(prio_mask, last_mask, sizeof last_mask) != 0);
+    if (txt_dirty || mask_changed || split != tex_split) {          /* upload: the text as rendered, less what a sprite over the text layer covers */
         static uint8_t *masked;
         const uint8_t *src = split ? only_buf : txt_buf, *src2 = split ? shd_buf : NULL;
         if (prio_any) {
@@ -399,6 +423,7 @@ static void draw_text(void)
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SPR_W, SPR_H, GL_RGBA, GL_UNSIGNED_BYTE, src2);
             glBindTexture(GL_TEXTURE_2D, txt_tex);
         }
+        if (prio_any) memcpy(last_mask, prio_mask, sizeof last_mask);
         tex_masked = prio_any; tex_split = split; txt_dirty = false;
     }
     glEnable(GL_TEXTURE_2D);
@@ -460,6 +485,9 @@ void ss22_draw(int vw, int vh)
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
+    { static int ml = -1; if (ml < 0) ml = getenv("ENG_MIXLOG") != NULL;       /* ENG_MIXLOG=1: the mixer state of every drawn frame (finding what makes a frame white) */
+      if (ml) fprintf(stderr, "[MIX] bg %02X%02X%02X fade %02X%02X%02X x%02X flags %02X quads %d sprites %d\n", g_fog.bg[0], g_fog.bg[1], g_fog.bg[2],
+                      g_fog.screen_fade[0], g_fog.screen_fade[1], g_fog.screen_fade[2], g_fog.screen_fade_factor, g_fog.mixer_flags, qn, ni); }
     /* the mixer's background, before the gamma; what no layer covers */
     glClearColor(g_fog.bg[0] / 255.0f, g_fog.bg[1] / 255.0f, g_fog.bg[2] / 255.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -481,7 +509,7 @@ void ss22_draw(int vw, int vh)
     while (qi < qn || si < ni) {
         const uint32_t qz = qi < qn ? (uint32_t)(qbuf[qi].zsort & 0xFFFFFF) : 0;
         const uint32_t sz = si < ni ? items[si].z : 0;
-        if (si < ni && (qi >= qn || sz >= qz)) { eng_draw_end(); draw_sprite(&items[si++]); eng_draw_begin(); }
+        if (si < ni && (qi >= qn || sz >= qz)) { eng_draw_end(); draw_sprite(&items[si++]); eng_draw_resume(); }
         else eng_draw_quad(&qbuf[qi++], &cfg);
     }
     eng_draw_end();
@@ -520,8 +548,10 @@ static SDL_GLContext hl_ctx;
 
 bool eng_gl_open_headless(int w, int h)
 {
+#ifndef _WIN32                                          /* Windows: SDL's offscreen driver makes OpenGL only through EGL, which Windows lacks -- the hidden window below does */
     SDL_SetHint("SDL_VIDEODRIVER", "offscreen");
     setenv("SDL_VIDEODRIVER", "offscreen", 1);         /* SDL < 2.0.22 reads only the environment */
+#endif
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_SetHint("SDL_VIDEODRIVER", ""); setenv("SDL_VIDEODRIVER", "", 1);
         if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "[GL] no video: %s\n", SDL_GetError()); return false; }

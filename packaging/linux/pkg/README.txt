@@ -1,4 +1,4 @@
-Prop Cycle, Rave Racer, Tokyo Wars and Dirt Dash -- decompiled engines for the Namco System 22 arcade games
+Prop Cycle, Rave Racer, Tokyo Wars, Dirt Dash and Time Crisis -- decompiled engines for the Namco System 22 arcade games
 ==============================================================================================================
 
 WHERE THE ROMS GO  (do this after installing)
@@ -11,27 +11,29 @@ YOUR home folder at exactly these paths:
                 ~/.local/share/namco22/raverace/roms/namcoc74.zip
   Tokyo Wars:   ~/.local/share/namco22/tokyowar/roms/tokyowar.zip
   Dirt Dash:    ~/.local/share/namco22/dirtdash/roms/dirtdash.zip
-
-Rave Racer, Tokyo Wars and Dirt Dash also need c71.bin (the DSP BIOS). Usually it
-is inside the game's zip. If a game says "c71.bin is missing", your ROM sets keep
-it in a separate MAME set: put namcoc71.zip in that game's roms/ folder too
-(still zipped; nothing needs adding to another zip).
+  Time Crisis:  ~/.local/share/namco22/timecris/roms/timecris.zip
 
 Easiest way: start the game once from the applications menu. It creates the
 folder, tells you what is missing and opens the folder; copy the zip(s) in and
 start it again. Zips already in ~/Downloads are picked up automatically.
 (~/.local is a hidden folder: in a file manager press Ctrl+H to see it.)
 From a terminal:
-  mkdir -p ~/.local/share/namco22/propcycle/roms ~/.local/share/namco22/raverace/roms ~/.local/share/namco22/tokyowar/roms ~/.local/share/namco22/dirtdash/roms
+  mkdir -p ~/.local/share/namco22/propcycle/roms ~/.local/share/namco22/raverace/roms ~/.local/share/namco22/tokyowar/roms ~/.local/share/namco22/dirtdash/roms ~/.local/share/namco22/timecris/roms
   cp propcycl.zip ~/.local/share/namco22/propcycle/roms/
   cp raverace.zip namcoc74.zip ~/.local/share/namco22/raverace/roms/
   cp tokyowar.zip ~/.local/share/namco22/tokyowar/roms/
   cp dirtdash.zip ~/.local/share/namco22/dirtdash/roms/
-  # if a game says c71.bin is missing, copy namcoc71.zip into that game's roms/ folder as well
+  cp timecris.zip ~/.local/share/namco22/timecris/roms/
 
 The first start unpacks the zips into the game folder (extracted/); after that
 the zips may be removed. Settings, high scores and recordings are kept in the
 same folder.
+
+APPIMAGES: zips placed next to the .AppImage file (or in a roms/ folder beside
+it) are found too. PORTABLE MODE: make a folder named namco22-data next to the
+AppImages, and each game keeps everything in namco22-data/<game>/ instead of
+~/.local/share/namco22 -- one disk then works on a Steam Deck and another PC.
+The AppImage names have no version number: to update, overwrite the file.
 
 PLAYING
 -------
@@ -40,8 +42,13 @@ Prop Cycle:  5 coin, Enter start, arrow keys steer, Space pedal, P pause,
 Rave Racer:  5 coin, X gas, Z brake, arrow keys steer, A/S shift, V view,
              P pause, Esc menu, F12 picture.   `raveracer 2` = window scale 2.
 Tokyo Wars:  5 coin, Enter start, arrow keys (or A/D) steer, Up/W forward, Down/S backward,
-             X / Z triggers, P pause, Esc menu (Display: widescreen ...), F12 picture.
+             X / Z triggers, P pause, Esc menu (Display: widescreen, frame rate ...), F12 picture.
              `tokyowars 2` = window scale 2.
 Dirt Dash:   5 coin (a game costs two), Z brake, X gas (throttle), C select (view change / confirm), Left/Right
              (A/D) steer, Q / E shift down / up, M motion stop, P pause, Esc menu, F12 picture.   `dirtdash 2` = window scale 2.
+Time Crisis: the MOUSE is the gun: move it to aim, left button = shoot, right button (or Z) = the foot pedal (come out of cover / reload),
+             5 coin (a game costs 3), Esc menu, F2 the operator's test switch, F8 a white border round the picture for
+             light guns that need one. An absolute-mouse light gun (Sinden, Gun4IR, OpenFIRE, Reaper, AimTrak) works as a
+             mouse: shoot off the edge of the screen (or hold R / the side button) to reload. Arrow keys / the right stick aim
+             too. `timecrisis 2` = window scale 2.
 A game controller works too (Esc -> Controls to rebind).

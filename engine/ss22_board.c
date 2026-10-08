@@ -12,19 +12,39 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>                      /* MoveFileExA (the EEPROM save) */
+#undef IN                                 /* windows.h defines IN empty; this file has its own IN(base, len) */
+#endif
 #include "ss22_board.h"
 #include "c139.h"
+#include "ss22_game.h"
 
 static const ss22_board_cfg *cfg;
+
+uint16_t g_ss22_gun_x = 68 + 626 / 2, g_ss22_gun_y = 43 + 241 / 2;      /* the ports' defaults: the middle of the screen */
+bool     g_ss22_gun_off;
+bool ss22_gun_read(uint32_t a, int size, uint32_t *v)
+{
+    if (a < 0x430000u || a >= 0x430010u) return false;
+    const uint32_t o = (a - 0x430000u) >> 2;
+    const uint16_t w = g_ss22_gun_off ? 0 : o == 0 ? g_ss22_gun_x : (o == 1 || o == 2) ? g_ss22_gun_y : 0;
+    const uint32_t full = (uint32_t)w << 16;                            /* umask32(0xffff0000): the low half of each long is unmapped, 0 */
+    *v = size == 4 ? full : size == 2 ? ((a & 2) ? 0u : w) : (full >> ((3 - (a & 3)) * 8)) & 0xFF;
+    return true;
+}
 static uint32_t ss22_hw_keycus_r(uint32_t unit);
 static uint32_t ss22_hw_dsw(void);
 static uint32_t ss22_hw_portbit_r(uint32_t unit);
 static void     ss22_hw_portbit_w(uint32_t unit);
 static void     ss22_hw_syscon_w(uint32_t off, uint8_t data);
-static int      g_ss22_mbox;
+int             g_ss22_mbox;
 static void     ss22_mbox_log(uint32_t off, int size, uint32_t v);
 void (*g_ss22_dsp_control)(uint8_t v);
 void (*g_ss22_snd_set_run)(bool run);
+uint32_t g_ss22_wram_watch_off = ~0u;
+void (*g_ss22_wram_watch)(uint32_t v, int size);
 
 ss22_sys_t g_ss22;
 #ifdef RR_TRACE
@@ -221,6 +241,7 @@ uint32_t rr_read(uint32_t a, int size)
     case 0x40: if (IN(0x400000u, 0x20)) return dev_read(a - 0x400000u, size, 2, keycus_h); break;
     case 0x41: if (IN(0x410000u, SS22_SCI_SIZE)) return be_rd(g_ss22.sci, a - 0x410000u, size); break;
     case 0x42: if (IN(0x420000u, 0x10)) return dev_read(a - 0x420000u, size, 2, sci_h); break;
+    case 0x43: if (cfg && cfg->extra_read) { uint32_t v; if (cfg->extra_read(a, size, &v)) return v; } break;
     case 0x44: if (IN(0x440000u, 4)) { uint32_t d = ss22_hw_dsw(); return size == 4 ? d : size == 2 ? (d >> ((a & 2) ? 0 : 16)) & 0xFFFF : (d >> ((3 - (a & 3)) * 8)) & 0xFF; } break;
     case 0x45: if (IN(0x450008u, 4)) return dev_read(a - 0x450008u, size, 2, portbit_h); break;
     case 0x46: if (IN(0x460000u, 0x4000)) return eeprom_read(a - 0x460000u, size); break;
@@ -242,7 +263,7 @@ uint32_t rr_read(uint32_t a, int size)
     case 0x90: if (IN(0x900000u, SS22_VICS_SIZE)) return be_rd(g_ss22.vics, a - 0x900000u, size); break;
     case 0x94: if (IN(0x940000u, 0x80)) return dev_read(a - 0x940000u, size, 4, vicsctl_h); break;
     case 0x98: case 0x99: case 0x9A: if (IN(0x980000u, SS22_SPRITE_SIZE)) return be_rd(g_ss22.sprite, a - 0x980000u, size); break;
-    case 0xA0: if (IN(0xA04000u, SS22_SHARED_SIZE)) return be_rd(g_ss22.shared, a - 0xA04000u, size); break;
+    case 0xA0: if (IN(0xA04000u, SS22_SHARED_SIZE)) { if (g_ss22_game->snd_poll_sync && a - 0xA04000u >= 0x7C00 && a - 0xA04000u < 0x7E00) { extern void ss22_snd_poll(void); ss22_snd_poll(); } return be_rd(g_ss22.shared, a - 0xA04000u, size); } break;
     case 0xC0: case 0xC1: return dev_read(a - 0xC00000u, size, 4, poly_h);
     default: break;
     }
@@ -251,11 +272,28 @@ uint32_t rr_read(uint32_t a, int size)
     return 0;
 }
 
+#ifdef RR_TRACE
+/* SS22_WATCH=<addr>: every write covering that byte, with the writing PC (trace build only, like Rave Racer's RR_WATCH) */
+extern uint32_t rr_trace_pc;
+static void watch(uint32_t a, int size, uint32_t v)
+{
+    static long w = -2;
+    if (w == -2) { const char *e = getenv("SS22_WATCH"); w = e ? strtol(e, NULL, 0) : -1; }
+    if (w >= 0 && (uint32_t)w >= a && (uint32_t)w < a + (uint32_t)size)
+        fprintf(stderr, "[WATCH] %06X <- %0*X (size %d) at PC %06X\n", (unsigned)a, size * 2, (unsigned)v, size,
+                (unsigned)rr_trace_pc);
+}
+#endif
+
 void rr_write(uint32_t a, int size, uint32_t v)
 {
     a &= 0xFFFFFFu;
+#ifdef RR_TRACE
+    watch(a, size, v);
+#endif
     if (a < SS22_ROM_SIZE) { g_ss22.n_romwrite++; complain("ROM write", a, size); return; }
     if (a >= 0xE00000u) {
+        if (a - 0xE00000u == g_ss22_wram_watch_off && g_ss22_wram_watch) g_ss22_wram_watch(v, size);
         if (a - 0xE00000u + (uint32_t)size <= SS22_WRAM_SIZE) { be_wr(g_ss22.wram, a - 0xE00000u, size, v); return; }
     } else switch (a >> 16) {
     case 0x40: if (IN(0x400000u, 0x20)) return; break;                              /* keycus_w: ignored */
@@ -287,7 +325,7 @@ void rr_write(uint32_t a, int size, uint32_t v)
     case 0x90: if (IN(0x900000u, SS22_VICS_SIZE)) { be_wr(g_ss22.vics, a - 0x900000u, size, v); return; } break;
     case 0x94: if (IN(0x940000u, 0x80)) { dev_write(a - 0x940000u, size, v, 4, vicsctl_wh); return; } break;
     case 0x98: case 0x99: case 0x9A: if (IN(0x980000u, SS22_SPRITE_SIZE)) { be_wr(g_ss22.sprite, a - 0x980000u, size, v); return; } break;
-    case 0xA0: if (IN(0xA04000u, SS22_SHARED_SIZE)) { if (g_ss22_mbox && a - 0xA04000u < 0x200) ss22_mbox_log(a - 0xA04000u, size, v); be_wr(g_ss22.shared, a - 0xA04000u, size, v); return; } break;
+    case 0xA0: if (IN(0xA04000u, SS22_SHARED_SIZE)) { if (g_ss22_mbox && (a - 0xA04000u < 0x200 || (a - 0xA04000u >= 0x7C00 && a - 0xA04000u < 0x7E00))) ss22_mbox_log(a - 0xA04000u, size, v); be_wr(g_ss22.shared, a - 0xA04000u, size, v); return; } break;
     case 0xC0: case 0xC1: dev_write(a - 0xC00000u, size, v, 4, poly_wh); return;
     default: break;
     }
@@ -350,6 +388,7 @@ static void ss22_mbox_log(uint32_t off, int size, uint32_t v)
     fprintf(mbox_f, "%u %x %d %x\n", rr_frame, off, size, v);
 }
 
+void ss22_mbox_note(uint32_t frame, uint32_t a, uint8_t v) { if (mbox_f) fprintf(mbox_f, "%u MCU %x %x\n", frame, a, v); }
 void ss22_board_use(const ss22_board_cfg *c) { cfg = c; }
 bool ss22_load_program(const char *rom_dir) { return cfg->load_program(rom_dir); }
 
@@ -429,13 +468,17 @@ void ss22_eeprom_save(void)
     if (!nv_on || !memcmp(nv_saved, g_ss22.eeprom, SS22_EEPROM_SIZE)) return;
     char tmp[sizeof nv_path + 8];
     snprintf(tmp, sizeof tmp, "%s.tmp", nv_path);
+    static bool warned;                              /* a folder that cannot be written: say so once (it is retried every 120 frames) */
     FILE *f = fopen(tmp, "wb");
-    if (!f) return;
+    if (!f) { if (!warned) fprintf(stderr, "[EEPROM] cannot write %s: options and records will not be saved\n", tmp); warned = true; return; }
     bool ok = fwrite(g_ss22.eeprom, 1, SS22_EEPROM_SIZE, f) == SS22_EEPROM_SIZE;
     ok = (fclose(f) == 0) && ok;
-    if (!ok) { remove(tmp); return; }
+    if (!ok) { remove(tmp); if (!warned) fprintf(stderr, "[EEPROM] writing %s failed: options and records not saved\n", tmp); warned = true; return; }
 #ifdef _WIN32
-    remove(nv_path);
+    const bool moved = MoveFileExA(tmp, nv_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;   /* one step: never no file at all */
+#else
+    const bool moved = rename(tmp, nv_path) == 0;
 #endif
-    if (rename(tmp, nv_path) == 0) memcpy(nv_saved, g_ss22.eeprom, SS22_EEPROM_SIZE);
+    if (moved) { memcpy(nv_saved, g_ss22.eeprom, SS22_EEPROM_SIZE); warned = false; }
+    else if (!warned) { fprintf(stderr, "[EEPROM] cannot replace %s: options and records not saved\n", nv_path); warned = true; }
 }

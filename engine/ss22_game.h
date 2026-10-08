@@ -20,6 +20,7 @@ typedef struct {
     const char *pointrom[3][4];              /* plane 0 = low bytes ... plane 2 = high */
     int         chips;                       /* per plane (3 or 4) */
     bool      (*xlat)(c71_t *d, int pc);     /* gen/<game>_c25.c: the master program translated to C */
+    uint16_t    spin_pc, spin_op;            /* optional busy-wait the engine fast-forwards (engine/c25/c25.h); 0 = none */
 } ss22_dsp_cfg;
 
 /* the sound board: the S22-BIOS + sound program, the wave ROMs, what the MCU reads of the cabinet */
@@ -30,13 +31,15 @@ typedef struct {
     uint32_t    wave_size;                   /* the chip's region */
     uint16_t    inputs_idle;                 /* the INPUTS word with nothing pressed (IP_ACTIVE_LOW; bit 9 = the cabinet switch on Dirt Dash) */
     int         adc_pedal[2];                /* the A-D channels of the two pedals (channel 0 is the wheel) */
+    bool        wave_swap[2];                /* swap each pair of bytes of that wave ROM as loaded (MAME's ROM_LOAD16_WORD_SWAP: Time Crisis's
+                                              * ts1wavea.2l, fixed in MAME 0.190; Armadillo Racing swaps both) */
 } ss22_snd_cfg;
 
 /* the picture: where the ROM chips are and what they are called (the RAM is the board's) */
 typedef struct {
     const char *cg[8];                       /* the 8 texture chips */
     const char *ccrl, *ccrh;                 /* the texture tilemap and its attributes */
-    const char *scg[4];                      /* the sprite chips */
+    const char *scg[6];                      /* the sprite chips (a game may have up to six) */
     int         n_scg;
     size_t      sprite_region;               /* the sprite ROM region: the chips, then this fill */
     uint8_t     sprite_fill;                 /* MAME's ROMREGION_ERASEFF = 0xFF */
@@ -60,6 +63,11 @@ typedef struct ss22_game {
     const ss22_input_game *input;
     const eng_rom_t *roms; int n_roms;       /* the chips, name and size */
     const char *zip;                         /* the MAME set the game unpacks them from */
+    bool prune_shadow;                  /* the program restarts itself from inside an interrupt handler (a test-mode watchdog): drop the shadow return frames it abandoned (engine/lift_cpu.c rr_shadow_prune) */
+    bool snd_poll_sync;                      /* the 68K polling the sound CPU's handshake word lets the MCU run a little (a boot-time SUBCPU wait that would otherwise miss a pulse the MCU raises and clears within one slice); 0 = off, the other games are unchanged */
+    uint16_t recoil_mask;                    /* MCU output bits (mcuout0..15) that are a gun's recoil solenoid: each rising edge rumbles the game pad (engine/ss22_out.c); 0 = none */
+    double out_gain;                         /* speaker gain for THIS game's chip levels (engine/audio_out.h); 0 = the shared default x6, which is Rave Racer's */
+    const char *const *more_zips;            /* NULL-terminated: further zips of the same set searched for chips, e.g. a split set's clone zip ("dirtdasha.zip"); or NULL */
     void (*entry)(void);                     /* the 68K's reset entry in the lifted program: never returns */
     uint32_t reset_sp_addr;                  /* 0 */
     int         polls_per_frame;             /* 68K instructions a frame (the poll budget): MAME's average */
@@ -79,7 +87,12 @@ typedef struct ss22_game {
     int       (*link_game_id)(void);         /* the ID the game is using now (0-based), so the cabinets can spot two with the same one */
     void      (*link_report)(char *buf, int n);
     bool      (*link_good)(void);            /* the game thinks the link is working (counted every frame for the log) */
+    void (*frame)(long n);                   /* once a frame at the frame boundary, in every mode (the game's test switches); NULL = none */
+    const struct eng_ui_page *(*menu_page)(void);   /* the game's own page in the Esc menu (Time Crisis: Stages); NULL = none */
 } ss22_game;
+
+/* Run the game's start script NAME (ss22_game.start) from now: its frame n counts from this call. The Esc menu's way to --stage. */
+void ss22_start_script(const char *name);
 
 int ss22_main(int argc, char **argv, const ss22_game *g);            /* engine/ss22_run.c */
 extern const ss22_game *g_ss22_game;

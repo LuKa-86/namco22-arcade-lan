@@ -322,7 +322,7 @@ uint16_t state_attract_run(void)
     case 1:  FUN_0000c970(); break;   /* title-logo run (billboard + sprites) */
     case 2:  FUN_0000ca80(); break;   /* Cinematic flyover init */
     case 3:  FUN_0000cbf2(); break;   /* Cinematic flyover run */
-    case 4:  attract_gameplay_tick(); break;  /* 0x00D05C: gameplay replay init/tick */
+    case 4:  attract_gameplay_init(); break;  /* 0x00D05C: gameplay replay init, then the tick */
     case 5:  attract_gameplay_tick(); break;  /* Gameplay replay tick */
     case 6:  highscore_display_init(); break; /* High score display init */
     case 7:  highscore_display_run(); break;  /* High score display run */
@@ -388,6 +388,8 @@ int g_attract_log = 0;
 void state_title_init(void)
 
 {
+  { static int old = -1; if (old < 0) old = getenv("PROPCYCL_OLD_TESTMODE") != NULL;
+    if (!old) { extern void tm_state_title_init(void); tm_state_title_init(); return; } }
   sync_reset();
   set_background_color(0,0,0);
   W[0x3FB4] = W[0x3FB4] & 0xfffe;
@@ -544,7 +546,7 @@ static void title_sub06_init(void)
 }
 
 /* ---- 0x01AD02 (slot 0x08) ---- */
-static void title_sub08_init(void)
+void title_sub08_init(void)
 {
   sync_post();
   title_substate_dispatch(2);
@@ -553,7 +555,7 @@ static void title_sub08_init(void)
 }
 
 /* ---- 0x01AECE (slot 0x0A) ---- */
-static void title_sub0a_init(void)
+void title_sub0a_init(void)
 {
   sync_post();
   title_substate_dispatch(2);
@@ -563,7 +565,7 @@ static void title_sub0a_init(void)
 }
 
 /* ---- 0x01B150 (slot 0x0C) ---- */
-static void title_sub0c_init(void)
+void title_sub0c_init(void)
 {
   sync_post();
   title_substate_dispatch(0);
@@ -572,7 +574,7 @@ static void title_sub0c_init(void)
 }
 
 /* ---- 0x01B23E (slot 0x0E) ---- */
-static void title_sub0e_init(void)
+void title_sub0e_init(void)
 {
   sync_post();
   title_substate_dispatch(0);
@@ -581,7 +583,7 @@ static void title_sub0e_init(void)
 }
 
 /* ---- 0x01B328 (slot 0x10) ---- */
-static void title_sub10_init(void)
+void title_sub10_init(void)
 {
   (void)attract_gfx_init();         /* jsr $1c0b0 */
   mem_write8(0x82401b, 0x7f);       /* move.b #$7f,$82401b */
@@ -591,14 +593,14 @@ static void title_sub10_init(void)
 }
 
 /* ---- 0x01BB2A (slot 0x16) ---- */
-static void title_sub16_init(void)
+void title_sub16_init(void)
 {
   sync_post();
   W[0x3FB4] = 0x17;
 }
 
 /* ---- 0x01BC66 (slot 0x18) ---- */
-static void title_sub18_init(void)
+void title_sub18_init(void)
 {
   int i;
   sync_post();
@@ -612,7 +614,7 @@ static void title_sub18_init(void)
 }
 
 /* ---- 0x01BDCE (slot 0x1A) ---- */
-static void title_sub1a_init(void)
+void title_sub1a_init(void)
 {
   sync_post();
   title_substate_dispatch(0);
@@ -621,7 +623,7 @@ static void title_sub1a_init(void)
 }
 
 /* ---- 0x01BE36 (slot 0x1C) ---- */
-static void title_sub1c_init(void)
+void title_sub1c_init(void)
 {
   sync_post();
   title_substate_dispatch(0);
@@ -630,7 +632,7 @@ static void title_sub1c_init(void)
 }
 
 /* ---- 0x01C030 (slot 0x20) ---- */
-static void title_sub20_init(void)
+void title_sub20_init(void)
 {
   sync_post();
   eeprom_init_with_calibration();   /* jsr $1a0be */
@@ -651,9 +653,9 @@ static void title_sub_unported(const char *what)
   if (n < 8) said[n++] = what;
   printf("[TITLE] sub-state handler not yet transcribed: %s\n", what);
 }
-static void title_sub0d_run(void) { title_sub_unported("service_screen_flip_run @0x01B16E"); }
-static void title_sub0f_run(void) { title_sub_unported("service_stereo_toggle_run @0x01B25C"); }
-static void title_sub21_run(void) { title_sub_unported("slot 0x21 @0x01C058"); }
+void title_sub0d_run(void) { title_sub_unported("service_screen_flip_run @0x01B16E"); }
+void title_sub0f_run(void) { title_sub_unported("service_stereo_toggle_run @0x01B25C"); }
+void title_sub21_run(void) { title_sub_unported("slot 0x21 @0x01C058"); }
 
 /* The ROM's own table at 0x36548, in order. */
 static void (* const title_dispatch[0x22])(void) = {
@@ -696,6 +698,10 @@ static void (* const title_dispatch[0x22])(void) = {
 uint16_t state_title_run(void)
 
 {
+  /* THE TEST MODE IS src/test_mode.c (GitHub #26, ported from 0x01A15E..0x01C0B0); this body is the old one, kept for
+   * PROPCYCL_OLD_TESTMODE=1 A/B only. */
+  { static int old = -1; if (old < 0) old = getenv("PROPCYCL_OLD_TESTMODE") != NULL;
+    if (!old) { extern void tm_state_title_run(void); tm_state_title_run(); return 0; } }
   uint16_t uVar1;
 
   /* The `arcade_menu` RECREATION used to intercept here and own the frame,
@@ -2072,6 +2078,48 @@ void attract_cinematic_init(void)
   W[0x0CC4] = 0x13;
   attract_cinematic_tick();
   return;
+}
+
+/* ---- attract_gameplay_init @ 0x00D05C ---- */
+/* Case 4's own handler, disassembled from the ROM (0x00D05C..0x00D132). Case 4
+ * used to run the case-5 tick instead, so none of this happened: the replay
+ * pointer stayed 0 and the demo "played" whatever bytes are at ROM address 0,
+ * the phase never reached 5 (it sat in case 4 for 2700 frames), and the
+ * caption plank -- block 0 at tile 0x120 on palette 1, drawn by
+ * attract_text_stage_labels -- showed what the start-up preload had left in
+ * those tiles: a bar of noise under PRESS THE START BUTTON. */
+void attract_gameplay_init(void)
+{
+  int i;
+  W[0x15EB8] = 0;
+  W[0x15EBC] = -1;
+  W[0x16D7C] = 0x190AD0;                      /* the demo's replay, a ROM address */
+  W[0x15BE0] = 0xa00;
+  W[0x15EC4] = -1;
+  W[0x15EC8] = (int32_t)vrd32(0x35320);
+  W[0x15BE4] = 0;
+  /* jsr $2106A: the text layer cleared to tile 0x20, its scroll zeroed */
+  mem_write8(0x82400D, 0);
+  mem_write16(0x8A0002, 0);
+  for (i = 0; i < 0x1000; i++) mem_write16(0x89E000 + i * 2, 0x20);
+  W[0x0C8C] = (int32_t)vrd32(0x190AD0);       /* move.l (a0) -- a0 = the replay pointer */
+  W[0x012BC] = 0;
+  W16_SET(0xE10, 0);
+  gameplay_init_player_and_world();           /* 0x00AD70 */
+  gameplay_init_state_vars();                 /* 0x00AEB8 */
+  W[0x0E44] = 0xe10;
+  W[0x0E48] = 0xe10;
+  W[0xEB1A] = 0;
+  W[0xEB1C] = 0;
+  W[0xEB1E] = 0;
+  W[0x1703C] = 0;
+  W[0x15ED0] = 0xff;
+  W[0xEB18] = 3;
+  cgram_load_tile_block(0, 0x120);            /* the plank */
+  cz_load_color_ramp(0, 1);
+  cz_load_color_ramp(0xf8, 5);                /* the captions' text */
+  W[0x0CC4] = 5;
+  attract_gameplay_tick();
 }
 
 /* ---- attract_gameplay_tick ---- */

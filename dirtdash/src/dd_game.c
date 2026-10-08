@@ -6,7 +6,7 @@
  * sound programs are translated at build time (gen/dd_c25.c, gen/dd_snd_driver.c).
  *
  * The ROM chip list is tools/setup_roms.py's REQUIRED (World, DT2 Ver.A): names and sizes, checked before anything is written.
- * dirtdash.zip is the whole set (the sound BIOS c71.bin included); the program is its dirtdasha/ sub-folder (World DT2 Ver.A), NOT
+ * dirtdash.zip is the whole set (the DSP BIOS, c71.bin, is built into the engine: engine/c25/c71_bios.c); the program is its dirtdasha/ sub-folder (World DT2 Ver.A), NOT
  * dirtdashj/ (Japan).
  */
 #include <stdio.h>
@@ -19,7 +19,6 @@
 bool dd_c25_exec(c71_t *d, int pc);          /* gen/dd_c25.c */
 
 static const eng_rom_t k_roms[] = {
-    {"c71.bin", 0x2000},
     {"dt1ccrh.1d", 0x80000},
     {"dt1ccrl.3d", 0x200000},
     {"dt1cg0.8d", 0x200000},
@@ -112,6 +111,11 @@ static const ss22_input_game input = {
     { "Enter, then press the new key (Esc cancels)", "Alternates: 6, Enter, Up/Down, A D, Ctrl, Alt", "Pad: stick, RT gas, LT brake, X/Y shift, A" },
     ss22_snd_inputs,
     IN_TEST, IN_SERVICE,
+    true,                                   /* the wheel motor: MAME's "J2 pin 7 /TXD ... to a Motor/Feedback PCB", the MCU's UART0 */
+    /* the torque sum (0x022E2E-0x022E96, work RAM 0xE00148): the wheel's position x a spring, + a lateral term (0xE00136) and a
+     * bump offset (0xE076AC), + the wheel's speed (0xE00144) x a damping, + a surface kick (0xE076AE); per road, a table row of
+     * gains (0x022DB4). Clamped to +-0x200, then /8 with a 4-frame dither (0x022F14) into the motor byte. Terms 0 and 2 centre. */
+    .torque = { 0xE00148u, 4, 0x5, 0x200 },
 };
 
 /* widescreen: the race HUD is up while the TIME / POSITION labels are on screen (text cells row 1: col 2 and col 31). Its digits and the map's
@@ -183,6 +187,7 @@ static bool start(const char *name, long n, uint16_t *p, unsigned *wheel, unsign
 static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *gas, unsigned *brake)
 {
     const long m = n % 3600;
+    const uint16_t keep = *p;                                                /* the --press bits, which arrive in *p */
     static int test = -1;
     if (test < 0) { const char *e = getenv("DD_AUTOPLAY"); test = e && !strcmp(e, "test"); }
     if (test) { autoplay_test(n, p, wheel, gas, brake); return; }
@@ -195,7 +200,7 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *gas, unsign
     static long da = -99999, db;
     if (da == -99999) { const char *e = getenv("DD_DRIVE"); da = 0; db = 0; if (e) { char *q; da = strtol(e, &q, 10); db = *q == ':' ? strtol(q + 1, NULL, 10) : da; } else da = -99999 - 1; }
     if (da != -99999 - 1) {
-        if (n >= 900) *p = 0;                                            /* no View pulses in the race: the camera stays put */
+        if (n >= 900) *p = keep;                                         /* no View pulses in the race: the camera stays put (only the --press ones stay) */
         *wheel = (unsigned)(512 + (n < 2100 ? da : db));
         *gas = n >= 1300 ? 320u : 0u;
         *brake = 0;
@@ -209,10 +214,13 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *gas, unsign
 
 static const ss22_game game = {
     .name = "Dirt Dash", .tag = "DD", .lname = "dd", .logname = "dirtdash.log", .zip = "dirtdash.zip",
+    .out_gain = 2.4,      /* the chip runs ~2.5x hotter than Rave Racer's (raw median RMS 1393 against 563): x6 pinned a race against the limiter; 2.4 lands on Rave Racer's level (~3400 RMS) */
+    .more_zips = (const char *const[]){ "dirtdasha.zip", NULL },      /* a split MAME set keeps the World DT2 Ver.A program chips in the clone's own zip */
     .board = &dd_board,
     .dsp = { { {"dt1ptrl0.18k", "dt1ptrl1.16k", "dt1ptrl2.15k"},
                {"dt1ptrm0.18j", "dt1ptrm1.16j", "dt1ptrm2.15j"},
-               {"dt1ptru0.18f", "dt1ptru1.16f", "dt1ptru2.15f"} }, 3, dd_c25_exec },     /* the region is three planes of three chips (Prop Cycle's shape) */
+               {"dt1ptru0.18f", "dt1ptru1.16f", "dt1ptru2.15f"} }, 3, dd_c25_exec,     /* the region is three planes of three chips (Prop Cycle's shape) */
+               .spin_pc = 0x45BB, .spin_op = 0x2000 },   /* the upload routine's LAC *0 / BNEZ poll of polygon-RAM word 0 (~36% of all retired steps) */
     .snd = { "dt1dataa.8k", { "dt1wavea.2l", "dt1waveb.1l" }, { 0, 0x800000 }, 0x1000000, 0xFDFF, { 1, 2 } },   /* MAME's c352 region: dt1wavea.2l at 0, dt1waveb.1l at 0x800000 */
     .video = { { "dt1cg0.8d", "dt1cg1.10d", "dt1cg2.12d", "dt1cg3.13d", "dt1cg4.14d", "dt1cg5.16d", "dt1cg6.18d", "dt1cg7.19d" },
                "dt1ccrl.3d", "dt1ccrh.1d", { "dt1scg0.12f", "dt1scg1.10f" }, 2, 0x1000000, 0xFF,

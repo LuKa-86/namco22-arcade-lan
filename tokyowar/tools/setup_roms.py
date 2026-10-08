@@ -19,7 +19,6 @@ import zipfile
 # name -> size in bytes. The runtime (src/rom_loader.c, src/mcu_sound.c,
 # src/audio_hle.c) reads exactly these.
 REQUIRED = {
-    "c71.bin": 0x2000,
     "tokyowar_defaults.nv": 0x2000,
     "tw1ccrh.1d": 0x80000,
     "tw1ccrl.3d": 0x200000,
@@ -56,6 +55,16 @@ REQUIRED = {
 }
 OPTIONAL = {}
 
+# Some MAME sets name a chip differently for the same data. MAME 0.271 dropped
+# the hyphen from the program chips (tw2ver-a.N -> tw2verN); either spelling in
+# the zip/folder is taken and always written to extracted/ under the LEFT
+# (canonical) name, so nothing downstream needs to know a rename ever happened.
+ALIASES = {
+    "tw2vera.1": "tw2ver-a.1",
+    "tw2vera.2": "tw2ver-a.2",
+    "tw2vera.3": "tw2ver-a.3",
+    "tw2vera.4": "tw2ver-a.4",
+}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEST = os.path.join(os.path.dirname(HERE), "extracted")
@@ -78,7 +87,7 @@ def from_zip(path):
         for info in z.infolist():
             if info.is_dir() or "/" in info.filename.strip("/"):
                 continue
-            name = info.filename.lower()
+            name = ALIASES.get(info.filename.lower(), info.filename.lower())
             if name in REQUIRED or name in OPTIONAL:
                 found[name] = z.read(info)
     return found
@@ -87,14 +96,14 @@ def from_zip(path):
 def from_folder(path):
     found = {}
     for entry in os.listdir(path):
-        name = entry.lower()
+        name = ALIASES.get(entry.lower(), entry.lower())
         if name in REQUIRED or name in OPTIONAL:
             with open(os.path.join(path, entry), "rb") as f:
                 found[name] = f.read()
     if not all(n in found for n in REQUIRED):
         # A folder that holds the zip rather than the chips.
         for entry in sorted(os.listdir(path)):
-            if entry.lower() in ("tokyowar.zip", "namcoc71.zip"):
+            if entry.lower() in ("tokyowar.zip",):
                 found.update(from_zip(os.path.join(path, entry)))
     return found
 
@@ -126,9 +135,6 @@ def main():
             print(f"  missing:        {n}")
         for n in wrong:
             print(f"  wrong size:     {n} ({len(found[n])} bytes, expected {REQUIRED[n]})")
-        if "c71.bin" in missing:
-            print("  c71.bin is the C71 DSP BIOS. Some MAME sets carry it inside the game's zip; others keep it in a separate")
-            print("  'namcoc71.zip' -- add that zip to this command (it can be listed after the game's zip).")
         print("You need MAME's Tokyo Wars (World, TW2 Ver.A) set 'tokyowar'.")
         return 1
 

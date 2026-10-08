@@ -5,6 +5,7 @@
 set -e
 STAGE=$1; VER=$2; OUT=$3; PKG=$(cd "$(dirname "$0")" && pwd)
 install -d "$STAGE/DEBIAN"
+cp "$STAGE/usr/share/doc/namco22/LICENSE" "$STAGE/usr/share/doc/namco22/copyright"      # Debian looks for /usr/share/doc/PACKAGE/copyright
 SIZE=$(du -sk --exclude=DEBIAN "$STAGE" | cut -f1)
 cat > "$STAGE/DEBIAN/control" <<CTL
 Package: namco22
@@ -16,16 +17,16 @@ Depends: libc6 (>= 2.34), libsdl2-2.0-0 (>= 2.0.20), zlib1g, libgl1, libopengl0
 Recommends: zenity | kdialog, xdg-utils
 Installed-Size: $SIZE
 Maintainer: cmcrann <cmcrann@protonmail.com>
-Description: Prop Cycle, Rave Racer, Tokyo Wars and Dirt Dash -- decompiled Namco System 22 engines
+Description: Prop Cycle, Rave Racer, Tokyo Wars, Dirt Dash and Time Crisis -- decompiled Namco System 22 engines
  Native, decompiled engines for the Namco arcade games Prop Cycle (1996),
- Rave Racer (1995), Tokyo Wars (1996) and Dirt Dash (1995), rendered with OpenGL.
+ Rave Racer (1995), Tokyo Wars (1996), Dirt Dash (1995) and Time Crisis (1995), rendered with OpenGL.
  .
  NO GAME DATA IS INCLUDED. After installing, put the MAME ROM sets in
  ~/.local/share/namco22/propcycle/roms/ (propcycl.zip) and
  ~/.local/share/namco22/raverace/roms/ (raverace.zip, namcoc74.zip) and
  ~/.local/share/namco22/tokyowar/roms/ (tokyowar.zip) and
- ~/.local/share/namco22/dirtdash/roms/ (dirtdash.zip). If a game says c71.bin is
- missing, also put namcoc71.zip in its roms/ folder.
+ ~/.local/share/namco22/dirtdash/roms/ (dirtdash.zip) and
+ ~/.local/share/namco22/timecris/roms/ (timecris.zip).
  See /usr/share/doc/namco22/README.txt.
 CTL
 { echo '#!/bin/sh'; echo 'cat <<"NOTE"'; cat "$PKG/rom-note.txt"; echo 'NOTE'

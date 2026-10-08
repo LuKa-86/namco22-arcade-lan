@@ -91,14 +91,12 @@ bool master_dsp_init(const char *rom_dir)
     if (!e || atoi(e) == 0) return false;
     g_log = getenv("PROPCYCL_MASTERLOG") ? atoi(getenv("PROPCYCL_MASTERLOG")) + 1 : 0;
 
-    char bios[1024];
-    snprintf(bios, sizeof bios, "%s/c71.bin", rom_dir ? rom_dir : "extracted");
     g_m = calloc(1, sizeof *g_m);
-    if (!g_m || !c71_load(g_m, bios, NULL)) {
-        fprintf(stderr, "[MASTER] no DSP BIOS at %s -- using the built-in scene expansion\n", bios);
-        free(g_m); g_m = NULL;
+    if (!g_m) {
+        fprintf(stderr, "[MASTER] out of memory -- using the built-in scene expansion\n");
         return false;
     }
+    c71_load_builtin_bios(g_m);                        /* the DSP's BIOS is built in (engine/c25/c71_bios.c): no c71.bin to find */
     uint32_t cnt = (uint32_t)((g_sys.rom[PROG_COUNT_ADDR] << 8) | g_sys.rom[PROG_COUNT_ADDR + 1]) + 1;
     if (cnt > 0x4000) { fprintf(stderr, "[MASTER] bad program size %u\n", cnt); free(g_m); g_m = NULL; return false; }
 
@@ -184,7 +182,7 @@ static void frame_on(bool primary)
     if (!g_parked) {
         /* INT0 at the idle loop: return past the IDLE, vector 0x0002 */
         if (g_m->sp >= 64) { fprintf(stderr, "[MASTER] stack full\n"); g_active = false; return; }
-        g_m->stack[g_m->sp++] = (uint16_t)(g_m->pc + (g_m->prog[g_m->pc] == IDLE_OP ? 1 : 0));
+        g_m->stack[g_m->sp++] = (uint16_t)(g_m->pc + (g_m->prog[g_m->pc] == IDLE_OP ? 1 : 0)); c25_mpush(g_m, g_m->stack[g_m->sp - 1]);
         g_m->pc = 0x0002; g_m->intm = 1;
     }                            /* else: resume at the doorbell wait, which now falls through */
 

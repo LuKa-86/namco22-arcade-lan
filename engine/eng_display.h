@@ -26,8 +26,13 @@ typedef struct {
     int aspect;                  /* 0 stretch, 1 4:3, 2 8:7, 3 16:9 */
     int scaling;                 /* 0 smooth, 1 sharp, 2 integer */
     int volume;                  /* 0..100 */
+    int hud_edges;               /* widescreen: 1 = the HUD slides out to the screen edges (default), 0 = the original HUD stays in the 4:3 centre */
+    int gun_border;              /* light-gun games: a white border round the picture, 0..6 % of the window (Sinden-style guns need it), F8 cycles */
+    int crosshair;               /* light-gun games: 1 = draw the aiming cross (default), 0 = none */
+    int fps;                     /* Frame rate: pictures a second, 0 = Auto (the default; engine/eng_vsync.h; the game itself always runs at 59.906 Hz) */
 } eng_display_t;
 extern eng_display_t g_eng_disp;
+extern bool g_eng_disp_light_gun;          /* the host: this game aims a light gun (the Display menu shows the Crosshair row) */
 
 /* Before the window exists: load cfg_path (engine/eng_cfg.c) into g_eng_disp. scale > 0 overrides the saved window size,
  * fullscreen forces fullscreen (desktop). */
@@ -44,6 +49,10 @@ SDL_Rect eng_disp_picture_rect(int bw, int bh);
 bool eng_disp_sharp(void);                 /* the filter rt_end_rect wants: nearest (sharp / integer) or linear */
 void eng_disp_toggle_fullscreen(void);     /* F11: windowed <-> fullscreen (desktop) */
 
+void eng_disp_set_hud_edges(int on);
+void eng_disp_cycle_gun_border(void);      /* F8 in a light-gun game: off, 1..6 %, saved as gun_border */
+void eng_disp_set_crosshair(int on);       /* saved as crosshair */
+void eng_disp_set_fps(int fps);           /* saved as frame_rate (0 = Auto, the default) */
 void eng_disp_set_wide(int on);
 void eng_disp_set_winmode(int m);
 void eng_disp_set_scale(int k);

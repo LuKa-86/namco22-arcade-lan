@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ss22_game.h"
+#include "ss22_out.h"
 #include "ss22_host.h"
 #include <sys/stat.h>
 #include "win_startup.h"
@@ -32,9 +33,21 @@
 #include "link_host.h"
 #include "eng_ui.h"
 #include "audio_out.h"
+#include "win_gpu.h"          /* Windows: run on the discrete GPU of a two-GPU laptop (Optimus / PowerXpress) */
 
 const ss22_game *g_ss22_game;
 static char **g_argv;
+
+/* ENG_FTIME=1: per-frame wall-clock split, printed every 60 frames --
+ * total = cpu (68K+DSP+sound, everything outside the video calls) + prepare
+ * (ss22_video_prepare: geometry, clip, bakes, batching) + host (ss22_host_frame:
+ * the GL draws and the swap). The quad_gl sub-timers ride along. */
+#include <time.h>
+static double ft_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec * 1e-9; }
+static int ftime_on = -1;
+static double ft_prev, ft_tot, ft_prep, ft_host, ft_max, ft_bake, ft_clip, ft_gl;
+static double ft_lprep, ft_lhost, ft_max_prep, ft_max_host;   /* the worst frame's own split */
+static long ft_n;
 
 static int32_t  polls_per_frame;           /* 68K instructions per frame: the game's (MAME's average over its first 300 frames) */
 static uint32_t max_frames = 600;
@@ -93,14 +106,81 @@ static void add_press(const char *spec)
         if (!strcmp(n, g_ss22_game->presses[i].name)) { presses[npress++] = (press_t){ g_ss22_game->presses[i].bit, f, len }; return; }
     fprintf(stderr, "[%s] unknown button %s\n", g_ss22_game->tag, n);
 }
+/* --record FILE / --replay FILE: a player's session, exactly. Every input write (the buttons word, the wheel and pedal A-D values and the light
+ * gun's port values) is logged with the frame it lands on -- they all land at the frame boundary, where update_inputs() and the window's input
+ * both run -- and the recording starts with the EEPROM image the session booted with. A replay applies the same values at the same frames from
+ * the same EEPROM, so a headless run (any build: the oracles with SND_COV, the trace build) re-plays the session instruction for instruction:
+ * the tool for "it crashed in stage 2" when no script reaches stage 2. */
+static FILE *rec_f, *rep_f;
+static struct { uint32_t f; unsigned p, w, p1, p2, gx, gy, goff; } rep_ev; static int rep_have;
+static unsigned rec_last[7] = { ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u };
+static void rec_hook(uint16_t p, unsigned w, unsigned p1, unsigned p2)
+{
+    const unsigned v[7] = { p, w, p1, p2, g_ss22_gun_x, g_ss22_gun_y, g_ss22_gun_off };
+    if (!memcmp(v, rec_last, sizeof v)) return;
+    memcpy(rec_last, v, sizeof v);
+    fprintf(rec_f, "%u %X %X %X %X %X %X %X\n", rr_frame, v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
+    fflush(rec_f);                                     /* a crash still leaves the inputs up to it on disk (_IOLBF is full buffering on Windows) */
+}
+static void rec_open(const char *path)
+{
+    rec_f = fopen(path, "w");
+    if (!rec_f) { fprintf(stderr, "[%s] cannot write %s\n", g_ss22_game->tag, path); return; }
+    fprintf(rec_f, "SS22REC 1 %s ", g_ss22_game->tag);
+    for (unsigned i = 0; i < SS22_EEPROM_SIZE; i++) fprintf(rec_f, "%02X", g_ss22.eeprom[i]);
+    fprintf(rec_f, "\n");
+    fflush(rec_f);
+    extern void (*ss22_input_rec_hook)(uint16_t, unsigned, unsigned, unsigned);
+    ss22_input_rec_hook = rec_hook;
+    fprintf(stderr, "[%s] recording the session's inputs to %s\n", g_ss22_game->tag, path);
+}
+/* THE LAST WORD (rr_fatal_hook): the lifted program reached code it does not have (an untranslated address, a broken call frame) and must
+ * stop. Keep what the player needs -- the session's recording (the way to replay this crash) and the EEPROM -- and, in a window, say so
+ * instead of vanishing. */
+static const char *fatal_rec;
+static void on_fatal(const char *why)
+{
+    if (rec_f) { fflush(rec_f); fclose(rec_f); rec_f = NULL; }
+    ss22_eeprom_save();
+    if (!win_scale) return;
+    char msg[1024];
+    snprintf(msg, sizeof msg, "%s stopped: the game reached code that has not been translated yet.\n\n%s\n\n"
+             "Please report it with %s%s%s -- that file replays this session up to the crash.",
+             g_ss22_game->name, why, g_ss22_game->logname, fatal_rec ? " and " : "", fatal_rec ? fatal_rec : "");
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g_ss22_game->name, msg, NULL);
+}
+static void rep_read(void) { rep_have = rep_f && fscanf(rep_f, "%u %X %X %X %X %X %X %X", &rep_ev.f, &rep_ev.p, &rep_ev.w, &rep_ev.p1, &rep_ev.p2, &rep_ev.gx, &rep_ev.gy, &rep_ev.goff) == 8; }
+static bool rep_open(const char *path)
+{
+    rep_f = fopen(path, "r");
+    char tag[32]; int ver;
+    if (!rep_f || fscanf(rep_f, "SS22REC %d %31s ", &ver, tag) != 2 || strcmp(tag, g_ss22_game->tag)) { fprintf(stderr, "[%s] %s is not a %s recording\n", g_ss22_game->tag, path, g_ss22_game->tag); return false; }
+    for (unsigned i = 0; i < SS22_EEPROM_SIZE; i++) { unsigned b; if (fscanf(rep_f, "%2X", &b) != 1) return false; g_ss22.eeprom[i] = (uint8_t)b; }
+    rep_read();
+    fprintf(stderr, "[%s] replaying %s (EEPROM from the recording)\n", g_ss22_game->tag, path);
+    return true;
+}
+static const char *rec_path, *rep_path;
 static const char *start_name;                       /* --stage NAME (the game's start script, ss22_game.start) */
 static bool start_on;                                /* the start script owns the cabinet this frame: the window's keys stay out of it */
+static long start_base;                              /* the frame the script started at (0: --stage, from power-on) */
+void ss22_start_script(const char *name) { if (g_ss22_game->start) { start_name = name; start_base = (long)rr_frame; } }
 static void update_inputs(void)
 {
+    if (g_ss22_game->frame) g_ss22_game->frame((long)rr_frame);
+    if (rep_f) {                                         /* --replay: the recorded values, at the recorded frames */
+        while (rep_have && rep_ev.f <= rr_frame) {
+            g_ss22_gun_x = (uint16_t)rep_ev.gx; g_ss22_gun_y = (uint16_t)rep_ev.gy; g_ss22_gun_off = rep_ev.goff != 0;
+            ss22_snd_inputs((uint16_t)rep_ev.p, rep_ev.w, rep_ev.p1, rep_ev.p2);
+            rep_read();
+        }
+        return;
+    }
     if (start_name && g_ss22_game->start) {
         uint16_t p = 0; unsigned wheel = 0x200, pedal1 = 0, pedal2 = 0;
-        start_on = g_ss22_game->start(start_name, (long)rr_frame, &p, &wheel, &pedal1, &pedal2);
+        start_on = g_ss22_game->start(start_name, (long)rr_frame - start_base, &p, &wheel, &pedal1, &pedal2);
         if (start_on) { ss22_snd_inputs(p, wheel, pedal1, pedal2); return; }
+        start_name = NULL;                               /* over: the player has the cabinet */
     }
     if (ss22_host_active() && !autoplay && !npress && pedal_from < 0) return;      /* the window's keys drive the cabinet (ss22_host_frame) */
     long n = (long)rr_frame - input_offset;
@@ -156,6 +236,54 @@ static void sweep_tick(void)
     prev_slot = slot;
 }
 
+/* The rest of the video state, in the layout tools/mame/vid_dump.lua writes for MAME (so `dd --render-dump DIR F OUT` can DRAW one of our own frames, and the
+ * two can be diffed byte for byte): the share's own polygon words, palette RAM, mixer, character RAM, text RAM, sprite RAM, VICS data and control, the CZ
+ * registers and banks, the tilemap attributes and the spot RAM. Everything the picture is composed from. */
+static void dump_be16s(const char *name, const uint16_t *v, int n)
+{
+    char p[1024]; snprintf(p, sizeof p, "%s/%s_f%u.bin", dump_dir, name, rr_frame);
+    FILE *f = fopen(p, "wb");
+    if (!f) return;
+    for (int i = 0; i < n; i++) { uint8_t b[2] = { (uint8_t)(v[i] >> 8), (uint8_t)v[i] }; fwrite(b, 1, 2, f); }
+    fclose(f);
+}
+static void dump_raw(const char *name, const void *data, size_t n)
+{
+    char p[1024]; snprintf(p, sizeof p, "%s/%s_f%u.bin", dump_dir, name, rr_frame);
+    FILE *f = fopen(p, "wb");
+    if (f) { fwrite(data, 1, n, f); fclose(f); }
+}
+static void dump_video_state(void)
+{
+    char p[1024];
+    snprintf(p, sizeof p, "%s/polyraw_f%u.bin", dump_dir, rr_frame);
+    FILE *f = fopen(p, "wb");
+    if (f) {
+        for (uint32_t i = 0; i < SS22_POLY_WORDS; i++) {
+            uint32_t w = g_ss22.poly[i];
+            uint8_t b[4] = { (uint8_t)(w >> 24), (uint8_t)(w >> 16), (uint8_t)(w >> 8), (uint8_t)w };
+            fwrite(b, 1, 4, f);
+        }
+        fclose(f);
+    }
+    dump_raw("pal", g_ss22.pal, sizeof g_ss22.pal);
+    dump_raw("mix", g_ss22.mixer, sizeof g_ss22.mixer);
+    dump_raw("cgram", g_ss22.cgram, sizeof g_ss22.cgram);
+    dump_raw("text", g_ss22.text, sizeof g_ss22.text);
+    dump_raw("spr", g_ss22.sprite, sizeof g_ss22.sprite);
+    dump_raw("vics", g_ss22.vics, sizeof g_ss22.vics);
+    dump_be16s("czattr", g_ss22.czattr, 8);
+    dump_be16s("tmattr", g_ss22.tilemapattr, 8);
+    for (int b = 0; b < 4; b++) { char nm[16]; snprintf(nm, sizeof nm, "czram%d", b); dump_be16s(nm, g_ss22.czram[b], 256); }
+    dump_be16s("spot", g_ss22.spotram, 0x800);
+    snprintf(p, sizeof p, "%s/vicsctl_f%u.bin", dump_dir, rr_frame);
+    f = fopen(p, "wb");
+    if (f) {
+        for (int i = 0; i < 0x20; i++) { uint32_t w = g_ss22.vics_ctl[i]; uint8_t b[4] = { (uint8_t)(w >> 24), (uint8_t)(w >> 16), (uint8_t)(w >> 8), (uint8_t)w }; fwrite(b, 1, 4, f); }
+        fclose(f);
+    }
+}
+
 static void dump_state(void)
 {
     if (!dump_dir) return;
@@ -188,13 +316,24 @@ static void dump_state(void)
         }
         fclose(f);
     }
+    dump_video_state();
 }
 
+void rr_shadow_prune(void);
 void rr_tick(void)
 {
+    if (g_ss22_game->prune_shadow) rr_shadow_prune();
+#ifdef RR_TRACE
+    { static unsigned lastf; static long same; extern uint32_t rr_trace_pc; extern int rr_in_irq;
+      if (rr_frame == lastf) { if (++same % 100000 == 0) fprintf(stderr, "[RR] no new frame after %ld slices: frame %u pc %06X in_irq %d slice %ld vblank_slices %ld sr %04X\n", same, rr_frame, rr_trace_pc, rr_in_irq, slice, (long)vblank_slices, rr_get_sr()); } else { lastf = rr_frame; same = 0; } }
+#endif
     rd_budget_out();
     rr_budget = polls_per_frame / SLICES;
-    if (rr_in_irq) { rr_budget = 1000; return; }        /* finish the handler first */
+    if (rr_in_irq && ((rr_get_sr() >> 8) & 7) != 0) {    /* finish the handler first -- while its interrupt mask is still up: a handler that jumps out (a test-mode watchdog that restarts the program from inside the handler) and then lowers the mask to 0 is no longer one */
+#ifdef RR_TRACE
+        { static long stuck; extern uint32_t rr_trace_pc; extern void rr_dump_shadow(void); if (++stuck % 200000 == 0) { fprintf(stderr, "[RR] still inside an interrupt handler after %ld slices: pc %06X, frame %u\n", stuck, rr_trace_pc, rr_frame); rr_dump_shadow(); } }
+#endif
+        rr_budget = 1000; return; }
     g_ss22_in_vblank = vblank_slices > 0;
     if (vblank_slices > 0) {                            /* VTOTAL 525, VBSTART 480: the vblank is the first 45/525 of a frame after the */
         long full = dsp_steps_per_frame / SLICES;       /* screen update, ~1.37 of our slices; split the slice at VBEND. The master answers */
@@ -211,6 +350,12 @@ void rr_tick(void)
     link_host_slice();                                    /* and the link chip */
     if ((serial_acc += 100) >= 60 * SLICES) { serial_acc -= 60 * SLICES; ss22_dsp_serial(); }
     if (++slice % SLICES) return;
+    if (ftime_on < 0) { ftime_on = getenv("ENG_FTIME") != NULL; if (ftime_on) { extern int g_perf_enabled; g_perf_enabled = 1; } }
+    if (ftime_on) {
+        double t0 = ft_now();
+        if (ft_prev > 0) { double tot = t0 - ft_prev; ft_tot += tot; if (tot > ft_max) { ft_max = tot; ft_max_prep = ft_lprep; ft_max_host = ft_lhost; } ft_n++; }
+        ft_prev = t0;
+    }
     rr_frame++;
     link_host_frame(rr_frame, !ss22_host_active());
 #ifdef RR_TRACE
@@ -220,15 +365,21 @@ void rr_tick(void)
     if (rr_frame % 120 == 0) ss22_eeprom_save();
     if (dump_every && rr_frame % dump_every == 0) dump_state();
     sweep_tick();
+    ss22_out_poll(ss22_snd_outputs());                     /* the cabinet's outputs (lamps, the gun solenoid): MAME's network output + pad rumble */
+    { static int every = -1, ms, run = 1;                  /* ENG_SLOWFRAME=every:ms[:run] (tests: a slow machine): `run` frames of +ms, every `every` frames */
+      if (every < 0) { const char *e = getenv("ENG_SLOWFRAME"); every = 0; if (e) sscanf(e, "%d:%d:%d", &every, &ms, &run); if (run < 1) run = 1; }
+      if (every > 0 && ms > 0 && rr_frame % (uint32_t)every < (uint32_t)run) { struct timespec d = { ms / 1000, (long)(ms % 1000) * 1000000L }; nanosleep(&d, NULL); } }
     if (video_on) {
+        double t1 = ftime_on ? ft_now() : 0;
         ss22_video_prepare();                              /* the master's finished list, before this vblank starts the next */
+        double t2 = ftime_on ? ft_now() : 0;
         if (shot_dir && rr_frame % shot_every == 0) {
             char p[1024]; snprintf(p, sizeof p, "%s/%s_f%u.ppm", shot_dir, g_ss22_game->lname, rr_frame);
             ss22_host_shot(p);
         }
         if (ss22_host_active() && !ss22_host_frame()) {
             const bool restart = ss22_host_restart_requested();       /* File > Restart: power-cycle the cabinet */
-            ss22_eeprom_save(); ss22_snd_close(); ss22_host_close(); fprintf(stderr, "[%s] quit at frame %u\n", g_ss22_game->tag, rr_frame);
+            ss22_eeprom_save(); ss22_snd_close(); ss22_out_close(); ss22_input_close(); ss22_host_close(); fprintf(stderr, "[%s] quit at frame %u\n", g_ss22_game->tag, rr_frame);
 #ifndef _WIN32
             if (restart) { fflush(NULL); execv("/proc/self/exe", g_argv); perror("restart"); }
 #else
@@ -236,6 +387,26 @@ void rr_tick(void)
 #endif
             exit(0);
         }
+        if (ftime_on) {
+            double h = ft_now() - t2; ft_prep += t2 - t1; ft_host += h; ft_lprep = t2 - t1; ft_lhost = h;
+            if (h > 0.040) fprintf(stderr, "[FTIME-SLOW] frame %u  host %.1f ms  (prep %.1f)\n", rr_frame, h * 1e3, (t2 - t1) * 1e3);   /* one line per over-40 ms host frame: WHICH frame, not just the window's max */
+        }
+    }
+    if (ftime_on && rr_frame % 60 == 0 && ft_n) {
+        extern double g_perf_bake, g_perf_clip, g_perf_gl;
+        extern long g_bb_draws, g_bb_binds;
+        extern long g_tex_page_resets;
+        static long ft_draws, ft_binds, ft_resets_prev;
+        long ft_resets = g_tex_page_resets - ft_resets_prev; ft_resets_prev = g_tex_page_resets;
+        fprintf(stderr, "[FTIME] frame %u  avg %.2f ms = cpu %.2f + prep %.2f + host %.2f   max %.2f (prep %.2f host %.2f) | bake %.2f clip %.2f gl %.2f draws %ld binds %ld resets %ld\n",
+                rr_frame, ft_tot / ft_n * 1e3, (ft_tot - ft_prep - ft_host) / ft_n * 1e3,
+                ft_prep / ft_n * 1e3, ft_host / ft_n * 1e3, ft_max * 1e3,
+                ft_max_prep * 1e3, ft_max_host * 1e3,
+                (g_perf_bake - ft_bake) / ft_n * 1e3, (g_perf_clip - ft_clip) / ft_n * 1e3, (g_perf_gl - ft_gl) / ft_n * 1e3,
+                (g_bb_draws - ft_draws) / ft_n, (g_bb_binds - ft_binds) / ft_n, ft_resets);
+        ft_tot = ft_prep = ft_host = ft_max = 0; ft_n = 0;
+        ft_bake = g_perf_bake; ft_clip = g_perf_clip; ft_gl = g_perf_gl;
+        ft_draws = g_bb_draws; ft_binds = g_bb_binds;
     }
     ss22_dsp_vblank();                                     /* INT0, when the game has enabled the DSP IRQs */
     vblank_slices = 2;
@@ -266,7 +437,7 @@ void rr_tick(void)
 
 /* the window's host: the game's name, settings file and cabinet controls (engine/ss22_host.c) */
 static void in_init(void) { ss22_input_init(g_ss22_game->input); }
-static void in_update(void) { if (!start_on && !autoplay && !npress && pedal_from < 0) ss22_input_update(); }   /* the start script (or a --press / --autoplay script) has the cabinet */
+static void in_update(void) { if (!start_on && !autoplay && !npress && pedal_from < 0 && !rep_f) ss22_input_update(); }   /* the start script (or a --press / --autoplay script, or a --replay) has the cabinet */
 static ss22_host_game host_game;
 
 static void link_before_restart(void) { ss22_eeprom_save(); ss22_snd_close(); ss22_host_close(); }   /* the safety net's restart */
@@ -293,8 +464,10 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     snprintf(cfgfile, sizeof cfgfile, "%s_controls.cfg", g->lname);
     if (cab > 0) snprintf(nvfile, sizeof nvfile, "%s_eeprom_cab%d.nv", g->lname, cab);
     else snprintf(nvfile, sizeof nvfile, "%s_eeprom.nv", g->lname);
+    extern bool ss22_input_aim(float *, float *);
     host_game = (ss22_host_game){ title, cfgfile, g->tag, g->lname, in_init, ss22_input_page, ss22_input_event, in_update,
-                                  ss22_input_neutral, ss22_snd_set_output };
+                                  ss22_input_neutral, ss22_snd_set_output, g->out_gain,
+                                  g->input && g->input->light_gun ? ss22_input_aim : NULL, g->menu_page };
     const char *rom_dir = "extracted";
     const char *rd_dir = NULL, *rd_out = NULL; int rd_frame = 0, frames_given = 0;
     if (argc == 1) win_scale = -1;                      /* started with no arguments (a double-click, the Windows how-to): play, in a window */
@@ -309,6 +482,8 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         else if (!strcmp(argv[i], "--dump-every") && i + 1 < argc) { dump_every = (uint32_t)atoi(argv[++i]); dump_wram_only = 1; }
         else if (!strcmp(argv[i], "--dsp-steps") && i + 1 < argc) dsp_steps_per_frame = atol(argv[++i]);
         else if (!strcmp(argv[i], "--autoplay")) autoplay = 1;
+        else if (!strcmp(argv[i], "--record") && i + 1 < argc) rec_path = argv[++i];
+        else if (!strcmp(argv[i], "--replay") && i + 1 < argc) rep_path = argv[++i];
         else if (!strcmp(argv[i], "--stage") && i + 1 < argc) {           /* the game's start script: coins, this stage, the car; then the player */
             start_name = argv[++i];
             if (!g->start) { fprintf(stderr, "[%s] %s has no --stage\n", g->tag, g->name); return 2; }
@@ -328,13 +503,15 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     if (eng_romzip_missing(rom_dir, g->roms, g->n_roms) && !strcmp(rom_dir, "extracted") && !eng_romzip_missing("roms", g->roms, g->n_roms)) rom_dir = "roms";
     if (eng_romzip_missing(rom_dir, g->roms, g->n_roms)) {
         char err[512], *base = SDL_GetBasePath();
-        const char *zips[] = { g->zip, "namcoc71.zip" };      /* namcoc71.zip: c71.bin, the DSP BIOS, in the MAME sets whose game zip does not carry it */
-        if (!eng_romzip_autosetup(rom_dir, base, zips, 2, g->roms, g->n_roms, err, sizeof err)) {
+        const char *zips[8] = { g->zip };
+        int nz = 1;
+        for (int i = 0; g->more_zips && g->more_zips[i] && nz < 8; i++) zips[nz++] = g->more_zips[i];
+        if (!eng_romzip_autosetup(rom_dir, base, zips, nz, g->roms, g->n_roms, err, sizeof err)) {
             fprintf(stderr, "%s needs its ROMs: %s\n", g->name, err);
             if (win_scale) {
                 char msg[1024];
                 snprintf(msg, sizeof msg, "%s needs its ROMs.\n\nPut %s (the MAME ROM set) in the \"roms\" "
-                         "folder next to this program, then start it again. (If it says c71.bin is missing, put MAME's namcoc71.zip there too.)\n\n(%s)", g->name, g->zip, err);
+                         "folder next to this program, then start it again.\n\n(%s)", g->name, g->zip, err);
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g->name, msg, NULL);
             }
             SDL_free(base);
@@ -363,7 +540,17 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
             return 2;
         }
     }
-    const bool nv_loaded = win_scale && ss22_eeprom_persist(nvfile);   /* a player's session keeps its options and records; headless runs (the gates) never do */
+    const bool nv_loaded = win_scale && !rep_path && ss22_eeprom_persist(nvfile);   /* a player's session keeps its options and records; headless runs (the gates) and
+                                                         * replays never do: a replay plays from the recording's EEPROM and must not save it over the player's */
+    if (rep_path && !rep_open(rep_path)) return 2;       /* the recording's EEPROM replaces whatever was loaded */
+    static char last_rec[80];                            /* a played session always keeps its latest recording: a crash can be replayed afterwards */
+    if (win_scale && !rec_path && !rep_path) {           /* (one per cabinet: copies on one PC must not share it) */
+        if (cab > 0) snprintf(last_rec, sizeof last_rec, "%s_cab%d_last.rec", g->lname, cab);
+        else snprintf(last_rec, sizeof last_rec, "%s_last.rec", g->lname);
+        rec_path = last_rec;
+    }
+    if (rec_path) { rec_open(rec_path); if (rec_f) fatal_rec = rec_path; }
+    rr_fatal_hook = on_fatal;
     if (link_host_on() && (link_host_take_id_reset() || !nv_loaded)) {   /* a cabinet's first run, or its number changed on the Network page:
                                                           * its ID from that; otherwise the test menu's (GAME OPTIONS) */
         uint8_t *b = &g_ss22.eeprom[g->link_id_byte];

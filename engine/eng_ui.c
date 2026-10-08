@@ -22,6 +22,7 @@
 #include "../third_party/nuklear_sdl_gl2.h"
 
 #include "eng_ui.h"
+#include "eng_vsync.h"
 #include "eng_display.h"
 #include "link_lights_nk.h"
 
@@ -35,6 +36,7 @@ static int npages;
 static int tab, row;                          /* row -1 = the title strip */
 static bool kb_moved;                         /* keep the selected row in view after a key */
 static void (*cap_cb)(SDL_Scancode, void *);
+static bool (*input_cap_cb)(const SDL_Event *, void *);
 static void *cap_u;
 
 static int cyc(int v, int d, int n) { return ((v + d) % n + n) % n; }
@@ -57,12 +59,13 @@ static void file_change(int r, int dir)
 static const eng_ui_page page_file = { "File", 220, 0, 0, file_n, file_val, NULL, file_text, file_change, NULL };
 
 /* ---- Display: the choices of engine/eng_display.h ------------------------------ */
-enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_N };
-static int disp_n(void) { return D_N; }
+enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_CROSS, D_N };   /* D_CROSS last: only light-gun games show it */
+static int disp_n(void) { return g_eng_disp_light_gun ? D_N : D_CROSS; }
 static bool disp_enabled(int r)
 {
     if (r == D_SIZE) return g_eng_disp.winmode == 0;
     if (r == D_ASPECT) return !g_eng_disp.wide;
+    if (r == D_HUD) return g_eng_disp.wide;
     return true;
 }
 static void disp_text(int r, char *l, size_t ln, char *v, size_t vn)
@@ -76,6 +79,9 @@ static void disp_text(int r, char *l, size_t ln, char *v, size_t vn)
     case D_RES:     snprintf(l, ln, "Resolution"); eng_disp_res_label(g_eng_disp.res_w, g_eng_disp.res_h, v, vn); break;
     case D_ASPECT:  snprintf(l, ln, "Aspect ratio"); snprintf(v, vn, "%s", eng_disp_aspect_name(g_eng_disp.aspect)); break;
     case D_SCALING: snprintf(l, ln, "Scaling"); snprintf(v, vn, "%s", eng_disp_scaling_name(g_eng_disp.scaling)); break;
+    case D_HUD:     snprintf(l, ln, "Widescreen HUD"); snprintf(v, vn, "%s", g_eng_disp.hud_edges ? "at the screen edges" : "original (4:3 centre)"); break;
+    case D_FPS:     snprintf(l, ln, "Frame rate"); snprintf(v, vn, "%s", eng_vsync_rate_name(g_eng_disp.fps)); break;
+    case D_CROSS:   snprintf(l, ln, "Crosshair"); snprintf(v, vn, "%s", g_eng_disp.crosshair ? "ON" : "OFF"); break;
     }
 }
 static void disp_change(int r, int dir)
@@ -94,6 +100,9 @@ static void disp_change(int r, int dir)
         break; }
     case D_ASPECT:  eng_disp_set_aspect(cyc(g_eng_disp.aspect, d, 4)); break;
     case D_SCALING: eng_disp_set_scaling(cyc(g_eng_disp.scaling, d, 3)); break;
+    case D_HUD:     eng_disp_set_hud_edges(!g_eng_disp.hud_edges); break;
+    case D_FPS:     eng_disp_set_fps(eng_vsync_rate_step(g_eng_disp.fps, d)); break;
+    case D_CROSS:   eng_disp_set_crosshair(!g_eng_disp.crosshair); break;
     }
 }
 static void labelf(nk_flags align, const char *fmt, ...)
@@ -202,11 +211,16 @@ void eng_ui_shutdown(void) { if (ctx) nk_sdl_shutdown(); ctx = NULL; }
 bool eng_ui_is_open(void) { return open_; }
 bool eng_ui_quit_requested(void) { return quit_req; }
 bool eng_ui_restart_requested(void) { return restart_req; }
-void eng_ui_set_open(bool on) { open_ = on; cap_cb = NULL; if (on && row >= nrows(tab)) row = 0; }
+void eng_ui_set_open(bool on) {
+    open_ = on; cap_cb = NULL;
+    if (input_cap_cb) { input_cap_cb(NULL, cap_u); input_cap_cb = NULL; }
+    if (on && row >= nrows(tab)) row = 0;
+}
 void eng_ui_input_begin(void) { if (ctx) nk_input_begin(ctx); }
 void eng_ui_input_end(void)   { if (ctx) nk_input_end(ctx); }
-void eng_ui_capture_key(void (*cb)(SDL_Scancode, void *), void *u) { cap_cb = cb; cap_u = u; }
-bool eng_ui_capturing(void) { return cap_cb != NULL; }
+void eng_ui_capture_key(void (*cb)(SDL_Scancode, void *), void *u) { input_cap_cb = NULL; cap_cb = cb; cap_u = u; }
+void eng_ui_capture_input(bool (*cb)(const SDL_Event *, void *), void *u) { cap_cb = NULL; input_cap_cb = cb; cap_u = u; }
+bool eng_ui_capturing(void) { return cap_cb != NULL || input_cap_cb != NULL; }
 void eng_ui_goto(int p, int r) { if (p >= 0 && p < npages) { tab = p; row = r; } }
 
 /* one navigation step from the keyboard, a pad or a hat */
@@ -238,6 +252,10 @@ void eng_ui_nav(char c)
 bool eng_ui_event(SDL_Event *e)
 {
     if (!ctx || !open_) return false;
+    if (input_cap_cb) {
+        if (input_cap_cb(e, cap_u)) input_cap_cb = NULL;
+        return true;
+    }
     if (cap_cb) {                                        /* the next key is the new binding */
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             void (*cb)(SDL_Scancode, void *) = cap_cb; cap_cb = NULL;

@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ss22_game.h"
+#include "ss22_input.h"
 #include "m37710.h"
 #include "c352.h"
 #include "audio_out.h"
@@ -123,7 +124,10 @@ static uint8_t bus_r(void *u, uint32_t a)
 static void bus_w(void *u, uint32_t a, uint8_t v)
 {
     (void)u;
-    if (a >= 0x004000 && a < 0x00C000) { g_ss22.shared[(a - 0x4000) ^ 1] = v; return; }
+    if (a >= 0x004000 && a < 0x00C000) {
+        extern int g_ss22_mbox; if (g_ss22_mbox && (a == 0xBD00 || a == 0xBD01)) { extern uint32_t rr_frame; extern void ss22_mbox_note(uint32_t, uint32_t, uint8_t); ss22_mbox_note(rr_frame, a, v); }
+        g_ss22.shared[(a - 0x4000) ^ 1] = v; return;
+    }
     if (a >= 0x002000 && a < 0x003000) {
         unsigned off = a - 0x2000;
         c352sh[off] = v;
@@ -167,14 +171,18 @@ static void port_w(void *u, unsigned reg, uint8_t v)
         if (~iocontrol & v & 0x40) outputs = (uint16_t)((outputs & 0x00FF) | outdata << 8);/* d6: strobe out 8-15 */
         iocontrol = v;
     }
+    else if (reg == 0x32) ss22_input_motor(v);                                            /* UART0: the wheel motor's command */
 }
 
 /* ---- lifecycle ---------------------------------------------------------------------------------------- */
-static bool slurp(const char *dir, const char *n, uint8_t *dst, size_t len)
+static bool slurp_part(const char *dir, const char *n, uint8_t *dst, size_t len, bool short_ok);
+static bool slurp(const char *dir, const char *n, uint8_t *dst, size_t len) { return slurp_part(dir, n, dst, len, false); }
+static bool slurp_part(const char *dir, const char *n, uint8_t *dst, size_t len, bool short_ok)
 {
     char p[1024]; snprintf(p, sizeof p, "%s/%s", dir, n);
     FILE *f = fopen(p, "rb");
-    bool ok = f && fread(dst, 1, len, f) == len;
+    size_t got = f ? fread(dst, 1, len, f) : 0;      /* a wave chip may be smaller than its 4 MB slot (a game's second wave chip may be 2 MB); the rest stays zero */
+    bool ok = f && (got == len || (short_ok && got > 0));
     if (f) fclose(f);
     if (!ok) fprintf(stderr, "[SND] cannot read %s\n", p);
     return ok;
@@ -187,8 +195,14 @@ bool ss22_snd_init(const char *dir)
     rom = calloc(1, 0x80000);
     wave = calloc(1, c->wave_size);
     if (!rom || !wave || !slurp(dir, c->rom, rom, 0x80000)) return false;
-    chip_ok = slurp(dir, c->wave[0], wave + c->wave_off[0], 0x400000);
-    if (chip_ok && c->wave[1]) chip_ok = slurp(dir, c->wave[1], wave + c->wave_off[1], 0x400000);
+    chip_ok = slurp_part(dir, c->wave[0], wave + c->wave_off[0], 0x400000, true);
+    if (chip_ok && c->wave[1]) chip_ok = slurp_part(dir, c->wave[1], wave + c->wave_off[1], 0x400000, true);
+    for (int i = 0; chip_ok && i < 2; i++)               /* a chip MAME loads ROM_LOAD16_WORD_SWAP: the samples' bytes come in pairs, swapped */
+        if (c->wave[i] && c->wave_swap[i]) {
+            uint8_t *w = wave + c->wave_off[i];
+            const uint32_t n = (c->wave_size - c->wave_off[i] < 0x400000u ? c->wave_size - c->wave_off[i] : 0x400000u) & ~1u;
+            for (uint32_t k = 0; k < n; k += 2) { const uint8_t t = w[k]; w[k] = w[k + 1]; w[k + 1] = t; }
+        }
     if (chip_ok) { c352_init(&chip, wave, c->wave_size); c352_reset(&chip); }
     m37710_init(&cpu, bus_r, bus_w, NULL);
     cpu.port_r = port_r; cpu.port_w = port_w;
@@ -252,6 +266,14 @@ static void raise_due_pins(void)
 
 static uint64_t next_pin_time(void) { return (uint64_t)pin_time_n(pin_n); }
 
+/* the 68K is polling a shared-RAM word: let the MCU run ahead a little so a pulse it raises and clears inside one slice is seen.
+ * Cycle-neutral: the overrun is borrowed from the next slice (see ss22_snd_slice). */
+void ss22_snd_poll(void)
+{
+    if (!ready || !running || cpu.unimpl_hit) return;
+    raise_due_pins();
+    snd_run(&cpu, 64);
+}
 void ss22_snd_slice(void)
 {
     if (!ready) return;
@@ -282,8 +304,10 @@ void ss22_snd_slice(void)
 
 bool ss22_snd_faulted(void) { return faulted; }
 void ss22_snd_set_output(bool on) { out_live = on; }
+void (*ss22_input_rec_hook)(uint16_t, unsigned, unsigned, unsigned);         /* --record (engine/ss22_run.c): every input write, in frame order */
 void ss22_snd_inputs(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2)
 {
+    if (ss22_input_rec_hook) ss22_input_rec_hook(p, wheel, pedal1, pedal2);
     const ss22_snd_cfg *c = &g_ss22_game->snd;
     pressed = p;
     adc[0] = (uint16_t)(wheel & 0x3FF);

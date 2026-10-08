@@ -9,6 +9,7 @@
 #   ./launch.sh tokyo        Tokyo Wars (add a number for the window size: tokyo 3)
 #   ./launch.sh dirt         Dirt Dash (add a number for the window size: dirt 3)
 #   ./launch.sh dirt jungle  Dirt Dash starting at a stage (city, jungle, hill, mountain, snow): the coins, stage and car are played for you
+#   ./launch.sh tc           Time Crisis (add a number for the window size: tc 2) -- the mouse is the gun
 #
 # Prop Cycle keys:  5 coin, Enter start, arrow keys steer, Space pedal,
 #                   P pause, Esc menu, F12 picture.
@@ -18,6 +19,8 @@
 #                   X / Z triggers, P pause, Esc menu (widescreen ...), F12 picture.
 # Dirt Dash keys:   5 coin (a game costs two), Z brake, X gas (throttle), C select (view change / confirm),
 #                   arrows/A D steer, Q / E shift down / up, M motion stop, P pause, Esc menu, F12 picture.
+# Time Crisis keys: the mouse aims, left button shoots, right button / Z is the foot pedal, 5 coin (a game costs three),
+#                   F2 test switch, F8 a white border for light guns, Esc menu.
 set -e
 cd "$(dirname "$0")"
 
@@ -45,7 +48,7 @@ case "$game" in
         ;;
     rave|raverace)
         if [ ! -f raverace/build/CMakeCache.txt ]; then
-            echo "Rave Racer is not built yet. Run:  raverace/build.sh /path/to/raverace.zip /path/to/namcoc74.zip   (add namcoc71.zip if c71.bin is missing)"; exit 1
+            echo "Rave Racer is not built yet. Run:  raverace/build.sh /path/to/raverace.zip /path/to/namcoc74.zip"; exit 1
         fi
         rebuild raverace rr
         cd raverace
@@ -86,7 +89,18 @@ case "$game" in
         fi
         exec ./build/dd extracted "$@" ${stage:+--stage "$stage"}
         ;;
+    tc|timecris)
+        if [ ! -f timecris/build/CMakeCache.txt ]; then
+            echo "Time Crisis is not built yet. Run:  timecris/build.sh /path/to/timecris.zip"; exit 1
+        fi
+        rebuild timecris tc
+        cd timecris
+        if [ $# -eq 0 ] || [[ "$1" =~ ^[0-9]+$ ]]; then
+            exec ./build/tc extracted --window ${1:+"$1"}
+        fi
+        exec ./build/tc extracted "$@"
+        ;;
     *)
-        sed -n '2,20p' "$0" | sed 's/^# \?//'
+        sed -n '2,22p' "$0" | sed 's/^# \?//'
         ;;
 esac
