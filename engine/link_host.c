@@ -555,7 +555,7 @@ static void cfg_save(void)
     for (int n = 0; n < LNK_MAX_NODES; n++) if (F.addr[n][0]) fprintf(f, "address%d=%s\n", n + 1, F.addr[n]);
     if (F.set_id) fprintf(f, "# the game's own ID (test menu) is set to this cabinet's number when the game next starts\nset_game_id=1\n");
     fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
-    fprintf(f, "# frame timing: new = 0.5.4's (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
+    fprintf(f, "# frame timing: new = the author's current one (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
             F.classic ? "classic" : "new");
     fprintf(f, "# link method: ours = this page's link play (the cabinets link when they are switched on); author = the author's online play\n"
                "# (the Online page: host / find a game, a lobby) -- ours is then off\nmethod=%s\n", F.author ? "author" : "ours");
@@ -779,7 +779,7 @@ static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn) 
     if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
     if (r == 2) {
         snprintf(label, ln, "Frame timing");
-        snprintf(value, vn, "%s%s", F.classic ? "Classic (0.4.0)" : "New (0.5.4)", eng_timing_classic() != F.classic ? " - at next start" : "");
+        snprintf(value, vn, "%s%s", F.classic ? "Classic (0.4.0)" : "New", eng_timing_classic() != F.classic ? " - at next start" : "");
         return true;
     }
     if (r == 3) {
@@ -910,7 +910,7 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         char qb[160]; quality_text(qb, sizeof qb);
         if (*qb) line("Link quality: %s", qb);
         line("The game keeps running while this menu is open.");
-    } else if (method_at_start) line("Status: the author's online play (the Online page); this page's link is off");
+    } else if (method_at_start) line("Status: author's online play (Online page)");
     else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
     else line("Status: link off");
     if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out");
