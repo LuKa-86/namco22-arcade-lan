@@ -274,7 +274,7 @@ void rr_tick(void)
     vblank_slices = 2;
     rr_dsp_vblank();
     if (!rr_env_active()) rr_hw_vblank();      /* (a trace oracle refreshes at MAME's own vblank interrupt: rr_env.c) */
-    if (!link_host_on()) {               /* the author's Online play (our link, link.cfg / --link, has the chip instead: engine/c139.c) */
+    if (!link_host_on()) {               /* the author's Online play (our link, link.cfg / --link, has the chip instead: engine/lan139.c) */
         rr_net_poll();                   /* online play: peer FRAMEs into the link queue before the poll injects one */
         rr_link_poll();                  /* a received link packet's SCI IRQ lands at this frame edge */
     }

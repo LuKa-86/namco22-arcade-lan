@@ -1,5 +1,5 @@
 /*
- * c139.h -- the Namco C139 serial link controller ("SCI"), at the level of whole frames. See docs/LINK_NOTES.md for what the
+ * lan139.h -- the Namco C139 serial link controller ("SCI"), at the level of whole frames. See docs/LINK_NOTES.md for what the
  * registers do and how Tokyo Wars' driver uses them.
  *
  * The chip owns a 16 KB buffer the 68K also sees (big-endian 16-bit words, 9-bit characters): the first 0x1000 words hold what the
@@ -15,17 +15,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-void     c139_init(uint8_t *buf);                   /* the 16 KB buffer the 68K maps; the link is on when link_net is open */
-bool     c139_on(void);
-bool     c139_eof_writes(void);                     /* register 2 bit 1: the CPU's writes into the buffer carry the 9th bit, "last word of a
+void     lan139_init(uint8_t *buf);                   /* the 16 KB buffer the 68K maps; the link is on when link_net is open */
+bool     lan139_on(void);
+bool     lan139_eof_writes(void);                     /* register 2 bit 1: the CPU's writes into the buffer carry the 9th bit, "last word of a
                                                      * frame" (Rave Racer writes 3 there before its checksum word; Tokyo Wars writes the bit
                                                      * itself and leaves register 2 at 0) */
-uint16_t c139_reg_r(unsigned unit);                 /* unit 0..7 = the 16-bit registers at +0x0 .. +0xE */
-void     c139_reg_w(unsigned unit, uint16_t data, uint16_t mask);
-bool     c139_tick(bool new_slice);                 /* finish a send, take in a frame; true = interrupt wanted. Called a few times a
+uint16_t lan139_reg_r(unsigned unit);                 /* unit 0..7 = the 16-bit registers at +0x0 .. +0xE */
+void     lan139_reg_w(unsigned unit, uint16_t data, uint16_t mask);
+bool     lan139_tick(bool new_slice);                 /* finish a send, take in a frame; true = interrupt wanted. Called a few times a
                                                      * scheduler slice (new_slice on the first) so a frame is forwarded within the slice */
-bool     c139_irq(void);                            /* the interrupt condition now */
+bool     lan139_irq(void);                            /* the interrupt condition now */
 
-typedef struct { uint32_t tx, rx, rx_dropped, rx_unacked, tx_restart; } c139_stats;
-const c139_stats *c139_get_stats(void);
+typedef struct { uint32_t tx, rx, rx_dropped, rx_unacked, tx_restart; } lan139_stats;
+const lan139_stats *lan139_get_stats(void);
 #endif

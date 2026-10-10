@@ -4,7 +4,7 @@
 #include <string.h>
 #include "link_host.h"
 #include "link_net.h"
-#include "c139.h"
+#include "lan139.h"
 #include "eng_timing.h"
 #include <time.h>
 #include <sys/stat.h>
@@ -344,7 +344,7 @@ static void set_title(void)
 void link_host_slice(void)
 {
     if (!on) return;
-    for (int k = 0; k < 8 && c139_tick(k == 0); k++) {                /* a frame is taken in and forwarded within the slice */
+    for (int k = 0; k < 8 && lan139_tick(k == 0); k++) {                /* a frame is taken in and forwarded within the slice */
         G->raise_irq();
         G->deliver_irqs();
     }
@@ -361,7 +361,7 @@ static void pace(void)                                                 /* headle
 
 static void report(uint32_t frame)
 {
-    const lnk_stats *n = lnk_get_stats(); const c139_stats *c = c139_get_stats();
+    const lnk_stats *n = lnk_get_stats(); const lan139_stats *c = lan139_get_stats();
     char g[200] = "";
     if (G->report) G->report(g, sizeof g);
     char ids[64] = ""; int k = 0;

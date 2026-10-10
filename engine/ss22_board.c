@@ -18,7 +18,7 @@
 #undef IN                                 /* windows.h defines IN empty; this file has its own IN(base, len) */
 #endif
 #include "ss22_board.h"
-#include "c139.h"
+#include "lan139.h"
 #include "ss22_game.h"
 
 static const ss22_board_cfg *cfg;
@@ -108,8 +108,8 @@ static void dev_write(uint32_t off, int size, uint32_t v, int w, wr_fn h)
 /* ---- device handlers (namcos22.cpp / namcos22_v.cpp) ---- */
 static uint32_t keycus_h(uint32_t unit) { return ss22_hw_keycus_r(unit); }
 
-static uint32_t sci_h(uint32_t unit) { return c139_reg_r(unit); }                  /* engine/c139.c (off: MAME namcos22_sci_r) */
-static void     sci_wh(uint32_t unit, uint32_t d, uint32_t m) { c139_reg_w(unit, (uint16_t)d, (uint16_t)m); }
+static uint32_t sci_h(uint32_t unit) { return lan139_reg_r(unit); }                  /* engine/lan139.c (off: MAME namcos22_sci_r) */
+static void     sci_wh(uint32_t unit, uint32_t d, uint32_t m) { lan139_reg_w(unit, (uint16_t)d, (uint16_t)m); }
 
 static uint32_t portbit_h(uint32_t unit) { return ss22_hw_portbit_r(unit); }
 static void     portbit_wh(uint32_t unit, uint32_t d, uint32_t m) { (void)d; (void)m; ss22_hw_portbit_w(unit); }
@@ -298,7 +298,7 @@ void rr_write(uint32_t a, int size, uint32_t v)
     } else switch (a >> 16) {
     case 0x40: if (IN(0x400000u, 0x20)) return; break;                              /* keycus_w: ignored */
     case 0x41: if (IN(0x410000u, SS22_SCI_SIZE)) { be_wr(g_ss22.sci, a - 0x410000u, size, v); return; } break;
-    case 0x42: if (IN(0x420000u, 0x10)) { dev_write(a - 0x420000u, size, v, 2, sci_wh); return; } break;   /* engine/c139.c (off: nothing) */
+    case 0x42: if (IN(0x420000u, 0x10)) { dev_write(a - 0x420000u, size, v, 2, sci_wh); return; } break;   /* engine/lan139.c (off: nothing) */
     case 0x43: if (IN(0x430000u, 4)) return; break;                                 /* cpuleds */
     case 0x45: if (IN(0x450008u, 4)) { dev_write(a - 0x450008u, size, v, 2, portbit_wh); return; } break;
     case 0x46: if (IN(0x460000u, 0x4000)) { eeprom_write(a - 0x460000u, size, v); return; } break;
@@ -401,7 +401,7 @@ bool ss22_hw_init(const char *rom_dir)
     g_hw.lcg = 0x2545F491u;
     g_hw.dsw = 0xFFFFFFFFu;
     g_hw.portbits[0] = g_hw.portbits[1] = 0xFFFF;
-    c139_init(g_ss22.sci);
+    lan139_init(g_ss22.sci);
     cfg->load_eeprom(rom_dir);
     snprintf(v, sizeof v, "%s_KEYCUS_FILE", cfg->tag);
     const char *kf = getenv(v);                          /* replay MAME's random keycus reads */

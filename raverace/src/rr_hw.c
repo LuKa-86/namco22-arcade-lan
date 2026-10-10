@@ -20,7 +20,7 @@
 #include "rr_game.h"
 #include "rr_dsp.h"
 #include "rr_sound.h"
-#include "c139.h"
+#include "lan139.h"
 #include "rr_link.h"
 
 rr_hw_t g_hw;
@@ -55,7 +55,7 @@ static uint32_t sci_rd(vaddr_t a, int size)
     uint32_t v = 0;
     for (int i = 0; i < size; i++) {
         uint32_t o = (a + (uint32_t)i) - 0x20020000u;
-        uint16_t w = c139_reg_r(o >> 1);
+        uint16_t w = lan139_reg_r(o >> 1);
         v = v << 8 | ((o & 1) ? (w & 0xFFu) : (uint32_t)(w >> 8));
     }
     return v;
@@ -64,9 +64,9 @@ static void sci_wr(vaddr_t a, int size, uint32_t v)
 {
     for (int i = 0; i < size; ) {
         uint32_t o = (a + (uint32_t)i) - 0x20020000u;
-        if (!(o & 1) && size - i >= 2) { c139_reg_w(o >> 1, (uint16_t)(v >> ((size - i - 2) * 8)), 0xFFFF); i += 2; continue; }
+        if (!(o & 1) && size - i >= 2) { lan139_reg_w(o >> 1, (uint16_t)(v >> ((size - i - 2) * 8)), 0xFFFF); i += 2; continue; }
         uint16_t b = (uint16_t)((v >> ((size - i - 1) * 8)) & 0xFF);
-        if (o & 1) c139_reg_w(o >> 1, b, 0x00FF); else c139_reg_w(o >> 1, (uint16_t)(b << 8), 0xFF00);
+        if (o & 1) lan139_reg_w(o >> 1, b, 0x00FF); else lan139_reg_w(o >> 1, (uint16_t)(b << 8), 0xFF00);
         i++;
     }
 }
@@ -80,7 +80,7 @@ static bool sci_buf_wr(vaddr_t a, int size, uint32_t v)
 
 static bool io_read(vaddr_t a, int size, uint32_t *out)
 {
-    if (link_on && a >= 0x20020000u && a < 0x20020010u) { *out = sci_rd(a, size); return true; }   /* our link (link.cfg / --link): engine/c139.c */
+    if (link_on && a >= 0x20020000u && a < 0x20020010u) { *out = sci_rd(a, size); return true; }   /* our link (link.cfg / --link): engine/lan139.c */
     if (a >= 0x20000000u && a < 0x20000010u) {
         const uint16_t r = keycus_next();                                  /* the random stream advances on every read, as in MAME */
         *out = g_rr_game->keycus_off >= 0 && (int)((a & 0xF) >> 1) == g_rr_game->keycus_off ? g_rr_game->keycus_val : r;
@@ -108,7 +108,7 @@ static bool io_write(vaddr_t a, int size, uint32_t v)
 {
     if (link_on) {
         if (a >= 0x20020000u && a < 0x20020010u) { sci_wr(a, size, v); return true; }
-        if (a >= 0x20010000u && a < 0x20010000u + RR_SCI_SIZE && c139_eof_writes()) return sci_buf_wr(a, size, v);
+        if (a >= 0x20010000u && a < 0x20010000u + RR_SCI_SIZE && lan139_eof_writes()) return sci_buf_wr(a, size, v);
     }
     if (a >= 0x40000000u && a < 0x40000020u) {
         /* byte-wide registers; a word/long write covers several */
@@ -217,7 +217,7 @@ static void eeprom_block_set(uint32_t blk, int byte, uint8_t v)
 void rr_hw_link_on(int cabinet, bool seed_id)
 {
     link_on = true;
-    c139_init(g_rr.sci);
+    lan139_init(g_rr.sci);
     if (!seed_id) return;
     eeprom_block_set(0x2C0, 0, (uint8_t)(cabinet & 7));
     eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));

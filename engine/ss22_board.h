@@ -85,7 +85,7 @@ bool ss22_load_program(const char *rom_dir);
 bool ss22_hw_init(const char *rom_dir);
 void ss22_hw_vblank(void);                          /* the frame's vblank: raise syscon line 0 if the game enabled it */
 void ss22_hw_scanline(void);                        /* the scanline IRQ (line 1) */
-void ss22_hw_sci_irq(void);                         /* the link chip's IRQ (line 2), engine/c139.c */
+void ss22_hw_sci_irq(void);                         /* the link chip's IRQ (line 2), engine/lan139.c */
 int  ss22_hw_irq_level(void);                       /* the highest pending, enabled IRQ as a 68K level (0 = none) */
 void ss22_hw_keycus_force(uint32_t v);              /* trace oracle: the next keycus read answers with MAME's value */
 

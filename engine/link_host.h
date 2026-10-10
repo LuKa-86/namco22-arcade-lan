@@ -1,6 +1,6 @@
 /*
  * link_host.h -- LINK PLAY in a game's host (the Super 22 host engine/ss22_run.c, Rave Racer's raverace/src/rr_main.c): the command
- * line, the start-up gathering, the link chip's slice and the log. The chip is engine/c139.c, the network engine/link_net.c; see
+ * line, the start-up gathering, the link chip's slice and the log. The chip is engine/lan139.c, the network engine/link_net.c; see
  * docs/LINK_NOTES.md.
  *
  *   --link N                 this is cabinet N (1..8) of a linked set

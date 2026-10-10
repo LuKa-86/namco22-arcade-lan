@@ -27,7 +27,7 @@ set(NAMCO22_ENGINE_SS22_SRC
 # LINK PLAY (docs/LINK_NOTES.md): the C139 link chip, the network between cabinets, the host's options and start-up gathering. Part of
 # the Super 22 host below; Rave Racer (raverace/) links it too.
 set(NAMCO22_ENGINE_LINK_SRC
-    ${NAMCO22_ENGINE_DIR}/c139.c
+    ${NAMCO22_ENGINE_DIR}/lan139.c
     ${NAMCO22_ENGINE_DIR}/link_net.c
     ${NAMCO22_ENGINE_DIR}/link_host.c
 )

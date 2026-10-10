@@ -80,7 +80,7 @@ typedef struct ss22_game {
     bool (*start)(const char *name, long n, uint16_t *pressed, unsigned *wheel, unsigned *pedal1, unsigned *pedal2);
     const char *start_names;                 /* what --stage takes, for the help and the error: "city, jungle, ..." */
     unsigned    pedal_full[2];               /* what --pedal F holds the first pedal at */
-    /* LINK PLAY (--link N, engine/c139.c): the EEPROM byte whose bits 0-1 are the game's own cabinet ID (its test menu's setting; -1 = not
+    /* LINK PLAY (--link N, engine/lan139.c): the EEPROM byte whose bits 0-1 are the game's own cabinet ID (its test menu's setting; -1 = not
      * known yet) -- --link N seeds it only on a cabinet's first run, after that the test menu's value is kept -- and the game's own view
      * of the link for the log (who it hears, the ring size, link good) -- NULL = none */
     int         link_id_byte;

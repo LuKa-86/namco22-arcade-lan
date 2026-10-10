@@ -1,7 +1,7 @@
-/* c139.c -- see c139.h. */
+/* lan139.c -- see lan139.h. */
 #include <stdio.h>
 #include <string.h>
-#include "c139.h"
+#include "lan139.h"
 #include "link_net.h"
 
 #define RING_BASE 0x1000u                   /* the receive ring: words 0x1000..0x1FFF of the buffer */
@@ -22,32 +22,32 @@ static struct {
     uint16_t tx[LNK_MAX_WORDS];
     int      unacked;
     uint16_t q[QMAX][LNK_MAX_WORDS]; int qlen[QMAX]; int qhead, qn;
-    c139_stats st;
+    lan139_stats st;
 } C;
 
 static uint16_t wr_(unsigned w) { w &= 0x1FFF; return (uint16_t)(C.buf[2 * w] << 8 | C.buf[2 * w + 1]); }
 static void ww_(unsigned w, uint16_t v) { w &= 0x1FFF; C.buf[2 * w] = (uint8_t)(v >> 8); C.buf[2 * w + 1] = (uint8_t)v; }
 
-void c139_init(uint8_t *buf)
+void lan139_init(uint8_t *buf)
 {
     memset(&C, 0, sizeof C);
     C.buf = buf;
     C.reg[6] = RING_BASE;
 }
 
-bool c139_on(void) { return lnk_on(); }
-const c139_stats *c139_get_stats(void) { return &C.st; }
+bool lan139_on(void) { return lnk_on(); }
+const lan139_stats *lan139_get_stats(void) { return &C.st; }
 
-bool c139_irq(void)
+bool lan139_irq(void)
 {
     if (!lnk_on()) return false;
     const uint16_t ct = C.reg[1];
     return ((C.status & ST_RX) && !(ct & CT_RX_MASK)) || (!C.tx_busy && !(ct & CT_TX_MASK));
 }
 
-bool c139_eof_writes(void) { return lnk_on() && (C.reg[2] & 2); }
+bool lan139_eof_writes(void) { return lnk_on() && (C.reg[2] & 2); }
 
-uint16_t c139_reg_r(unsigned unit)
+uint16_t lan139_reg_r(unsigned unit)
 {
     unit &= 7;
     if (!lnk_on()) return unit == 0 ? 0x0004 : 0;              /* MAME's namcos22_sci_r */
@@ -71,7 +71,7 @@ static void start_tx(void)
     C.tx_busy = true;
 }
 
-void c139_reg_w(unsigned unit, uint16_t data, uint16_t mask)
+void lan139_reg_w(unsigned unit, uint16_t data, uint16_t mask)
 {
     unit &= 7;
     if (!lnk_on()) return;                                     /* MAME: writes do nothing */
@@ -96,7 +96,7 @@ static void deliver(void)
     C.st.rx++;
 }
 
-bool c139_tick(bool new_slice)
+bool lan139_tick(bool new_slice)
 {
     if (!lnk_on()) return false;
     if (C.tx_busy) { lnk_send(C.tx, C.tx_len); C.tx_busy = false; C.st.tx++; }
@@ -109,5 +109,5 @@ bool c139_tick(bool new_slice)
         C.qlen[slot] = n; C.qn++;
     }
     if (!(C.status & ST_RX) && C.qn) deliver();
-    return c139_irq();
+    return lan139_irq();
 }
