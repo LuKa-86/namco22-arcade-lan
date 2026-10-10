@@ -524,7 +524,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "lights")) { F.lights = !strcmp(v, "on") ? 1 : 0; for (int i = 1; i < 7; i++) if (!strcmp(v, light_key[i])) F.lights = i; }
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
         else if (!strcmp(k, "timing")) F.classic = !strcmp(v, "classic");
-        else if (!strcmp(k, "method")) F.author = !strcmp(v, "author");
+        else if (!strcmp(k, "method")) F.author = !strcmp(v, "modern") || !strcmp(v, "author");   /* ("author" / "ours": the first names) */
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
     fclose(f);
@@ -557,8 +557,9 @@ static void cfg_save(void)
     fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
     fprintf(f, "# frame timing: new = the author's current one (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
             F.classic ? "classic" : "new");
-    fprintf(f, "# link method: ours = this page's link play (the cabinets link when they are switched on); author = the author's online play\n"
-               "# (the Online page: host / find a game, a lobby) -- ours is then off\nmethod=%s\n", F.author ? "author" : "ours");
+    fprintf(f, "# link method: arcade = Arcade LAN, for real cabinets (this page: the cabinets link when they are switched on, coins as normal);\n"
+               "# modern = Modern multiplayer, the original author's online play (the Online page: host / find a game, a lobby) -- Arcade LAN is then off\n"
+               "method=%s\n", F.author ? "modern" : "arcade");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
@@ -784,7 +785,7 @@ static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn) 
     }
     if (r == 3) {
         snprintf(label, ln, "Link method");
-        snprintf(value, vn, "%s%s", F.author ? "Author's (Online page)" : "Ours (at power-on)", method_at_start != F.author ? " - at next start" : "");
+        snprintf(value, vn, "%s", F.author ? "Modern multiplayer" : "Arcade LAN");
         return true;
     }
     if (r == 4) {
@@ -896,6 +897,9 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
         line("Same list on every cabinet. Used at next start.");
         if (F.cab_auto) line("Auto: the number is this PC's place in the list.");
+        if (method_at_start != F.author) line("Link method: %s at next start.", F.author ? "Modern multiplayer" : "Arcade LAN");
+        else if (F.author) line("Modern multiplayer: lobby play on the Online page.");
+        else line("Arcade LAN: real cabinets, linked at power-on.");
         if (F.set_id) line("The game's own ID will follow at next start.");
     }
     if (on) {
@@ -910,7 +914,7 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         char qb[160]; quality_text(qb, sizeof qb);
         if (*qb) line("Link quality: %s", qb);
         line("The game keeps running while this menu is open.");
-    } else if (method_at_start) line("Status: author's online play (Online page)");
+    } else if (method_at_start) line("Status: Modern multiplayer (see the Online page)");
     else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
     else line("Status: link off");
     if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out");

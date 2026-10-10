@@ -881,7 +881,7 @@ void rr_ui_draw(bool *quit)
             labelf(NK_TEXT_LEFT, "They run while the Test switch is on: F2 or File > Test mode returns to the game.");
             if (row >= 0 && row < g_rr_game->ndebug && g_rr_game->debug[row].help) labelf(NK_TEXT_LEFT, "%s", g_rr_game->debug[row].help);
         } else if (tab == T_ONLINE) {
-            if (link_host_on()) labelf(NK_TEXT_LEFT, "Link play (Network page) is on: online play is off this run. Turn link play off to use it.");
+            if (link_host_on()) labelf(NK_TEXT_LEFT, "Arcade LAN (Network page) is on: online play is off this run. Set Link method to Modern multiplayer to use it.");
             labelf(NK_TEXT_LEFT, "Address entry needs a keyboard.");
             if (!rr_net_connected()) labelf(NK_TEXT_LEFT, "LAN: one player picks Host a LAN game, the others Find LAN games and Join. Or type a server host:port.");
         }
