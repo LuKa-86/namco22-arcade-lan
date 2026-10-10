@@ -497,8 +497,8 @@ void link_host_frame(uint32_t frame, bool headless)
 #define CFG_FILE "link.cfg"
 /* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
  * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
-static struct { bool on, set_id, carry_on, cab_auto, classic, author; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
-    F = { false, false, false, true, false, false, 1, 2, 60, 22220, 0, 0, { "" } };
+static struct { bool on, set_id, carry_on, cab_auto, classic, author, arcade; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, true, false, false, true, 1, 2, 60, 22220, 0, 0, { "" } };
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
@@ -524,6 +524,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "lights")) { F.lights = !strcmp(v, "on") ? 1 : 0; for (int i = 1; i < 7; i++) if (!strcmp(v, light_key[i])) F.lights = i; }
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
         else if (!strcmp(k, "timing")) F.classic = !strcmp(v, "classic");
+        else if (!strcmp(k, "arcade_mode")) F.arcade = strcmp(v, "off") != 0;
         else if (!strcmp(k, "method")) F.author = !strcmp(v, "modern") || !strcmp(v, "author");   /* ("author" / "ours": the first names) */
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
@@ -536,12 +537,18 @@ static void cfg_load(void)
 }
 
 static bool method_at_start;                                           /* the method this run started with */
+static bool modern(void) { return F.author && !F.arcade; }             /* Modern multiplayer: only with arcade mode off */
+static int  page_nodes(void);
+/* a row after the wait, as its fixed number (0 lights, 1 if lost, 2 timing, 3 method, 4 restart all, 5 find, 6 use the found); in
+ * arcade mode the method row is not there */
+static int xrow(int row) { int r = row - (3 + page_nodes() + 1); if (F.arcade && r >= 3) r++; return r; }
 bool link_host_author_method(int argc, char **argv)
 {
     for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--link", 6)) return false;   /* a one-PC test launcher: ours */
     cfg_load();
-    return method_at_start = F.author;
+    return method_at_start = modern();
 }
+bool link_host_arcade_mode(void) { return F.arcade; }
 
 static void cfg_save(void)
 {
@@ -557,6 +564,9 @@ static void cfg_save(void)
     fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
     fprintf(f, "# frame timing: new = the author's current one (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
             F.classic ? "classic" : "new");
+    fprintf(f, "# ARCADE MODE (on unless this says off): this program is for real cabinets linked on a wired LAN, so the menu shows only that --\n"
+               "# no Online page, no \"Link method\" row, and the method below is not used. arcade_mode=off brings Modern multiplayer back.\n"
+               "arcade_mode=%s\n", F.arcade ? "on" : "off");
     fprintf(f, "# link method: arcade = Arcade LAN, for real cabinets (this page: the cabinets link when they are switched on, coins as normal);\n"
                "# modern = Modern multiplayer, the original author's online play (the Online page: host / find a game, a lobby) -- Arcade LAN is then off\n"
                "method=%s\n", F.author ? "modern" : "arcade");
@@ -588,7 +598,7 @@ int link_host_prescan(int argc, char **argv)
 {
     argv0 = argv;
     cfg_load();
-    method_at_start = F.author;
+    method_at_start = modern();
     lost_carry_on = F.carry_on;
     { const char *t = F.classic ? "classic" : "new";                  /* FRAME TIMING (engine/eng_vsync.h reads N22_TIMING): link.cfg, or --timing */
       for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--timing")) t = argv[i + 1];
@@ -604,7 +614,7 @@ int link_host_prescan(int argc, char **argv)
         for (int j = 1; j + 1 < argc; j++) if (!strcmp(argv[j], "--link")) return atoi(argv[j + 1]);
         return 0;
     }
-    if (!F.on || F.author) return 0;
+    if (!F.on || modern()) return 0;
     int cab = F.cabinet;
     if (F.cab_auto) {                                                  /* where this PC's own address is in the list */
         cab = own_cabinet(true);
@@ -771,11 +781,11 @@ static void disc_notes(void (*line)(const char *fmt, ...))
 /* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
  * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
 static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
-int  link_page_rows(void) { return 3 + page_nodes() + 7 + (disc_found_usable() ? 1 : 0); }
-bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 4); }
+int  link_page_rows(void) { return 3 + page_nodes() + (F.arcade ? 6 : 7) + (disc_found_usable() ? 1 : 0); }
+bool link_page_has_value(int row) { const int r = xrow(row); return row < 3 || (row >= 3 + page_nodes() && r < 4); }
 static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
 {
-    const int r = row - (3 + page_nodes() + 1);
+    const int r = xrow(row);
     if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); return true; }
     if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
     if (r == 2) {
@@ -834,7 +844,7 @@ void link_page_text(int row, char *label, size_t ln, char *value, size_t vn)
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 void link_page_change(int row, int dir)
 {
-    const int r = row - (3 + page_nodes() + 1);
+    const int r = xrow(row);
     if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
     if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
     if (r == 2) { F.classic = !F.classic; cfg_save(); return; }        /* frame timing: used at the next start */
@@ -897,8 +907,8 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
         line("Same list on every cabinet. Used at next start.");
         if (F.cab_auto) line("Auto: the number is this PC's place in the list.");
-        if (method_at_start != F.author) line("Link method: %s at next start.", F.author ? "Modern multiplayer" : "Arcade LAN");
-        else if (F.author) line("Modern multiplayer: lobby play on the Online page.");
+        if (method_at_start != modern()) line("Link method: %s at next start.", modern() ? "Modern multiplayer" : "Arcade LAN");
+        else if (modern()) line("Modern multiplayer: lobby play on the Online page.");
         else line("Arcade LAN: real cabinets, linked at power-on.");
         if (F.set_id) line("The game's own ID will follow at next start.");
     }

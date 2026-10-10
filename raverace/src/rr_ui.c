@@ -66,7 +66,11 @@ static float ui_scale = 1.0f;          /* drawable pixels per window unit (HiDPI
 enum { T_FILE, T_DISPLAY, T_AUDIO, T_CONTROLS, T_RECORD, T_NETWORK, T_ONLINE, T_DEBUG, T_N };
 static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Record", "Network", "Online", "Debug" };   /* Network: our link (engine/link_host.c, link.cfg); Online: the author's online play (rr_net.c) */
 /* the Debug page only for a game whose table lists developer screens (rr_game.h rr_debug_t) */
-static bool tab_shown(int t) { return t != T_DEBUG || (g_rr_game->debug && g_rr_game->ndebug > 0); }
+static bool tab_shown(int t)
+{
+    if (t == T_ONLINE) return !link_host_arcade_mode();    /* arcade mode (link.cfg): the Arcade LAN only, no online play in the menu */
+    return t != T_DEBUG || (g_rr_game->debug && g_rr_game->ndebug > 0);
+}
 static int tab = T_DISPLAY;
 static int row = 0;                    /* -1 = the tab strip */
 static bool kb_moved;                  /* keep the selected row in view after a key */

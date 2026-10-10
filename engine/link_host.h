@@ -67,4 +67,6 @@ int  link_lights(link_light *out);                             /* how many (0 = 
 /* link.cfg method=author (the Network page's "Link method"): the author's online play instead of ours, which then stays off. For a
  * game's main(), before anything else (a one-PC test launcher's --link is always ours). */
 bool link_host_author_method(int argc, char **argv);
+/* ARCADE MODE (link.cfg arcade_mode, on unless it says off): the menus show only the Arcade LAN -- no Online page, no "Link method" row */
+bool link_host_arcade_mode(void);
 #endif
