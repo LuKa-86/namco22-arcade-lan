@@ -20,6 +20,7 @@
 #include "ss22_board.h"
 #include "lan139.h"
 #include "ss22_game.h"
+#include "ss22_link.h"
 
 static const ss22_board_cfg *cfg;
 
@@ -108,8 +109,10 @@ static void dev_write(uint32_t off, int size, uint32_t v, int w, wr_fn h)
 /* ---- device handlers (namcos22.cpp / namcos22_v.cpp) ---- */
 static uint32_t keycus_h(uint32_t unit) { return ss22_hw_keycus_r(unit); }
 
-static uint32_t sci_h(uint32_t unit) { return lan139_reg_r(unit); }                  /* engine/lan139.c (off: MAME namcos22_sci_r) */
-static void     sci_wh(uint32_t unit, uint32_t d, uint32_t m) { lan139_reg_w(unit, (uint16_t)d, (uint16_t)m); }
+/* the SCI: the author's link (--netlink / the Online layer, engine/ss22_link.c + c139.c) when that is on, else ours (link.cfg / --link,
+ * engine/lan139.c), which with no link answers as MAME's stub does (namcos22_sci_r: 0x0004 at register 0, writes ignored) */
+static uint32_t sci_h(uint32_t unit) { return g_ss22_link_on ? ss22_link_reg_read(unit & 7) : lan139_reg_r(unit); }
+static void     sci_wh(uint32_t unit, uint32_t d, uint32_t m) { if (g_ss22_link_on) ss22_link_reg_write(unit & 7, (uint16_t)d); else lan139_reg_w(unit, (uint16_t)d, (uint16_t)m); }
 
 static uint32_t portbit_h(uint32_t unit) { return ss22_hw_portbit_r(unit); }
 static void     portbit_wh(uint32_t unit, uint32_t d, uint32_t m) { (void)d; (void)m; ss22_hw_portbit_w(unit); }
@@ -298,7 +301,7 @@ void rr_write(uint32_t a, int size, uint32_t v)
     } else switch (a >> 16) {
     case 0x40: if (IN(0x400000u, 0x20)) return; break;                              /* keycus_w: ignored */
     case 0x41: if (IN(0x410000u, SS22_SCI_SIZE)) { be_wr(g_ss22.sci, a - 0x410000u, size, v); return; } break;
-    case 0x42: if (IN(0x420000u, 0x10)) { dev_write(a - 0x420000u, size, v, 2, sci_wh); return; } break;   /* engine/lan139.c (off: nothing) */
+    case 0x42: if (IN(0x420000u, 0x10)) { dev_write(a - 0x420000u, size, v, 2, sci_wh); return; } break;   /* the SCI (sci_wh; no link: nothing) */
     case 0x43: if (IN(0x430000u, 4)) return; break;                                 /* cpuleds */
     case 0x45: if (IN(0x450008u, 4)) { dev_write(a - 0x450008u, size, v, 2, portbit_wh); return; } break;
     case 0x46: if (IN(0x460000u, 0x4000)) { eeprom_write(a - 0x460000u, size, v); return; } break;
@@ -375,7 +378,7 @@ static void irq_level(uint32_t line, uint8_t data)
 static void ss22_hw_syscon_w(uint32_t off, uint8_t data)
 {
     if (off <= 3) irq_level(off, data);
-    else if (off <= 7) g_hw.irq_state &= ~(1u << (off - 4));
+    else if (off <= 7) { g_hw.irq_state &= ~(1u << (off - 4)); if (off == 6 && g_ss22_link_on) ss22_link_sci_ack(); }
     else if (off == 0x16) { g_hw.mcu_run = data != 0; if (g_ss22_snd_set_run) g_ss22_snd_set_run(g_hw.mcu_run); }
     else if (off == 0x1C) { g_hw.dsp_ctrl = data; if (g_ss22_dsp_control) g_ss22_dsp_control(data); }
     g_ss22.syscon[off] = data;

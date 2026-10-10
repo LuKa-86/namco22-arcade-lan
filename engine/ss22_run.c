@@ -21,6 +21,7 @@
 #include "ss22_game.h"
 #include "ss22_out.h"
 #include "ss22_host.h"
+#include "ss22_link.h"
 #include <sys/stat.h>
 #include "win_startup.h"
 #include "romzip.h"
@@ -161,6 +162,7 @@ static bool rep_open(const char *path)
     return true;
 }
 static const char *rec_path, *rep_path;
+static const char *link_spec;                        /* --link ID/N[:PORT][:free] (engine/ss22_link.h) */
 static const char *start_name;                       /* --stage NAME (the game's start script, ss22_game.start) */
 static bool start_on;                                /* the start script owns the cabinet this frame: the window's keys stay out of it */
 static long start_base;                              /* the frame the script started at (0: --stage, from power-on) */
@@ -348,6 +350,7 @@ void rr_tick(void)
         ss22_dsp_run(dsp_steps_per_frame / SLICES);       /* the master DSP runs beside the 68K */
     ss22_snd_slice();                                     /* and so does the sound MCU (ports, A-D, the C352) */
     link_host_slice();                                    /* and the link chip */
+    if (g_ss22_link_on) ss22_link_slice();                /* --link: the C139's clock and its interrupt (engine/ss22_link.c) */
     if ((serial_acc += 100) >= 60 * SLICES) { serial_acc -= 60 * SLICES; ss22_dsp_serial(); }
     if (++slice % SLICES) return;
     if (ftime_on < 0) { ftime_on = getenv("ENG_FTIME") != NULL; if (ftime_on) { extern int g_perf_enabled; g_perf_enabled = 1; } }
@@ -358,6 +361,7 @@ void rr_tick(void)
     }
     rr_frame++;
     link_host_frame(rr_frame, !ss22_host_active());
+    if (g_ss22_link_on) ss22_link_frame(rr_frame);        /* --link: this frame's payload out, the predecessor's in */
 #ifdef RR_TRACE
     if (pc_ring_frame >= 0 && (rr_frame == (uint32_t)pc_ring_frame || (pc_ring_frame > 0 && rr_frame > (uint32_t)pc_ring_frame && rr_frame % 300 == 0))) pc_ring_report();
 #endif
@@ -437,7 +441,7 @@ void rr_tick(void)
 
 /* the window's host: the game's name, settings file and cabinet controls (engine/ss22_host.c) */
 static void in_init(void) { ss22_input_init(g_ss22_game->input); }
-static void in_update(void) { if (!start_on && !autoplay && !npress && pedal_from < 0 && !rep_f) ss22_input_update(); }   /* the start script (or a --press / --autoplay script, or a --replay) has the cabinet */
+static void in_update(void) { if (!start_on && !autoplay && !npress && pedal_from < 0 && !rep_f) ss22_input_update(); ss22_input_kick_frame(); }   /* the start script (or a --press / --autoplay script, or a --replay) has the cabinet for the whole run, keys included */
 static ss22_host_game host_game;
 
 static void link_before_restart(void) { ss22_eeprom_save(); ss22_snd_close(); ss22_host_close(); }   /* the safety net's restart */
@@ -468,6 +472,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     host_game = (ss22_host_game){ title, cfgfile, g->tag, g->lname, in_init, ss22_input_page, ss22_input_event, in_update,
                                   ss22_input_neutral, ss22_snd_set_output, g->out_gain,
                                   g->input && g->input->light_gun ? ss22_input_aim : NULL, g->menu_page };
+    host_game.paused_tick = g->paused_tick;
     const char *rom_dir = "extracted";
     const char *rd_dir = NULL, *rd_out = NULL; int rd_frame = 0, frames_given = 0;
     if (argc == 1) win_scale = -1;                      /* started with no arguments (a double-click, the Windows how-to): play, in a window */
@@ -495,6 +500,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         else if (!strcmp(argv[i], "--pedal") && i + 1 < argc) pedal_from = atol(argv[++i]);
         else if (!strcmp(argv[i], "--clock") && i + 1 < argc) clock_addr = strtol(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--input-offset") && i + 1 < argc) input_offset = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--netlink") && i + 1 < argc) link_spec = argv[++i];   /* the AUTHOR's link (engine/ss22_link.h: ID/N[:PORT][:free]); upstream calls it --link, which here is ours */
         else if (link_host_arg(argc, argv, &i)) {}
         else rom_dir = argv[i];
     }
@@ -550,6 +556,12 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         rec_path = last_rec;
     }
     if (rec_path) { rec_open(rec_path); if (rec_f) fatal_rec = rec_path; }
+    { char lv[64]; snprintf(lv, sizeof lv, "%s_LINK", g->tag); if (!link_spec) link_spec = getenv(lv); }
+    if (link_spec && link_host_on()) {                   /* one link at a time: ours (link.cfg / --link) has the chip */
+        fprintf(stderr, "[LINK] our link play is on: the author's link (--netlink, %s_LINK, online play) is off this run\n", g->tag);
+        link_spec = NULL;
+    }
+    if (link_spec && !ss22_link_setup(link_spec, g->tag)) return 2;   /* the author's cabinet link: after the EEPROM is final (it sets the cabinet id there) */
     rr_fatal_hook = on_fatal;
     if (link_host_on() && (link_host_take_id_reset() || !nv_loaded)) {   /* a cabinet's first run, or its number changed on the Network page:
                                                           * its ID from that; otherwise the test menu's (GAME OPTIONS) */
@@ -563,6 +575,11 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     if (win_scale || shot_dir) {                        /* video: a window, or offscreen for --shots */
         if (win_scale && !frames_given) max_frames = 0xFFFFFFFFu;
         video_on = ss22_video_init(rom_dir) && (win_scale ? ss22_host_open(&host_game, win_scale, win_full) : ss22_host_open_headless());
+        if (video_on && win_scale) {                    /* the player's speaker levels (the settings are loaded now) and their rows in the Audio page */
+            static const eng_ui_mixer mixer = { ss22_snd_mix_rows, ss22_snd_mix_name, ss22_snd_mix_get, ss22_snd_mix_set, 200 };
+            ss22_snd_mix_load();
+            eng_ui_set_mixer(&mixer);
+        }
         if (!video_on) { fprintf(stderr, "[%s] no picture: video could not start\n", g->tag); if (win_scale) return 2; }
     }
     if (g_link_mute) eng_audio_set_volume(0);

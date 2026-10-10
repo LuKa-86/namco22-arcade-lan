@@ -17,6 +17,7 @@
 #include <wchar.h>
 #include <windows.h>
 #include <SDL.h>
+#include "rr_game.h"
 
 void rr_win_startup(const char *logname)
 {

@@ -37,6 +37,7 @@
 #include "../../third_party/nuklear_sdl_gl2.h"  /* Prop Cycle's backend: the window is OpenGL */
 
 #include "rr_ui.h"
+#include "rr_game.h"
 #include "rr_input.h"
 #include "rr_hw.h"
 #include "rr_sound.h"
@@ -62,8 +63,10 @@ static int dlg_mode = 1;               /* 0 = Local LAN, 1 = Internet game (the 
 static bool was_session;               /* GO edge detector: close the menu when a race is armed */
 static float ui_scale = 1.0f;          /* drawable pixels per window unit (HiDPI) */
 
-enum { T_FILE, T_DISPLAY, T_AUDIO, T_CONTROLS, T_RECORD, T_NETWORK, T_ONLINE, T_N };
-static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Record", "Network", "Online" };   /* Network: our link (engine/link_host.c, link.cfg); Online: the author's online play (rr_net.c) */
+enum { T_FILE, T_DISPLAY, T_AUDIO, T_CONTROLS, T_RECORD, T_NETWORK, T_ONLINE, T_DEBUG, T_N };
+static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Record", "Network", "Online", "Debug" };   /* Network: our link (engine/link_host.c, link.cfg); Online: the author's online play (rr_net.c) */
+/* the Debug page only for a game whose table lists developer screens (rr_game.h rr_debug_t) */
+static bool tab_shown(int t) { return t != T_DEBUG || (g_rr_game->debug && g_rr_game->ndebug > 0); }
 static int tab = T_DISPLAY;
 static int row = 0;                    /* -1 = the tab strip */
 static bool kb_moved;                  /* keep the selected row in view after a key */
@@ -90,6 +93,7 @@ static int nrows(int t)
     case T_RECORD: return 1;
     case T_NETWORK: return link_page_rows();
     case T_ONLINE: return online_rows();
+    case T_DEBUG: return g_rr_game->ndebug;
     }
     return 0;
 }
@@ -151,15 +155,19 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         else if (r == C_FFB_DIR) { snprintf(label, ln, "FFB direction"); snprintf(value, vn, "%s", g_cfg_ffb_invert ? "reversed" : "normal"); }
         else {
             const int a = r - C_N;
+            if (g_rr_game->act_label && g_rr_game->act_label[a]) snprintf(label, ln, "%s", g_rr_game->act_label[a]);   /* the game's own names */
+            else {
             snprintf(label, ln, "%s", rr_input_action_name(a));
             for (char *c = label; *c; c++) if (*c == '_') *c = ' ';
             if (label[0] >= 'a' && label[0] <= 'z') label[0] = (char)(label[0] - 'a' + 'A');
+            }
             if (rebinding == a) snprintf(value, vn, "key, button or move control...");
             else rr_input_binding_label(a, value, vn);
         }
         break;
     case T_RECORD: snprintf(label, ln, "Record input"); snprintf(value, vn, "%s", rr_input_recording() ? "ON  (recording...)" : "OFF"); break;
     case T_NETWORK: link_page_text(r, label, ln, value, vn); break;
+    case T_DEBUG: snprintf(label, ln, "%s", g_rr_game->debug[r].name); snprintf(value, vn, "Launch"); break;
     case T_ONLINE: {
         const int rc = rr_net_roster_count();
         switch (r) {
@@ -224,6 +232,7 @@ static void close_menu(void)
     stop_edit();
 }
 static int cyc(int v, int d, int n) { return ((v + d) % n + n) % n; }
+static int cyc_tab(int v, int d) { do v = cyc(v, d, T_N); while (!tab_shown(v)); return v; }
 /* dir: 0 = Enter / click, -1 / +1 = Left / Right */
 static void row_change(int t, int r, int dir)
 {
@@ -270,6 +279,7 @@ static void row_change(int t, int r, int dir)
         break;
     case T_RECORD: rr_host_toggle_record(); break;
     case T_NETWORK: link_page_change(r, dir); break;
+    case T_DEBUG: if (dir == 0) { rr_debug_launch(r); close_menu(); } break;
     case T_ONLINE: {
         if (link_host_on()) break;                   /* our link play (Network page) has the link chip this run */
         const int rc = rr_net_roster_count();
@@ -393,12 +403,12 @@ static void nav(int k)
     switch (k) {
     case K_UP:    row = row <= -1 ? n - 1 : row - 1; break;
     case K_DOWN:  row = row >= n - 1 ? -1 : row + 1; break;
-    case K_LEFT:  if (row < 0) tab = cyc(tab, -1, T_N); else if (has_value(tab, row)) row_change(tab, row, -1); break;
-    case K_RIGHT: if (row < 0) tab = cyc(tab, +1, T_N); else if (has_value(tab, row)) row_change(tab, row, +1); break;
+    case K_LEFT:  if (row < 0) tab = cyc_tab(tab, -1); else if (has_value(tab, row)) row_change(tab, row, -1); break;
+    case K_RIGHT: if (row < 0) tab = cyc_tab(tab, +1); else if (has_value(tab, row)) row_change(tab, row, +1); break;
     case K_OK:    if (row < 0) row = 0; else row_change(tab, row, 0); break;
     case K_BACK:  if (newroom_open) { newroom_open = false; stop_edit(); } else if (dlg_open) { dlg_open = false; stop_edit(); } else close_menu(); break;
-    case K_TABPREV: tab = cyc(tab, -1, T_N); row = 0; break;
-    case K_TABNEXT: tab = cyc(tab, +1, T_N); row = 0; break;
+    case K_TABPREV: tab = cyc_tab(tab, -1); row = 0; break;
+    case K_TABNEXT: tab = cyc_tab(tab, +1); row = 0; break;
     }
     if (row >= nrows(tab)) row = nrows(tab) - 1;
 }
@@ -781,13 +791,14 @@ void rr_ui_draw(bool *quit)
     /* THE MENU BAR across the top of the window, as in Prop Cycle. The chosen
      * page drops down under its title; on the keyboard the bar is the row
      * above the first row of the dropdown. */
-    static const float title_w[T_N] = { 50, 80, 70, 90, 80, 80, 70 };
-    float title_x[T_N], x = 4;
-    for (int t = 0; t < T_N; t++) { title_x[t] = x; x += title_w[t] + 4; }
+    static const float title_w[T_N] = { 50, 80, 70, 90, 80, 80, 70, 64 };
+    float title_x[T_N], x = 4; int nshown = 0;
+    for (int t = 0; t < T_N; t++) { title_x[t] = x; if (tab_shown(t)) { x += title_w[t] + 4; nshown++; } }
     if (nk_begin(ctx, "menubar", nk_rect(0, 0, (float)ww, 28), NK_WINDOW_NO_SCROLLBAR)) {
         nk_menubar_begin(ctx);
-        nk_layout_row_begin(ctx, NK_STATIC, 20, T_N + 1);
+        nk_layout_row_begin(ctx, NK_STATIC, 20, nshown + 1);
         for (int t = 0; t < T_N; t++) {
+            if (!tab_shown(t)) continue;
             nk_layout_row_push(ctx, title_w[t]);
             if (nk_select_label(ctx, tab_name[t], NK_TEXT_CENTERED, t == tab) && t != tab) { tab = t; row = 0; }
         }
@@ -798,7 +809,7 @@ void rr_ui_draw(bool *quit)
     nk_end(ctx);
 
     /* the dropdown: sized to its page, under its title, inside the window */
-    static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480, 420 };
+    static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480, 420, 460 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
     float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 176 : 44);
@@ -865,6 +876,10 @@ void rr_ui_draw(bool *quit)
             labelf(NK_TEXT_LEFT, "Records the cabinet inputs per frame to recordings/;");
             labelf(NK_TEXT_LEFT, "replay with rr --replay FILE. F9 toggles without the menu.");
         } else if (tab == T_NETWORK) { link_page_notes(note_line);
+        } else if (tab == T_DEBUG) {
+            labelf(NK_TEXT_LEFT, "Developer screens left in the program (nothing in the game reaches them).");
+            labelf(NK_TEXT_LEFT, "They run while the Test switch is on: F2 or File > Test mode returns to the game.");
+            if (row >= 0 && row < g_rr_game->ndebug && g_rr_game->debug[row].help) labelf(NK_TEXT_LEFT, "%s", g_rr_game->debug[row].help);
         } else if (tab == T_ONLINE) {
             if (link_host_on()) labelf(NK_TEXT_LEFT, "Link play (Network page) is on: online play is off this run. Turn link play off to use it.");
             labelf(NK_TEXT_LEFT, "Address entry needs a keyboard.");

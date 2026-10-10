@@ -64,4 +64,7 @@ bool link_lights_on(void);
 enum { LINK_LIGHTS_BOTTOM_LEFT = 1, LINK_LIGHTS_BOTTOM_CENTRE, LINK_LIGHTS_BOTTOM_RIGHT, LINK_LIGHTS_TOP_LEFT, LINK_LIGHTS_TOP_CENTRE, LINK_LIGHTS_TOP_RIGHT };
 int  link_lights_pos(void);                                    /* where they are (0 = not shown) */
 int  link_lights(link_light *out);                             /* how many (0 = none to show) */
+/* link.cfg method=author (the Network page's "Link method"): the author's online play instead of ours, which then stays off. For a
+ * game's main(), before anything else (a one-PC test launcher's --link is always ours). */
+bool link_host_author_method(int argc, char **argv);
 #endif

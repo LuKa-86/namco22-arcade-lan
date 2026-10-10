@@ -115,6 +115,7 @@ static const ss22_input_game input = {
     { "Enter, then press the new key (Esc cancels)", "Alternates: 6, keypad Enter, A D W S, Ctrl, Alt", "Pad: stick steers, triggers = pedals" },
     ss22_snd_inputs,
     IN_TEST, IN_SERVICE,
+    .kick_wheel = true,                      /* the handle solenoid (mcuout4, recoil_mask): a jolt on a force-feedback wheel */
 };
 
 /* widescreen: the battle HUD is up while the tank-count labels are on screen (text cells row 2: col 1 on the left, col 29 on the right). Its
@@ -147,6 +148,26 @@ static void link_report(char *buf, int n)
 static bool link_good(void) { return rr_read(0xE0200Cu, 2) != 0; }
 static int  link_game_id(void) { return (int)(rr_read(0xE02000u, 2) & 3); }
 
+/* THE CABINET LINK (engine/ss22_link.h, --link ID/N). The game's link driver (FUN_00092F82 init, FUN_00093072 send, FUN_000932A0 the SCI
+ * handler, FUN_0009362E the per-frame latch) takes its cabinet number from the operator setting at EEPROM byte 9 (0x460012, & 3: four cabinets,
+ * FUN_00012BB6 masks it), the high word of the setting at 0xE0A00C. Online play: src/tw_net.c. */
+bool tw_net_boot(bool menu);
+const struct eng_ui_page *tw_net_page(void);
+void tw_net_paused(void);
+bool link_host_author_method(int argc, char **argv);
+void tw_link_cabinet(int id)
+{
+    g_ss22.eeprom[8] = 0; g_ss22.eeprom[9] = (uint8_t)(id & 3);                    /* read at boot (FUN_00092F82, FUN_0000532C) */
+    g_ss22.wram[0x2000] = 0; g_ss22.wram[0x2001] = (uint8_t)(id & 3);              /* 0xE02000: the driver's copy, for a renumbering after boot */
+}
+static uint16_t w16(uint32_t a) { return (uint16_t)(g_ss22.wram[a - 0xE00000u] << 8 | g_ss22.wram[a - 0xE00000u + 1]); }
+static void tw_link_debug(uint32_t f)
+{
+    fprintf(stderr, "[TW] link f%u game: cab %u ring %u ownret %u ok %u alive %04X objs %04X/%04X rx %u tx %u bad %u nopkt %u\n", f,
+            w16(0xE02000), w16(0xE02006), w16(0xE0200A), w16(0xE0200C), w16(0xE02010), w16(0xE02014), w16(0xE02018),
+            w16(0xE02062), w16(0xE02064), w16(0xE02066), w16(0xE02068));
+}
+
 static const ss22_game game = {
     .name = "Tokyo Wars", .tag = "TW", .lname = "tw", .logname = "tokyowar.log", .zip = "tokyowar.zip",
     .out_gain = 1.4,      /* the chip runs ~4x hotter than Rave Racer's (raw median RMS 2369 against 563): x6 put 15% of the samples above the limiter's knee; 1.4 lands on Rave Racer's level (~3400 RMS) */
@@ -168,6 +189,9 @@ static const ss22_game game = {
     .pedal_full = { 0x100, 0x100 },
     .link_id_byte = 9,                  /* link play: GAME OPTIONS -> ID NO. = EEPROM byte 9, bits 0-1 (the driver reads it at 0x92F82) */
     .link_report = link_report, .link_good = link_good, .link_game_id = link_game_id,
+    .link_cabinet = tw_link_cabinet, .link_debug = tw_link_debug,
+    .menu_page = tw_net_page, .paused_tick = tw_net_paused,   /* the author's Online page, when link.cfg asks for that method (src/tw_net.c) */
+    .recoil_mask = 0x0010,              /* mcuout4, MAME "4 = handle solenoid": rises on each cannon shot (either trigger) -> pad rumble + wheel kick */
 };
 
-int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }
+int main(int argc, char **argv) { tw_net_boot(link_host_author_method(argc, argv)); return ss22_main(argc, argv, &game); }

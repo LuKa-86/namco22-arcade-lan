@@ -497,8 +497,8 @@ void link_host_frame(uint32_t frame, bool headless)
 #define CFG_FILE "link.cfg"
 /* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
  * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
-static struct { bool on, set_id, carry_on, cab_auto, classic; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
-    F = { false, false, false, true, false, 1, 2, 60, 22220, 0, 0, { "" } };
+static struct { bool on, set_id, carry_on, cab_auto, classic, author; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, true, false, false, 1, 2, 60, 22220, 0, 0, { "" } };
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
@@ -524,6 +524,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "lights")) { F.lights = !strcmp(v, "on") ? 1 : 0; for (int i = 1; i < 7; i++) if (!strcmp(v, light_key[i])) F.lights = i; }
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
         else if (!strcmp(k, "timing")) F.classic = !strcmp(v, "classic");
+        else if (!strcmp(k, "method")) F.author = !strcmp(v, "author");
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
     fclose(f);
@@ -532,6 +533,14 @@ static void cfg_load(void)
     if (F.cabinet < 1) F.cabinet = 1;
     if (F.cabinet > F.cabinets) F.cabinet = F.cabinets;
     if (F.wait < 10) F.wait = 10;
+}
+
+static bool method_at_start;                                           /* the method this run started with */
+bool link_host_author_method(int argc, char **argv)
+{
+    for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--link", 6)) return false;   /* a one-PC test launcher: ours */
+    cfg_load();
+    return method_at_start = F.author;
 }
 
 static void cfg_save(void)
@@ -548,6 +557,8 @@ static void cfg_save(void)
     fprintf(f, "lights=%s\nif_lost=%s\n", light_key[F.lights], F.carry_on ? "carry_on" : "restart");
     fprintf(f, "# frame timing: new = 0.5.4's (Display > Frame rate, 120/144 Hz screens), classic = 0.4.0's (one picture per frame)\ntiming=%s\n",
             F.classic ? "classic" : "new");
+    fprintf(f, "# link method: ours = this page's link play (the cabinets link when they are switched on); author = the author's online play\n"
+               "# (the Online page: host / find a game, a lobby) -- ours is then off\nmethod=%s\n", F.author ? "author" : "ours");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
@@ -576,6 +587,7 @@ int link_host_prescan(int argc, char **argv)
 {
     argv0 = argv;
     cfg_load();
+    method_at_start = F.author;
     lost_carry_on = F.carry_on;
     { const char *t = F.classic ? "classic" : "new";                  /* FRAME TIMING (engine/eng_vsync.h reads N22_TIMING): link.cfg, or --timing */
       for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--timing")) t = argv[i + 1];
@@ -591,7 +603,7 @@ int link_host_prescan(int argc, char **argv)
         for (int j = 1; j + 1 < argc; j++) if (!strcmp(argv[j], "--link")) return atoi(argv[j + 1]);
         return 0;
     }
-    if (!F.on) return 0;
+    if (!F.on || F.author) return 0;
     int cab = F.cabinet;
     if (F.cab_auto) {                                                  /* where this PC's own address is in the list */
         cab = own_cabinet(true);
@@ -758,8 +770,8 @@ static void disc_notes(void (*line)(const char *fmt, ...))
 /* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
  * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
 static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
-int  link_page_rows(void) { return 3 + page_nodes() + 6 + (disc_found_usable() ? 1 : 0); }
-bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 3); }
+int  link_page_rows(void) { return 3 + page_nodes() + 7 + (disc_found_usable() ? 1 : 0); }
+bool link_page_has_value(int row) { const int r = row - (3 + page_nodes() + 1); return row < 3 || (row >= 3 + page_nodes() && r < 4); }
 static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
 {
     const int r = row - (3 + page_nodes() + 1);
@@ -771,12 +783,17 @@ static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn) 
         return true;
     }
     if (r == 3) {
+        snprintf(label, ln, "Link method");
+        snprintf(value, vn, "%s%s", F.author ? "Author's (Online page)" : "Ours (at power-on)", method_at_start != F.author ? " - at next start" : "");
+        return true;
+    }
+    if (r == 4) {
         snprintf(label, ln, "Restart all cabinets");
         snprintf(value, vn, "%s", !on ? "(link play is off)" : restart_armed() ? "Press Enter AGAIN" : "Enter");
         return true;
     }
-    if (r == 4) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
-    if (r == 5) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
+    if (r == 5) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
+    if (r == 6) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
     return false;
 }
 static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
@@ -820,7 +837,8 @@ void link_page_change(int row, int dir)
     if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
     if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
     if (r == 2) { F.classic = !F.classic; cfg_save(); return; }        /* frame timing: used at the next start */
-    if (r == 3) {                                                      /* restart all: Enter twice (not by accident) */
+    if (r == 3) { F.author = !F.author; cfg_save(); return; }          /* link method: used at the next start */
+    if (r == 4) {                                                      /* restart all: Enter twice (not by accident) */
         if (!on || dir) return;
         if (!restart_armed()) { restart_armed_at = SDL_GetTicks64(); return; }
         fprintf(stderr, "[LINK] this cabinet asked every cabinet to restart\n");
@@ -829,8 +847,8 @@ void link_page_change(int row, int dir)
         restart_in = 60;
         return;
     }
-    if (r == 4) { if (!dir) disc_find(); return; }
-    if (r == 5) { if (!dir && !from_cmdline) disc_use(); return; }
+    if (r == 5) { if (!dir) disc_find(); return; }
+    if (r == 6) { if (!dir && !from_cmdline) disc_use(); return; }
     if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
     if (row == 0) F.on = !F.on;
     else if (row == 1) {                                               /* Auto, 1 .. N, round */
@@ -892,7 +910,8 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         char qb[160]; quality_text(qb, sizeof qb);
         if (*qb) line("Link quality: %s", qb);
         line("The game keeps running while this menu is open.");
-    } else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
+    } else if (method_at_start) line("Status: the author's online play (the Online page); this page's link is off");
+    else if (auto_fail) line("Status: NOT linked (this PC is not in the list)");
     else line("Status: link off");
     if (F.lights) line("Lights: green OK, amber one-way, red silent, grey out");
     disc_notes(line);

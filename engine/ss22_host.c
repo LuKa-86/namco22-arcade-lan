@@ -89,7 +89,7 @@ bool ss22_host_open(const ss22_host_game *g, int scale, bool fs)      /* scale <
     game->input_init();                            /* after the cfg: the key bindings */
     eng_ui_add_page(game->input_page());
     eng_ui_add_page(&network_page);                /* link play: this cabinet's number and the cabinets' addresses (link.cfg) */
-    if (game->extra_page) eng_ui_add_page(game->extra_page());
+    if (game->extra_page) { const eng_ui_page *xp = game->extra_page(); if (xp) eng_ui_add_page(xp); }   /* (NULL: not this run) */
     if (!eng_ui_init(win, game->title)) fprintf(stderr, "[HOST] menu: Nuklear init failed\n");
     else if (eng_pad_present()) eng_ui_set_hint(ENG_PAD_MENU_HINT, 60 * 8);         /* a pad has no Esc: say how to reach the menu */
     tex_bake_window_defaults();                    /* a per-frame budget for cold texture bakes (engine/tex_bake.c; ENG_TEX_BUDGET) */
@@ -240,7 +240,7 @@ static bool pump(void)
             if (sc == SDL_SCANCODE_ESCAPE) { eng_ui_set_open(true); game->input_neutral(); }
             if (sc == SDL_SCANCODE_P) {
                 if (link_host_on()) fprintf(stderr, "[HOST] no pause while linked: the other cabinets would drop this one\n");
-                else { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }
+                else { paused = !paused; if (paused) game->input_neutral(); fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }   /* neutral: no force (wheel motor, a kick) is held through the pause */
             }
             if (sc == SDL_SCANCODE_F12) shot_pending = true;
             if (sc == SDL_SCANCODE_F8 && game->aim) { eng_disp_cycle_gun_border(); fprintf(stderr, "[HOST] light-gun border %d%%\n", g_eng_disp.gun_border); }
@@ -308,6 +308,7 @@ bool ss22_host_frame(void)
     while (!link_host_on() && (paused || eng_ui_is_open())) {   /* the game stops (P, or the menu); the window keeps answering. Not a
                                                      * linked one: a stopped cabinet goes silent and the others drop it until they restart */
         eng_pace_reset(&pl);
+        if (game->paused_tick) game->paused_tick();
         if (!pump()) return false;
         if (paused || eng_ui_is_open()) {
             if (eng_ui_is_open()) { present(); if (!vs.vsync) SDL_Delay(12); }
