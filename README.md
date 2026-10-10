@@ -1,5 +1,13 @@
 # Namco 2x Systems: Namco System 21 / 22 / 23 games for PC
 
+> **This is a fork made for one purpose: restoring real arcade cabinets.** It adds an *Arcade LAN* to Tokyo Wars and Rave
+> Racer, so cabinets with a PC in each link over a wired network the way the original boards linked by their cable -- at
+> power-on, with coins, no menus. See **[docs/ARCADE_LAN.md](docs/ARCADE_LAN.md)**.
+>
+> For playing at home or online, use the original project:
+> [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile). Everything below is the original
+> author's README, and all the work of rebuilding the games is theirs.
+
 Namco arcade games from the 1990s, rebuilt so they run on a normal
 computer. You need your own copy of each game's files (the MAME versions);
 they are not included here. A ROM set from **MAME 0.271 or later** is
