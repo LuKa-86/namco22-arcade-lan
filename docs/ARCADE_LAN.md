@@ -64,7 +64,8 @@ made for home and internet play) is still in the program, hidden: `arcade_mode=o
 
 ## Bonus: several players on one PC
 
-Not what the fork is for, but it comes free with the link: `--party` starts a copy as one part of a split screen, and
+Not what the fork is for, but it comes free with the link: `--party` starts a copy as one part of a split screen (the
+parts cover the whole screen; `--party-taskbar` stops above the task bar), and
 `--pad K` gives it the K-th game controller only (`--pad 0`: none, the keyboard's copy), read even while another copy's
 window has the focus. Two or four linked copies then make a 2- or 4-player game on one PC:
 

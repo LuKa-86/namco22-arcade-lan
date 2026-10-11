@@ -61,7 +61,7 @@ bool link_host_arg(int argc, char **argv, int *i)
     else if (!strcmp(a, "--link-test") && v) sscanf(argv[++*i], "%d:%d:%d:%d:%d:%d", &cfg.delay_ms, &cfg.jitter_ms, &cfg.loss_pct, &skew_ppm,
                                                     &cfg.burst_every_ms, &cfg.burst_hold_ms);
     else if (!strcmp(a, "--mute")) g_link_mute = true;
-    else if (!strcmp(a, "--party")) {}                                 /* (read by link_host_prescan) */
+    else if (!strcmp(a, "--party") || !strcmp(a, "--party-taskbar")) {}                                 /* (read by link_host_prescan) */
     else if (!strcmp(a, "--pad") && v) ++*i;
     else if (!strcmp(a, "--timing") && v) ++*i;                       /* (read by link_host_prescan) */
     else return false;
@@ -111,6 +111,7 @@ bool link_host_open(const link_host_game *g)
 
 /* the copies of a set on one PC (no addresses given): their windows in a grid by cabinet number, so none has to be dragged apart --
  * while a window is dragged Windows holds its game still, and a cabinet that stops for more than a tenth of a second drops out */
+static bool party_taskbar;                                             /* --party-taskbar: the split screen stops above the task bar */
 static bool party;                                                     /* --party: the copies on one PC as a split screen, a player at each */
 
 /* PARTY SYNC. Copies on ONE PC share its graphics chip: when one of them stutters (new scenery, a texture upload) the others run on,
@@ -172,6 +173,11 @@ static void place_window(SDL_Window *w)
     SDL_Rect b; int ww, wh, top = 0, l = 0, bo = 0, r = 0;
     if (cfg.peers || SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(w), &b) != 0) return;
     if (party) {                                                       /* no frames, side by side (2) or a 2 x 2 grid: together they fill the screen */
+        if (!party_taskbar) {                                          /* the WHOLE screen, over the task bar (kept on top of it): --party-taskbar leaves it in view */
+            SDL_Rect full;
+            if (SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(w), &full) == 0) b = full;
+            SDL_SetWindowAlwaysOnTop(w, SDL_TRUE);
+        }
         const int pc = cfg.nodes <= 1 ? 1 : 2, pr = (cfg.nodes + pc - 1) / pc;
         const int tw = b.w / pc, th = b.h / pr;
         SDL_SetWindowBordered(w, SDL_FALSE);
@@ -681,6 +687,7 @@ int link_host_prescan(int argc, char **argv)
     lost_carry_on = F.carry_on;
     for (int i = 1; i < argc; i++) {                                   /* SEVERAL PLAYERS ON ONE PC (engine/eng_party.h): --party, --pad K */
         if (!strcmp(argv[i], "--party")) party = true;
+        if (!strcmp(argv[i], "--party-taskbar")) party = party_taskbar = true;
         if (!strcmp(argv[i], "--pad") && i + 1 < argc) {
             char e[32]; snprintf(e, sizeof e, "N22_PAD=%d", atoi(argv[i + 1]));
 #ifdef _WIN32
