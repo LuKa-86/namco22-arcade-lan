@@ -6,6 +6,7 @@
 #include "link_net.h"
 #include "lan139.h"
 #include "eng_timing.h"
+#include "eng_party.h"
 #include <time.h>
 #include <sys/stat.h>
 #include <zlib.h>
@@ -16,6 +17,8 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 #endif
 
 bool g_link_mute;
@@ -58,6 +61,8 @@ bool link_host_arg(int argc, char **argv, int *i)
     else if (!strcmp(a, "--link-test") && v) sscanf(argv[++*i], "%d:%d:%d:%d:%d:%d", &cfg.delay_ms, &cfg.jitter_ms, &cfg.loss_pct, &skew_ppm,
                                                     &cfg.burst_every_ms, &cfg.burst_hold_ms);
     else if (!strcmp(a, "--mute")) g_link_mute = true;
+    else if (!strcmp(a, "--party")) {}                                 /* (read by link_host_prescan) */
+    else if (!strcmp(a, "--pad") && v) ++*i;
     else if (!strcmp(a, "--timing") && v) ++*i;                       /* (read by link_host_prescan) */
     else return false;
     return true;
@@ -106,10 +111,75 @@ bool link_host_open(const link_host_game *g)
 
 /* the copies of a set on one PC (no addresses given): their windows in a grid by cabinet number, so none has to be dragged apart --
  * while a window is dragged Windows holds its game still, and a cabinet that stops for more than a tenth of a second drops out */
+static bool party;                                                     /* --party: the copies on one PC as a split screen, a player at each */
+
+/* PARTY SYNC. Copies on ONE PC share its graphics chip: when one of them stutters (new scenery, a texture upload) the others run on,
+ * and a cabinet that is 8 frames late is dropped by the games' link until everything restarts. So the copies of a party keep in step:
+ * each writes how many frames it has run into a small piece of shared memory, and one that is more than a frame ahead of another
+ * waits for it (hellos still going out). A stutter then holds every picture for a moment instead of losing a player. A copy that
+ * stops altogether (closed, crashed) is waited for 0.3 s once and then ignored -- the link's own rules take over. One PC only:
+ * real cabinets are never held up by each other. */
+typedef struct { volatile uint32_t frame[LNK_MAX_NODES], beat[LNK_MAX_NODES]; } party_shm;
+static party_shm *psh;
+static uint32_t party_waited_ms, party_gave_up;
+static uint32_t sys_ms(void)                                           /* one clock for every copy (SDL's starts with each program) */
+{
+#ifdef _WIN32
+    return GetTickCount();
+#else
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint32_t)(t.tv_sec * 1000u + t.tv_nsec / 1000000u);
+#endif
+}
+static void party_open(void)
+{
+    char name[64]; snprintf(name, sizeof name, "n22_party_%d", cfg.base_port);
+#ifdef _WIN32
+    HANDLE h = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(party_shm), name);
+    if (h) psh = (party_shm *)MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(party_shm));
+#else
+    char path[96]; snprintf(path, sizeof path, "/tmp/%s", name);
+    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd >= 0 && ftruncate(fd, sizeof(party_shm)) == 0) { void *m = mmap(NULL, sizeof(party_shm), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); if (m != MAP_FAILED) psh = m; }
+    if (fd >= 0) close(fd);
+#endif
+    if (psh) { psh->frame[cfg.id] = 0; psh->beat[cfg.id] = 0; }
+    fprintf(stderr, "[LINK] party: the copies on this PC keep in step%s\n", psh ? "" : " -- NOT available (no shared memory)");
+}
+static void party_sync(void)
+{
+    if (!psh || lnk_state() != LNK_LINKED) return;
+    static uint32_t n;
+    psh->frame[cfg.id] = ++n; psh->beat[cfg.id] = sys_ms();
+    const uint32_t t0 = sys_ms();
+    for (;;) {
+        const uint32_t now = sys_ms(); bool ahead = false;
+        for (int m = 0; m < cfg.nodes; m++)
+            if (m != cfg.id && (lnk_members() >> m & 1) && psh->beat[m] && now - psh->beat[m] < 500 && (int32_t)(n - psh->frame[m]) > 1) ahead = true;
+        if (!ahead) break;
+        if (now - t0 > 300) { party_gave_up++; break; }
+        lnk_idle();
+        SDL_Delay(1);
+        psh->beat[cfg.id] = sys_ms();
+    }
+    party_waited_ms += sys_ms() - t0;
+    if (n % 1800 == 0) {
+        if (party_waited_ms || party_gave_up) fprintf(stderr, "[LINK] party: waited %u ms for the other copies in the last 30 s%s\n", party_waited_ms, party_gave_up ? " (one was not waited for: it had stopped)" : "");
+        party_waited_ms = party_gave_up = 0;
+    }
+}
 static void place_window(SDL_Window *w)
 {
     SDL_Rect b; int ww, wh, top = 0, l = 0, bo = 0, r = 0;
     if (cfg.peers || SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(w), &b) != 0) return;
+    if (party) {                                                       /* no frames, side by side (2) or a 2 x 2 grid: together they fill the screen */
+        const int pc = cfg.nodes <= 1 ? 1 : 2, pr = (cfg.nodes + pc - 1) / pc;
+        const int tw = b.w / pc, th = b.h / pr;
+        SDL_SetWindowBordered(w, SDL_FALSE);
+        SDL_SetWindowSize(w, tw, th);
+        SDL_SetWindowPosition(w, b.x + (cfg.id % pc) * tw, b.y + (cfg.id / pc) * th);
+        if (eng_party_pad() == 0) SDL_RaiseWindow(w);                  /* the keyboard's copy: in front, so the keys reach it */
+        return;
+    }
     SDL_GetWindowSize(w, &ww, &wh);
     SDL_GetWindowBordersSize(w, &top, &l, &bo, &r);
     const int cols = cfg.nodes <= 1 ? 1 : 2, rows = (cfg.nodes + cols - 1) / cols;
@@ -213,6 +283,7 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         return;
     }
     if (!on) return;
+    if (party) party_open();
     if (w) place_window(w);
     uint32_t shown = 0xFFFFFFFFu, shown_deaf = 0; int shown_s = -1;
     bool skip = false; uint64_t skip_at = 0;
@@ -273,6 +344,13 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         char who[40] = ""; int k = 0;
         for (int n = 0; n < cfg.nodes; n++) if (lnk_members() >> n & 1) k += snprintf(who + k, sizeof who - (size_t)k, "%s%d", k ? "+" : "", n + 1);
         snprintf(t, sizeof t, "%s - Linked: %s", title, who);
+        if (party && hint) {                                               /* a split screen has no title bars: say whose picture this is */
+            char ph[64];
+            if (eng_party_pad() > 0) snprintf(ph, sizeof ph, "PLAYER %d: CONTROLLER %d", cfg.id + 1, eng_party_pad());
+            else if (eng_party_pad() == 0) snprintf(ph, sizeof ph, "PLAYER %d: KEYBOARD (CLICK HERE FIRST)", cfg.id + 1);
+            else snprintf(ph, sizeof ph, "PLAYER %d", cfg.id + 1);
+            hint(ph, 600);
+        }
     }
     win = w; snprintf(base_title, sizeof base_title, "%s", t);
     set_title();
@@ -468,6 +546,7 @@ void link_host_frame(uint32_t frame, bool headless)
     restart_all_check();
     if (restart_in >= 0 && restart_in-- == 0) restart_all_now();
     if (headless) pace();
+    if (party) party_sync();
     if (G->good) {
         if (G->good()) { if (++up_run >= 120) was_up = true; down_now = 0; }
         else if ((up_run = 0), was_up) { down_frames++; if (++down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", frame); }
@@ -600,6 +679,17 @@ int link_host_prescan(int argc, char **argv)
     cfg_load();
     method_at_start = modern();
     lost_carry_on = F.carry_on;
+    for (int i = 1; i < argc; i++) {                                   /* SEVERAL PLAYERS ON ONE PC (engine/eng_party.h): --party, --pad K */
+        if (!strcmp(argv[i], "--party")) party = true;
+        if (!strcmp(argv[i], "--pad") && i + 1 < argc) {
+            char e[32]; snprintf(e, sizeof e, "N22_PAD=%d", atoi(argv[i + 1]));
+#ifdef _WIN32
+            _putenv(e); _putenv("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1");
+#else
+            setenv("N22_PAD", e + 8, 1); setenv("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1", 1);
+#endif
+        }
+    }
     { const char *t = F.classic ? "classic" : "new";                  /* FRAME TIMING (engine/eng_vsync.h reads N22_TIMING): link.cfg, or --timing */
       for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], "--timing")) t = argv[i + 1];
       if (!getenv("N22_TIMING")) {

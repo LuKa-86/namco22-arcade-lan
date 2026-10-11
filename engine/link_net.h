@@ -40,6 +40,7 @@ typedef struct {
 enum { LNK_GATHERING, LNK_LINKED, LNK_ALONE };
 
 bool     lnk_open(const lnk_cfg *cfg);
+void     lnk_idle(void);                              /* hellos only, nothing taken off the socket: while this cabinet waits */
 void     lnk_close(void);                             /* also tells the others this cabinet is going */
 void     lnk_send_restart(void);                      /* ask every cabinet of this set (same address list) to restart */
 int      lnk_restart_request(void);                   /* a cabinet asked (its number, once), 0 = none */

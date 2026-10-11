@@ -49,6 +49,7 @@ extern int g_rr_gl;     /* rr_main.c: 1 = the engine's GL renderer, 0 = the soft
  * anything in a gamecontrollerdb.txt next to the binary), otherwise as a RAW
  * joystick mapped by axis/button number from rr_controls.cfg (wheels, pedals,
  * arcade sticks). Hot-plug either way. */
+#include "eng_party.h"
 #define MAX_DEV 16
 static struct {
     SDL_GameController *gc; SDL_Joystick *js; SDL_JoystickID id;
@@ -58,6 +59,7 @@ static struct {
 static void dev_scan(void)
 {
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (!eng_party_allows(i)) continue;                              /* --pad K: this copy's own controller only (engine/eng_party.h) */
         SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
         int free_slot = -1; bool open = false;
         for (int d = 0; d < MAX_DEV; d++) {

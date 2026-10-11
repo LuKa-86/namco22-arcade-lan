@@ -398,6 +398,9 @@ static int take(uint16_t *w, int max)
     }
 }
 
+/* this cabinet stands still for a moment (party sync, engine/link_host.c): its hellos go on, so the others do not count it as gone */
+void lnk_idle(void) { if (L.on) { hellos(); release_held(); } }
+
 int lnk_recv(uint16_t *w, int max)
 {
     if (!L.on) return 0;

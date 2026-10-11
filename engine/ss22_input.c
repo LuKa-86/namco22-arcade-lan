@@ -212,6 +212,7 @@ static void torque_write(uint32_t v, int size)
 void ss22_input_close(void) { eng_ffb_close(); }
 
 /* ---- controller / raw-device discovery ---------------------------------- */
+#include "eng_party.h"
 typedef struct { SDL_GameController *gc; SDL_JoystickID id; } pad_dev;
 static pad_dev pads[MAX_DEV];
 
@@ -241,6 +242,7 @@ static void pad_scan(void)
 
     for (int j = 0, n = SDL_NumJoysticks(); j < n; j++) {
         if (!SDL_IsGameController(j)) continue;
+        if (!eng_party_allows(j)) continue;                              /* --pad K: this copy's own controller only (engine/eng_party.h) */
         const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(j);
         if (pad_find(id) >= 0) continue;
         int slot = -1;
@@ -263,6 +265,7 @@ static void raw_scan(void)
 
     for (int j = 0, n = SDL_NumJoysticks(); j < n; j++) {
         if (SDL_IsGameController(j)) continue;
+        if (!eng_party_allows(j)) continue;                              /* --pad: no raw devices */
         const SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(j);
         if (raw_find(id) >= 0) continue;
         int slot = -1;

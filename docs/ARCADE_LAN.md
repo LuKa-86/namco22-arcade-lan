@@ -62,6 +62,21 @@ The menus show only the Arcade LAN. The original author's own online play (a lob
 made for home and internet play) is still in the program, hidden: `arcade_mode=off` in `link.cfg` brings back the
 **Online** page and a **Link method** row (*Arcade LAN* / *Modern multiplayer*). Only one of the two is used at a time.
 
+## Bonus: several players on one PC
+
+Not what the fork is for, but it comes free with the link: `--party` starts a copy as one part of a split screen, and
+`--pad K` gives it the K-th game controller only (`--pad 0`: none, the keyboard's copy), read even while another copy's
+window has the focus. Two or four linked copies then make a 2- or 4-player game on one PC:
+
+```
+TokyoWars roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute
+TokyoWars roms --window 1 --link 1 --link-cabinets 2 --party --pad 0
+```
+
+Copies on one PC share its graphics chip, so in a party they keep in step (a small piece of shared memory holds each
+copy's frame count; a copy more than a frame ahead waits): a stutter holds every picture for a moment instead of dropping
+a player from the link. Real cabinets never wait for each other.
+
 ## For developers
 
 - `engine/lan139.c` -- the C139 link chip at the level of whole frames; `engine/link_net.c` -- the cabinets' UDP transport
