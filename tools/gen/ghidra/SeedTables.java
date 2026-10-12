@@ -29,13 +29,51 @@ public class SeedTables extends GhidraScript {
         return w != 0x0000 && w != 0xFFFF;
     }
 
-    private boolean seed(long t) throws Exception {
+    // An instruction nothing leads to: no instruction falls through into it and no branch or call names it. Such a one is the
+    // start of a run that came from a table entry or a sweep -- the weaker evidence when a direct branch disagrees with it.
+    private boolean weak(Instruction v) {
+        Instruction b = v.getPrevious();
+        if (b != null && v.getAddress().equals(b.getFallThrough())) return false;
+        for (ghidra.program.model.symbol.Reference r : getReferencesTo(v.getAddress()))
+            if (r.getReferenceType().isFlow()) return false;
+        return true;
+    }
+
+    // DISASSEMBLE AT a, CLEARING WHAT IS IN THE WAY. A wrong guess (a table read one entry too far, say) leaves instructions that
+    // start in the middle of the real ones, and the real ones then cannot be made. always = a is known to be code (a run got there);
+    // otherwise only instructions that nothing leads to are cleared.
+    private boolean carve(Address a, boolean always) throws Exception {
+        for (int tries = 0; tries < 8; tries++) {
+            if (currentProgram.getListing().getInstructionAt(a) != null) return true;
+            Instruction v = currentProgram.getListing().getInstructionContaining(a);
+            if (v == null) {
+                new DisassembleCommand(a, null, true).applyTo(currentProgram, monitor);
+                if (currentProgram.getListing().getInstructionAt(a) != null) return true;
+                for (int k = 1; k < 10 && v == null; k++) v = currentProgram.getListing().getInstructionAt(a.add(k));
+                ghidra.program.model.listing.Data d = currentProgram.getListing().getDefinedDataContaining(a);
+                if (d == null) for (int k = 1; k < 10 && d == null; k++) d = currentProgram.getListing().getDefinedDataAt(a.add(k));
+                if (d != null) { currentProgram.getListing().clearCodeUnits(d.getMinAddress(), d.getMaxAddress(), false); continue; }
+            }
+            if (v == null) return false;
+            if (!always && !weak(v)) return false;
+            ghidra.program.model.listing.Function f = currentProgram.getFunctionManager().getFunctionAt(v.getAddress());
+            if (f != null) removeFunction(f);
+            currentProgram.getListing().clearCodeUnits(v.getMinAddress(), v.getMaxAddress(), false);
+            carved++;
+        }
+        return currentProgram.getListing().getInstructionAt(a) != null;
+    }
+    private int carved;
+    private ghidra.app.util.PseudoDisassembler pseudo;
+
+    private boolean seed(long t) throws Exception { return seed(t, false); }
+    private boolean seed(long t, boolean always) throws Exception {
         Address a = toAddr(t);
         boolean added = false;
         if (currentProgram.getListing().getInstructionAt(a) == null) {
-            if (currentProgram.getListing().getInstructionContaining(a) != null) return false;   // inside another instruction: not code
-            new DisassembleCommand(a, null, true).applyTo(currentProgram, monitor);
-            added = currentProgram.getListing().getInstructionAt(a) != null;
+            if (!always && !pseudo.isValidSubroutine(a, true)) return false;                    // does not read as a routine: not code
+            if (!carve(a, always)) return false;
+            added = true;
         }
         if (currentProgram.getListing().getInstructionAt(a) != null && currentProgram.getFunctionManager().getFunctionAt(a) == null) {
             try { createFunction(a, null); added = true; } catch (Exception e) { }
@@ -63,7 +101,7 @@ public class SeedTables extends GhidraScript {
                 if (t < 0x400 || t >= size || (t & 1) != 0) continue;
                 Address a = toAddr(t);
                 if (currentProgram.getListing().getInstructionAt(a) != null) continue;
-                if (currentProgram.getListing().getInstructionContaining(a) != null) continue;      // inside another instruction: leave it
+                if (currentProgram.getListing().getInstructionContaining(a) != null) { if (carve(a, false)) n++; continue; }
                 long end = Math.min(size - 1, t + 15);
                 ghidra.program.model.listing.Data d = currentProgram.getListing().getDefinedDataContaining(a);
                 if (d != null) end = Math.max(end, d.getMaxAddress().getOffset());
@@ -73,8 +111,7 @@ public class SeedTables extends GhidraScript {
                     if (dd != null) { currentProgram.getListing().clearCodeUnits(dd.getMinAddress(), dd.getMaxAddress(), false); x = dd.getMaxAddress().getOffset() + 1; }
                     else x++;
                 }
-                new DisassembleCommand(a, null, true).applyTo(currentProgram, monitor);
-                if (currentProgram.getListing().getInstructionAt(a) != null) n++;
+                if (carve(a, false)) n++;
             }
             fixed += n;
             if (n == 0) break;
@@ -83,10 +120,66 @@ public class SeedTables extends GhidraScript {
         return fixed;
     }
 
+    // ROUTINES NOTHING NAMES. Routines reached only through tables built in RAM or through address registers have no reference at
+    // all, but they sit where code sits: straight after the rts / jmp / bra that ends the routine before. Every such gap that reads
+    // as a routine (PseudoDisassembler: valid instructions to a proper end) is taken as one.
+    private int sweep() throws Exception {
+        java.util.ArrayList<Long> todo = new java.util.ArrayList<>();
+        InstructionIterator ii = currentProgram.getListing().getInstructions(true);
+        while (ii.hasNext()) {
+            Instruction in = ii.next();
+            if (in.getFallThrough() != null) continue;
+            long g = in.getMaxAddress().getOffset() + 1;
+            if (!plausible(g)) continue;
+            Address a = toAddr(g);
+            if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
+            if (currentProgram.getListing().getDefinedDataContaining(a) != null) continue;
+            todo.add(g);
+        }
+        int n = 0;
+        for (long g : todo) {
+            Address a = toAddr(g);
+            if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
+            if (!pseudo.isValidSubroutine(a, true)) continue;
+            new DisassembleCommand(a, null, true).applyTo(currentProgram, monitor);
+            if (currentProgram.getListing().getInstructionAt(a) == null) continue;
+            if (currentProgram.getFunctionManager().getFunctionContaining(a) == null) try { createFunction(a, null); } catch (Exception e) { }
+            n++;
+        }
+        if (n > 0) println("SeedTables: swept up " + n + " routines nothing names");
+        return n;
+    }
+
+    // ROUTINES NAMED ONLY AS A NUMBER. An object's handler is stored with  move.l #routine,(4,A1)  and called later as  jsr (A4);
+    // others sit in tables of records in the data. Every long in the image (at each even address: instruction operands and data
+    // alike) that is the address straight after a routine's end (rts / rte / an instruction that does not fall through) and reads
+    // as a routine there is taken as one.
+    private boolean afterEnd(long t) throws Exception {
+        int w = mem.getShort(toAddr(t - 2)) & 0xFFFF;
+        if (w == 0x4E75 || w == 0x4E73 || w == 0x4E77) return true;
+        Instruction b = currentProgram.getListing().getInstructionContaining(toAddr(t - 1));
+        return b != null && b.getFallThrough() == null && b.getMaxAddress().getOffset() == t - 1;
+    }
+    private int pointers() throws Exception {
+        int n = 0;
+        java.util.HashSet<Long> seen = new java.util.HashSet<>();
+        for (long ea = 0x400; ea + 4 <= size; ea += 2) {
+            long t = mem.getInt(toAddr(ea)) & 0xFFFFFFFFL;
+            if (t < 0x400 || t >= size || (t & 1) != 0 || !seen.add(t)) continue;
+            Address a = toAddr(t);
+            if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
+            if (!plausible(t) || !afterEnd(t)) continue;
+            if (seed(t)) n++;
+        }
+        if (n > 0) println("SeedTables: " + n + " routines named only as a number");
+        return n;
+    }
+
     @Override
     public void run() throws Exception {
         mem = currentProgram.getMemory();
         size = mem.getSize();
+        pseudo = new ghidra.app.util.PseudoDisassembler(currentProgram);
         int total = 0;
         String[] args = getScriptArgs();
         if (args.length > 0 && new File(args[0]).exists()) {
@@ -96,7 +189,7 @@ public class SeedTables extends GhidraScript {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
                 long t = Long.parseLong(line.split("\\s+")[0], 16);
-                if (plausible(t) && seed(t)) n++;
+                if (plausible(t) && seed(t, true)) n++;
             }
             r.close();
             println("SeedTables: " + n + " seeds from " + args[0]);
@@ -122,22 +215,26 @@ public class SeedTables extends GhidraScript {
                 long table = a + 2 + bd;
                 if (table < 0 || table + 4 > size) continue;
                 tables++;
+                long stop = size;                                            // a table ends where the nearest routine it names begins
                 for (int k = 0; k < 512; k++) {
                     long ea = table + 4L * k;
-                    if (ea + 4 > size) break;
+                    if (ea + 4 > size || ea + 4 > stop) break;
                     if (k > 0 && currentProgram.getListing().getInstructionAt(toAddr(ea)) != null) break;   // the table ran into code
                     long t = mem.getInt(toAddr(ea)) & 0xFFFFFFFFL;
                     if (!plausible(t)) break;
+                    if (t > table && t < stop) stop = t;
                     targets.add(t);
                 }
             }
             for (long t : targets) if (seed(t)) added++;
             added += repair();
+            added += sweep();
+            added += pointers();
             println("SeedTables: round " + round + ": " + tables + " tables, " + added + " new entry points");
             total += added;
             if (added == 0) break;
             analyzeAll(currentProgram);
         }
-        println("SeedTables: " + total + " entry points added in all");
+        println("SeedTables: " + total + " entry points added in all, " + carved + " wrong instructions cleared");
     }
 }
