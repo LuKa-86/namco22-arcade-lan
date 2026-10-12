@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""lift68k.py PCODE OUTDIR PREFIX [PARTS [PROGRAM.BIN]]
+
+A 68020 program, as Ghidra's RAW p-code (tools/gen/ghidra/DumpPcode.java), to C for the shared runtime engine/lift_rt.h +
+engine/lift_cpu.c -- the same shape as the lifted programs of the other games (gen/<prefix>_lifted_NN.c, _tab.c, .h):
+
+  - one C function per Ghidra function, L_<ENTRY>_at(pc): a switch on pc resumes at any instruction of it;
+  - registers live in R[] at Ghidra's register offsets (RG1/2/4, RS1/2/4), memory goes through MRDn / MWRn (rr_read / rr_write);
+  - a call is a C call with a shadow-stack entry (rr_call_push / rr_after_call), rts asks rr_return, a jump out of the function goes
+    through rr_jump (binary search over every instruction address -> the function that owns it);
+  - every instruction spends one unit of rr_budget (RR_INS); calls and backward branches poll the scheduler (RR_POLL).
+
+This is an independent implementation written from that runtime's contract (the original generator is not public).
+"""
+import sys, os, re
+
+def mask(sz): return (1 << (8 * sz)) - 1
+
+class Ins:
+    __slots__ = ('addr', 'len', 'ft', 'text', 'ops')
+
+class Fn:
+    __slots__ = ('entry', 'name', 'ins')
+
+def parse(path):
+    fns, userops, cur = [], {}, None
+    for line in open(path, encoding='utf-8'):
+        t = line[0]
+        if t == 'P':
+            p = line.split()
+            cur.ins[-1].ops.append((p[1], p[2], p[3:]))
+        elif t == 'I':
+            p = line.rstrip('\n').split(' ', 4)
+            i = Ins(); i.addr = int(p[1], 16); i.len = int(p[2]); i.ft = None if p[3] == '-' else int(p[3], 16); i.text = p[4]; i.ops = []
+            cur.ins.append(i)
+        elif t == 'F':
+            p = line.split()
+            cur = Fn(); cur.entry = int(p[1], 16); cur.name = p[2]; cur.ins = []
+            fns.append(cur)
+        elif t == 'U':
+            p = line.split(); userops[int(p[1])] = p[2]
+    return fns, userops
+
+def vn(s):
+    sp, off, sz = s.split(':')
+    return sp, int(off, 16), int(sz)
+
+class Lifter:
+    def __init__(self, fns, userops):
+        self.fns, self.userops = fns, userops
+        self.owner = {}                      # instruction address -> function index
+        self.entries = {}
+        for k, f in enumerate(fns):
+            self.entries[f.entry] = k
+            for i in f.ins: self.owner.setdefault(i.addr, k)
+        self.warn = {}
+        self.rom = None                      # the program image (for instruction bytes), or None
+
+    def note(self, what): self.warn[what] = self.warn.get(what, 0) + 1
+
+    # ---- varnodes ----
+    def rd(self, s):
+        sp, off, sz = vn(s)
+        if sp == 'const': return '0x%XULL' % (off & mask(min(sz, 8)))
+        if sp == 'register':
+            if sz in (1, 2, 4, 8): return 'RG%d(0x%X)' % (sz, off)
+            self.note('register read of size %d' % sz); return 'RG8(0x%X)' % off
+        if sp == 'unique':
+            self.temps.add(off)
+            return 'u%x' % off if sz >= 8 else '(u%x & 0x%XULL)' % (off, mask(sz))
+        if sp == 'ram':
+            if sz in (1, 2, 4, 8): return '(uint64_t)MRD%d(0x%XU)' % (sz, off)
+        self.note('read of %s' % sp); return '0ULL'
+
+    def wr(self, s, expr):
+        sp, off, sz = vn(s)
+        if sp == 'register':
+            if sz in (1, 2, 4, 8): return 'RS%d(0x%X, %s);' % (sz, off, expr)
+            self.note('register write of size %d' % sz); return 'RS8(0x%X, %s);' % (off, expr)
+        if sp == 'unique':
+            self.temps.add(off)
+            return 'u%x = (%s)%s;' % (off, expr, '' if sz >= 8 else ' & 0x%XULL' % mask(sz))
+        if sp == 'ram' and sz in (1, 2, 4, 8): return 'MWR%d(0x%XU, %s);' % (sz, off, expr)
+        self.note('write of %s' % sp); return '(void)(%s);' % expr
+
+    # ---- control flow ----
+    def goto_addr(self, t, at, poll):
+        """C for 'continue at 68K address t' from instruction `at` of the current function"""
+        p = 'RR_POLL(); ' if poll else ''
+        if t in self.cur_addrs: return '{ %sgoto A_%X; }' % (p, t)
+        if t in self.entries: return '{ %sL_%X(); return; }' % (p, t)
+        return '{ %srr_jump(0x%XU, 0x%XU); return; }' % (p, t, at)
+
+    def after_call(self, at):
+        return ('if (rr_after_call(j_)) return; if (rr_ret_to >= 0x%XU && rr_ret_to <= 0x%XU) { pc_ = rr_ret_to; goto resume_; } '
+                'rr_jump(rr_ret_to, 0x%XU); return;' % (self.lo, self.hi, at))
+
+    def ret_addr(self, ins):
+        return ins.addr + ins.len
+
+    def op(self, ins, k, o):
+        """one p-code op -> a C statement"""
+        name, out, inp = o
+        A = ins.addr
+        r = self.rd
+        def sz(i): return vn(inp[i])[2]
+        osz = vn(out)[2] if out != '-' else 0
+        def m(e): return e
+        bin_ = {'INT_ADD': '+', 'INT_SUB': '-', 'INT_MULT': '*', 'INT_AND': '&', 'INT_OR': '|', 'INT_XOR': '^'}
+        if name == 'COPY': return self.wr(out, r(inp[0]))
+        if name in bin_: return self.wr(out, '%s %s %s' % (r(inp[0]), bin_[name], r(inp[1])))
+        if name == 'LOAD':
+            if osz not in (1, 2, 4, 8): self.note('LOAD of size %d' % osz); return self.wr(out, '0ULL')
+            return self.wr(out, '(uint64_t)MRD%d((uint32_t)%s)' % (osz, r(inp[1])))
+        if name == 'STORE':
+            s = sz(2)
+            if s not in (1, 2, 4, 8): self.note('STORE of size %d' % s); return ';'
+            return 'MWR%d((uint32_t)%s, %s);' % (s, r(inp[1]), r(inp[2]))
+        if name == 'INT_EQUAL': return self.wr(out, '%s == %s' % (r(inp[0]), r(inp[1])))
+        if name == 'INT_NOTEQUAL': return self.wr(out, '%s != %s' % (r(inp[0]), r(inp[1])))
+        if name == 'INT_LESS': return self.wr(out, '%s < %s' % (r(inp[0]), r(inp[1])))
+        if name == 'INT_LESSEQUAL': return self.wr(out, '%s <= %s' % (r(inp[0]), r(inp[1])))
+        if name == 'INT_SLESS': return self.wr(out, 'SX%d(%s) < SX%d(%s)' % (sz(0), r(inp[0]), sz(1), r(inp[1])))
+        if name == 'INT_SLESSEQUAL': return self.wr(out, 'SX%d(%s) <= SX%d(%s)' % (sz(0), r(inp[0]), sz(1), r(inp[1])))
+        if name == 'INT_ZEXT': return self.wr(out, r(inp[0]))
+        if name == 'INT_SEXT': return self.wr(out, '(uint64_t)SX%d(%s)' % (sz(0), r(inp[0])))
+        if name == 'INT_2COMP': return self.wr(out, '0 - %s' % r(inp[0]))
+        if name == 'INT_NEGATE': return self.wr(out, '~%s' % r(inp[0]))
+        if name == 'INT_CARRY': return self.wr(out, 'CARRY(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_SCARRY': return self.wr(out, 'SCARRY(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_SBORROW': return self.wr(out, 'SBORROW(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_LEFT': return self.wr(out, 'SHL(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_RIGHT': return self.wr(out, 'SHR(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_SRIGHT': return self.wr(out, 'SAR(%s, %s, %d)' % (r(inp[0]), r(inp[1]), sz(0)))
+        if name == 'INT_DIV': return self.wr(out, "UDIVREM(%s, %s, '/')" % (r(inp[0]), r(inp[1])))
+        if name == 'INT_REM': return self.wr(out, "UDIVREM(%s, %s, '%%')" % (r(inp[0]), r(inp[1])))
+        if name == 'INT_SDIV': return self.wr(out, "(uint64_t)SDIVREM(SX%d(%s), SX%d(%s), '/')" % (sz(0), r(inp[0]), sz(1), r(inp[1])))
+        if name == 'INT_SREM': return self.wr(out, "(uint64_t)SDIVREM(SX%d(%s), SX%d(%s), '%%')" % (sz(0), r(inp[0]), sz(1), r(inp[1])))
+        if name == 'BOOL_NEGATE': return self.wr(out, '(%s ^ 1) & 1' % r(inp[0]))
+        if name == 'BOOL_AND': return self.wr(out, '(%s & %s) & 1' % (r(inp[0]), r(inp[1])))
+        if name == 'BOOL_OR': return self.wr(out, '(%s | %s) & 1' % (r(inp[0]), r(inp[1])))
+        if name == 'BOOL_XOR': return self.wr(out, '(%s ^ %s) & 1' % (r(inp[0]), r(inp[1])))
+        if name == 'SUBPIECE':
+            sh = vn(inp[1])[1] * 8
+            return self.wr(out, '%s >> %d' % (r(inp[0]), sh) if sh < 64 else '0ULL')
+        if name == 'PIECE': return self.wr(out, '(%s << %d) | %s' % (r(inp[0]), sz(1) * 8, r(inp[1])))
+        if name == 'POPCOUNT': return self.wr(out, '(uint64_t)__builtin_popcountll(%s)' % r(inp[0]))
+        if name == 'LZCOUNT': return self.wr(out, '(%s ? (uint64_t)__builtin_clzll(%s) - %d : %d)' % (r(inp[0]), r(inp[0]), 64 - 8 * sz(0), 8 * sz(0)))
+        if name in ('BRANCH', 'CBRANCH'):
+            sp, off, _ = vn(inp[0])
+            if sp == 'const':                                     # p-code relative: within this instruction
+                rel = off - (1 << 32) if off >= (1 << 31) else off
+                j = k + rel
+                tgt = 'goto P_%X_%d;' % (A, j) if 0 <= j < len(ins.ops) else 'goto A_END_%X;' % A
+                tgt = '{ %s }' % tgt
+            else:
+                tgt = self.goto_addr(off, A, off <= A)
+            if name == 'BRANCH': return tgt
+            return 'if (%s) %s' % (r(inp[1]), tgt)
+        if name == 'CALL':
+            t = vn(inp[0])[1]; ret = self.ret_addr(ins)
+            call = 'L_%X();' % t if t in self.entries else 'rr_call_ind(0x%XU, 0x%XU);' % (t, A)
+            return '{ int j_ = rr_call_push(0x%XU); RR_POLL(); %s %s }' % (ret, call, self.after_call(A))
+        if name == 'CALLIND':
+            ret = self.ret_addr(ins)
+            return '{ uint32_t t_ = (uint32_t)%s; int j_ = rr_call_push(0x%XU); RR_POLL(); rr_call_ind(t_, 0x%XU); %s }' % (r(inp[0]), ret, A, self.after_call(A))
+        if name == 'BRANCHIND':
+            return ('{ uint32_t t_ = (uint32_t)%s; RR_POLL(); if (t_ >= 0x%XU && t_ <= 0x%XU) { pc_ = t_; goto resume_; } rr_jump(t_, 0x%XU); return; }'
+                    % (r(inp[0]), self.lo, self.hi, A))
+        if name == 'RETURN':
+            return ('{ uint32_t t_ = (uint32_t)%s; if (rr_return(t_)) return; RR_POLL(); if (t_ >= 0x%XU && t_ <= 0x%XU) { pc_ = t_; goto resume_; } '
+                    'rr_jump(t_, 0x%XU); return; }' % (r(inp[0]), self.lo, self.hi, A))
+        if name == 'CALLOTHER':
+            u = self.userops.get(vn(inp[0])[1], '?')
+            self.note('CALLOTHER %s' % u)
+            if u == 'bcdAdjust' and out != '-': return self.wr(out, r(inp[1]))      # (abcd / sbcd / nbcd are emitted whole: see special())
+            if u in ('reset', 'invalidateCacheLines', 'pushInvalidateCaches'): return ';'
+            return '{ rr_trap(0x%XU, 0x%XU, "an instruction the lifter does not translate (%s)"); return; }' % (A, A, u)
+        self.note('p-code op %s' % name)
+        return '{ rr_trap(0x%XU, 0x%XU, "p-code op %s is not translated"); return; }' % (A, A, name)
+
+    def special(self, ins):
+        """instructions emitted whole instead of from their p-code; None = use the p-code"""
+        mn = ins.text.split()[0] if ins.text else ''
+        A = ins.addr
+        if mn == 'rte': return ['rr_rte(); return;']
+        if mn in ('abcd', 'sbcd'):                                        # Ghidra's bcdAdjust leaves the byte binary (engine/lift_rt.h)
+            m = re.match(r'(abcd|sbcd) D(\d)b,D(\d)b$', ins.text)
+            if m:
+                s, d = int(m.group(2)) * 4 + 3, int(m.group(3)) * 4 + 3
+                return ['RS1(0x%X, rr_%s((uint32_t)RG1(0x%X), (uint32_t)RG1(0x%X)));' % (d, m.group(1), d, s)]
+        if mn == 'stop':                                                  # wait for an interrupt: the scheduler runs until one is taken
+            m = re.search(r'#(-?0x[0-9a-fA-F]+|-?\d+)', ins.text)
+            sr = int(m.group(1), 0) & 0xFFFF if m else 0x2000
+            return ['rr_set_sr(0x%XU);' % sr, '{ rr_budget = 0; RR_POLL(); }']
+        if mn.startswith('f') and mn not in ('ffo',) or mn in ('callm', 'rtm', 'cas', 'cas2', 'pack', 'unpk'):
+            self.note('untranslated %s' % mn)
+            return ['{ rr_trap(0x%XU, 0x%XU, "%s: not a 68EC020 instruction this program runs (data read as code?)"); return; }' % (A, A, mn)]
+        if mn.startswith('bf'):
+            self.note('bit-field %s (untranslated)' % mn)
+            return ['{ rr_trap(0x%XU, 0x%XU, "bit-field instruction not translated yet"); return; }' % (A, A)]
+        if re.match(r'move(\.w)? SR,', ins.text):
+            self.note('move from SR')
+        return None
+
+    def fix_preindexed(self, ins):
+        """GHIDRA'S 68020 MEMORY-INDIRECT IS WRONG FOR THE PRE-INDEXED FORM. ([bd,An,Xn]) / ([bd,PC,Xn]) -- full extension word,
+        I/IS = 1..3 with the index not suppressed -- means mem[bd + base + Xn]; Ghidra's p-code loads mem[bd + base] and THEN adds
+        Xn (the post-indexed form), and prints it "([bd,PC],Xn)". A game's dispatch tables are exactly this instruction
+        (jsr ([table,PC],D0.w*4)), so every table call past entry 0 went to table[0] + 4n. Rewrite: index first, then load."""
+        if self.rom is None or '([' not in ins.text or ins.len < 4: return
+        ext = int.from_bytes(self.rom[ins.addr + 2:ins.addr + 4], 'big')
+        if not (ext & 0x100) or (ext & 0x40) or (ext & 7) not in (1, 2, 3): return   # brief format / index suppressed / not pre-indexed
+        ops = ins.ops
+        for k, o in enumerate(ops):
+            if o[0] != 'LOAD': continue
+            for m in range(k + 1, len(ops)):
+                if ops[m][0] == 'INT_ADD' and o[1] in ops[m][2]:
+                    idx = [v for v in ops[m][2] if v != o[1]]
+                    if len(idx) != 1: return
+                    tmp = 'unique:fffff0:4'
+                    ins.ops = (ops[:k] + [('INT_ADD', tmp, [o[2][1], idx[0]]), ('LOAD', o[1], [o[2][0], tmp])] + ops[k + 1:m]
+                               + [('COPY', ops[m][1], [o[1]])] + ops[m + 1:])
+                    self.note('pre-indexed memory indirect corrected')
+                    return
+            return
+
+    def function(self, f, out):
+        ins = f.ins
+        for i in ins: self.fix_preindexed(i)
+        self.cur_addrs = {i.addr for i in ins}
+        self.lo, self.hi = min(self.cur_addrs), max(self.cur_addrs)
+        self.temps = set()
+        body = []
+        for n, i in enumerate(ins):
+            body.append('A_%X: RR_INS(0x%XU); /* %s */' % (i.addr, i.addr, i.text.replace('*/', '* /')))
+            sp = self.special(i)
+            terminal = False
+            if sp is not None:
+                for k, st in enumerate(sp): body.append('  P_%X_%d: %s' % (i.addr, k, st))
+                terminal = sp[-1].rstrip().endswith('return;') or sp[-1].rstrip().endswith('return; }')
+            else:
+                for k, o in enumerate(i.ops):
+                    body.append('  P_%X_%d: %s' % (i.addr, k, self.op(i, k, o)))
+            body.append('  A_END_%X: ;' % i.addr)
+            nxt = ins[n + 1].addr if n + 1 < len(ins) else None
+            if i.ft is not None and not terminal and i.ft != nxt:      # the next instruction in memory is not the next one here
+                body.append('  ' + self.goto_addr(i.ft, i.addr, False))
+        out.append('/* ---- %s @ 0x%06X ---- */' % (f.name, f.entry))
+        out.append('void L_%X_at(uint32_t pc_)' % f.entry)
+        out.append('{')
+        for t in sorted(self.temps): out.append('  uint64_t u%x = 0;' % t)
+        out.append('resume_:')
+        out.append('  switch (pc_) {')
+        for i in ins: out.append('  case 0x%XU: goto A_%X;' % (i.addr, i.addr))
+        out.append('  default: rr_jump(pc_, pc_); return;   /* another function owns it */')
+        out.append('  }')
+        out += body
+        out.append('  rr_trap(0x%XU, 0x%XU, "ran off the end of a lifted function"); return;' % (self.hi, self.hi))
+        out.append('}')
+        out.append('')
+
+HEAD = '''/* GENERATED by tools/gen/lift68k.py from Ghidra raw p-code -- do not edit.
+ * One C function per Ghidra function; registers in R[], memory via rr_read / rr_write. */
+#include "lift_rt.h"
+#include "%s_lifted.h"
+void rr_jump(uint32_t t, uint32_t at);
+#ifdef LIFT_LAST_PC                 /* the instruction last started, for a host that wants to say where the program is */
+extern uint32_t g_lift_pc;
+extern uint8_t g_lift_cov[];        /* one byte per even address: this instruction has run */
+#undef RR_INS
+#define RR_INS(a) (g_lift_cov[(a) >> 1] = 1, g_lift_pc = (a), --rr_budget)
+#endif
+'''
+
+def main():
+    pcode, outdir, prefix = sys.argv[1:4]
+    parts = int(sys.argv[4]) if len(sys.argv) > 4 else 8
+    fns, userops = parse(pcode)
+    fns = [f for f in fns if f.ins]
+    L = Lifter(fns, userops)
+    if len(sys.argv) > 5: L.rom = open(sys.argv[5], 'rb').read()
+    os.makedirs(outdir, exist_ok=True)
+    # the header
+    with open(os.path.join(outdir, prefix + '_lifted.h'), 'w', newline='\n') as h:
+        h.write('/* GENERATED by tools/gen/lift68k.py -- do not edit */\n#ifndef %s_LIFTED_H\n#define %s_LIFTED_H\n#include <stdint.h>\n' % (prefix.upper(), prefix.upper()))
+        for f in fns:
+            h.write('void L_%X_at(uint32_t pc);   /* %s */\nstatic inline void L_%X(void) { L_%X_at(0x%XU); }\n' % (f.entry, f.name, f.entry, f.entry, f.entry))
+        h.write('#endif\n')
+    # the functions, in PARTS files of about equal size
+    chunks = [[] for _ in range(parts)]
+    total = sum(len(f.ins) for f in fns); acc = 0
+    for f in fns:
+        out = chunks[min(parts - 1, acc * parts // max(total, 1))]
+        L.function(f, out)
+        acc += len(f.ins)
+    for n, c in enumerate(chunks):
+        with open(os.path.join(outdir, '%s_lifted_%02d.c' % (prefix, n)), 'w', newline='\n') as o:
+            o.write(HEAD % prefix)
+            o.write('\n'.join(c)); o.write('\n')
+    # the table: every instruction address -> its function
+    addrs = sorted(L.owner)
+    with open(os.path.join(outdir, prefix + '_lifted_tab.c'), 'w', newline='\n') as t:
+        t.write(HEAD % prefix)
+        t.write('static void (*const rr_fnp_[])(uint32_t) = {\n')
+        for f in fns: t.write('  L_%X_at,\n' % f.entry)
+        t.write('};\nstatic const uint32_t rr_ia_[] = {\n')
+        for i in range(0, len(addrs), 8): t.write('  ' + ' '.join('0x%XU,' % a for a in addrs[i:i + 8]) + '\n')
+        t.write('};\nstatic const uint16_t rr_if_[] = {\n')
+        for i in range(0, len(addrs), 16): t.write('  ' + ' '.join('%d,' % L.owner[a] for a in addrs[i:i + 16]) + '\n')
+        t.write('''};
+void rr_jump(uint32_t t, uint32_t at)
+{
+  int lo = 0, hi = (int)(sizeof rr_ia_ / sizeof rr_ia_[0]) - 1;
+  while (lo <= hi) {
+    int mid = (lo + hi) / 2;
+    if (t < rr_ia_[mid]) hi = mid - 1;
+    else if (t > rr_ia_[mid]) lo = mid + 1;
+    else { rr_fnp_[rr_if_[mid]](t); return; }
+  }
+  rr_trap(at, t, "jump to an address that is no known instruction");
+}
+void rr_call_ind(uint32_t t, uint32_t at) { rr_jump(t, at); }
+void (*rd_lifted_entry(uint32_t ep))(uint32_t)
+{
+  int lo = 0, hi = (int)(sizeof rr_ia_ / sizeof rr_ia_[0]) - 1;
+  while (lo <= hi) {
+    int mid = (lo + hi) / 2;
+    if (ep < rr_ia_[mid]) hi = mid - 1;
+    else if (ep > rr_ia_[mid]) lo = mid + 1;
+    else return rr_fnp_[rr_if_[mid]];
+  }
+  return 0;
+}
+''')
+    print('%d functions, %d instructions -> %s/%s_lifted_*.c' % (len(fns), len(addrs), outdir, prefix))
+    for w, n in sorted(L.warn.items(), key=lambda x: -x[1]): print('  note: %s x%d' % (w, n))
+
+if __name__ == '__main__':
+    main()

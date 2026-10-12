@@ -140,6 +140,8 @@ void ss22_snd_mix_set(int row, int pct);
 void ss22_snd_mix_load(void);            /* after the settings file is loaded */
 void ss22_snd_inputs(uint16_t pressed, unsigned wheel, unsigned pedal1, unsigned pedal2);   /* pressed: INPUTS bits; A-D 10-bit */
 void ss22_snd_trackball(int dx, int dy);  /* the trackball moved (counts, MAME's OPT.0 / OPT.1 port units): added to the two counters */
+extern void (*g_ss22_adc_hook)(uint16_t *adc4);
+extern uint16_t (*g_ss22_inputs_hook)(uint16_t inputs);   /* a game's own device on the INPUTS word (NULL = none) */
 uint16_t ss22_snd_outputs(void);         /* the MCU's output latches (lamps, motors) */
 void ss22_snd_debug(char *buf, int n);
 

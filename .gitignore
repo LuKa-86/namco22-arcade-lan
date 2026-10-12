@@ -87,3 +87,13 @@ __pycache__/
 /tokyowar/soak/
 /raverace/soak/
 /raverace/gen/rr_c25.c
+# Alpine Racer feasibility test: ROM-derived or scratch files
+/alpiner/extracted/
+/alpiner/gen/
+/alpiner/build/
+/alpiner/shots*/
+/alpiner/ghidra_proj/
+/alpiner/*.bin
+/alpiner/*.pcode
+/alpiner/*.log
+/alpiner/run.out
