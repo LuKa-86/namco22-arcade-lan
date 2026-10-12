@@ -95,9 +95,25 @@ static const ss22_press_name presses[] = { {"coin", IN_COIN}, {"start", IN_START
 static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, unsigned *pedal2)
 {
     (void)pedal1; (void)pedal2;
+    /* AL_AUTO picks the test player: 0 wiggles (default), 1 skis straight, 2 / 3 press Select right / left before each Decision,
+     * 4 never coins up (the attract loop), 5 wiggles gently, 6 goes into the test menu and steps through it */
+    static int v = -1; if (v < 0) { const char *e = getenv("AL_AUTO"); v = e ? atoi(e) : 0; }
+    *wheel = 0x200;
+    if (v == 4) return;
+    if (v == 6) {
+        if (n > 300 && n < 9000) *p |= IN_TEST;
+        if (n % 240 >= 100 && n % 240 < 106) *p |= IN_RIGHT;
+        if (n % 480 >= 300 && n % 480 < 306) *p |= IN_START;
+        if (n % 1200 >= 700 && n % 1200 < 706) *p |= IN_SERVICE;
+        return;
+    }
     if (n % 600 >= 300 && n % 600 < 306) *p |= IN_COIN;
     if (n % 300 >= 150 && n % 300 < 156 && n > 400) *p |= IN_START;
-    *wheel = ((n / 90) % 2 == 0) ? 0x100 : 0x300;
+    if (v == 2 && n % 300 >= 100 && n % 300 < 106) *p |= IN_RIGHT;
+    if (v == 3 && n % 300 >= 100 && n % 300 < 106) *p |= IN_LEFT;
+    if (v == 1) return;
+    if (v == 5) *wheel = ((n / 45) % 2 == 0) ? 0x1C0 : 0x240;
+    else        *wheel = ((n / 90) % 2 == 0) ? 0x100 : 0x300;
 }
 
 /* THE STEP-LOCK MOTOR (MAME alpine_state::alpine_mcu_port4_w / alpine_motor_r): the cabinet locks the ski steps until a game starts.
@@ -123,8 +139,15 @@ static uint16_t al_inputs(uint16_t in)
     return (uint16_t)((in & ~0x0180u) | (motor_status & 1 ? 0x0080u : 0) | (motor_status & 2 ? 0x0100u : 0));
 }
 
-/* the steps' EDGE (ADC 1) rests at centre; the engine's second axis is a pedal that rests at 0. No edge control yet: held at centre. */
-static void al_adc(uint16_t *adc) { adc[1] = 0x200; }
+/* the steps' EDGE (ADC 1) rests at centre; the engine's second axis is a pedal that rests at 0. On the cabinet a skier swings and
+ * edges together, so one stick or pair of keys drives both: the edge follows the swing (same range, same centre).
+ * AL_EDGE=off holds the edge at centre, AL_EDGE=reverse leans it the other way. */
+static void al_adc(uint16_t *adc)
+{
+    static int mode = -1;
+    if (mode < 0) { const char *e = getenv("AL_EDGE"); mode = !e ? 1 : !strcmp(e, "off") ? 0 : !strcmp(e, "reverse") ? 2 : 1; }
+    adc[1] = mode == 0 ? 0x200 : mode == 2 ? (uint16_t)(0x400 - adc[0]) : adc[0];
+}
 
 static const ss22_game game = {
     .name = "Alpine Racer", .tag = "AL", .lname = "al", .logname = "alpiner.log", .zip = "alpinerjc.zip",

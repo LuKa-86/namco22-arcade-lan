@@ -35,8 +35,28 @@ public class SeedTables extends GhidraScript {
         Instruction b = v.getPrevious();
         if (b != null && v.getAddress().equals(b.getFallThrough())) return false;
         for (ghidra.program.model.symbol.Reference r : getReferencesTo(v.getAddress()))
-            if (r.getReferenceType().isFlow()) return false;
+            if (r.getReferenceType().isFlow() && !r.getReferenceType().isComputed()) return false;   // Ghidra's computed ones are guesses (it reads these tables wrongly)
         return true;
+    }
+
+    // DOES IT READ AS CODE? Instructions decoded one after another from a, falling through, must reach an instruction that ends a
+    // routine (rts, jmp, bra ...) or run into known code, with nothing undecodable, no 0000 0000 (padding / data) and no
+    // instruction already there at a different alignment. (Ghidra's own isValidSubroutine turns down plain routines.)
+    private boolean reads(Address a) {
+        try {
+            for (int k = 0; k < 800; k++) {
+                if (a.getOffset() + 2 > size) return false;
+                Instruction have = currentProgram.getListing().getInstructionContaining(a);
+                if (have != null) return have.getAddress().equals(a);
+                if ((mem.getInt(a) == 0) || (mem.getShort(a) & 0xFFFF) == 0xFFFF) return false;
+                ghidra.app.util.PseudoInstruction pi = pseudo.disassemble(a);
+                if (pi == null) return false;
+                Address ft = pi.getFallThrough();
+                if (ft == null) return true;
+                a = ft;
+            }
+        } catch (Exception e) { }
+        return false;
     }
 
     // DISASSEMBLE AT a, CLEARING WHAT IS IN THE WAY. A wrong guess (a table read one entry too far, say) leaves instructions that
@@ -71,7 +91,7 @@ public class SeedTables extends GhidraScript {
         Address a = toAddr(t);
         boolean added = false;
         if (currentProgram.getListing().getInstructionAt(a) == null) {
-            if (!always && !pseudo.isValidSubroutine(a, true)) return false;                    // does not read as a routine: not code
+            if (!always && !reads(a)) return false;                    // does not read as a routine: not code
             if (!carve(a, always)) return false;
             added = true;
         }
@@ -140,7 +160,7 @@ public class SeedTables extends GhidraScript {
         for (long g : todo) {
             Address a = toAddr(g);
             if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
-            if (!pseudo.isValidSubroutine(a, true)) continue;
+            if (!reads(a)) continue;
             new DisassembleCommand(a, null, true).applyTo(currentProgram, monitor);
             if (currentProgram.getListing().getInstructionAt(a) == null) continue;
             if (currentProgram.getFunctionManager().getFunctionContaining(a) == null) try { createFunction(a, null); } catch (Exception e) { }
@@ -160,6 +180,31 @@ public class SeedTables extends GhidraScript {
         Instruction b = currentProgram.getListing().getInstructionContaining(toAddr(t - 1));
         return b != null && b.getFallThrough() == null && b.getMaxAddress().getOffset() == t - 1;
     }
+    // TABLES NOTHING POINTS AT. A table whose address reaches the jsr in a register from far away (jsr ([A1],D1.w*4)) cannot be
+    // followed from the instruction. But it looks like a table: three or more longs in a row, outside any instruction, each the
+    // address of something that reads as code and lies within 0x4000 of the table itself.
+    private int runs() throws Exception {
+        int n = 0;
+        for (long ea = 0x400; ea + 12 <= size; ea += 2) {
+            if (currentProgram.getListing().getInstructionContaining(toAddr(ea)) != null) continue;
+            int len = 0;
+            for (; len < 512 && ea + 4L * len + 4 <= size; len++) {
+                long at = ea + 4L * len;
+                if (currentProgram.getListing().getInstructionContaining(toAddr(at)) != null) break;
+                long t = mem.getInt(toAddr(at)) & 0xFFFFFFFFL;
+                if (!plausible(t) || Math.abs(t - ea) > 0x4000) break;
+                if (t >= ea && t < at + 4) break;                           // points into the table itself
+                Instruction c = currentProgram.getListing().getInstructionContaining(toAddr(t));
+                if (c != null ? !c.getAddress().equals(toAddr(t)) : !reads(toAddr(t))) break;
+            }
+            if (len < 3) continue;
+            for (int k = 0; k < len; k++) if (seed(mem.getInt(toAddr(ea + 4L * k)) & 0xFFFFFFFFL)) n++;
+            ea += 4L * len - 2;
+        }
+        if (n > 0) println("SeedTables: " + n + " routines from tables nothing points at");
+        return n;
+    }
+
     private int pointers() throws Exception {
         int n = 0;
         java.util.HashSet<Long> seen = new java.util.HashSet<>();
@@ -168,7 +213,9 @@ public class SeedTables extends GhidraScript {
             if (t < 0x400 || t >= size || (t & 1) != 0 || !seen.add(t)) continue;
             Address a = toAddr(t);
             if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
-            if (!plausible(t) || !afterEnd(t)) continue;
+            // straight after a routine's end, or a NEAR pointer held in data (a table of records: routine, parameter, routine ...)
+            boolean near = Math.abs(t - ea) <= 0x4000;
+            if (!plausible(t) || !(afterEnd(t) || near)) { seen.remove(t); continue; }
             if (seed(t)) n++;
         }
         if (n > 0) println("SeedTables: " + n + " routines named only as a number");
@@ -201,10 +248,11 @@ public class SeedTables extends GhidraScript {
             java.util.ArrayList<Long> targets = new java.util.ArrayList<>();
             while (ii.hasNext()) {
                 Instruction in = ii.next();
-                if (in.getLength() < 6) continue;
+                if (in.getLength() < 4) continue;
                 long a = in.getAddress().getOffset();
                 int op = mem.getShort(toAddr(a)) & 0xFFFF;
-                if (op != 0x4EBB && op != 0x4EFB) continue;                  // jsr / jmp (d8,PC,Xn) and its full-format forms
+                boolean viaReg = (op & 0xFFB8) == 0x4EB0;                    // jsr / jmp (d8,An,Xn): the table's address is in An
+                if (op != 0x4EBB && op != 0x4EFB && !viaReg) continue;       // jsr / jmp (d8,PC,Xn) and its full-format forms
                 int ext = mem.getShort(toAddr(a + 2)) & 0xFFFF;
                 if ((ext & 0x100) == 0 || (ext & 0x40) != 0) continue;       // brief format, or no index
                 int iis = ext & 7;
@@ -213,6 +261,17 @@ public class SeedTables extends GhidraScript {
                 long bd = bdsize == 2 ? (short) mem.getShort(toAddr(a + 4)) : bdsize == 3 ? mem.getInt(toAddr(a + 4)) : 0;
                 if ((ext & 0x80) != 0) continue;                             // base suppressed: not PC-relative
                 long table = a + 2 + bd;
+                if (viaReg) {                                                // look back for  lea (d16,PC),An  /  lea (abs).l,An
+                    int reg = op & 7; table = -1;
+                    Instruction b = in.getPrevious();
+                    for (int k = 0; k < 8 && b != null; k++, b = b.getPrevious()) {
+                        long ba = b.getAddress().getOffset();
+                        int bop = mem.getShort(toAddr(ba)) & 0xFFFF;
+                        if (bop == (0x41FA | reg << 9)) { table = ba + 2 + (short) mem.getShort(toAddr(ba + 2)) + bd; break; }
+                        if (bop == (0x41F9 | reg << 9)) { table = (mem.getInt(toAddr(ba + 2)) & 0xFFFFFFFFL) + bd; break; }
+                    }
+                    if (table < 0) continue;
+                }
                 if (table < 0 || table + 4 > size) continue;
                 tables++;
                 long stop = size;                                            // a table ends where the nearest routine it names begins
@@ -228,8 +287,9 @@ public class SeedTables extends GhidraScript {
             }
             for (long t : targets) if (seed(t)) added++;
             added += repair();
-            added += sweep();
+            for (int k = sweep(); k > 0; k = sweep()) added += k;
             added += pointers();
+            added += runs();
             println("SeedTables: round " + round + ": " + tables + " tables, " + added + " new entry points");
             total += added;
             if (added == 0) break;
