@@ -70,6 +70,7 @@ void tc2_on_exit(void)
     { void tc2_backup_save(int); tc2_backup_save(1); }
     tc2_io_flush();
     { void tc2_h8_report(void); tc2_h8_report(); }
+    { void tc2_c422_report(void); tc2_c422_report(); }
     { extern unsigned long tc2_render_frames, tc2_render_models, tc2_render_immediate, tc2_c435_unknown;
       extern unsigned long tc2_render_polys; fprintf(stderr, "[3D] %lu frames: %lu model entries, %lu immediate polygons, %lu polygons drawn; %lu unknown C435 commands\n", tc2_render_frames, tc2_render_models, tc2_render_immediate, tc2_render_polys, tc2_c435_unknown); }
     extern unsigned long tc2_env_hits, tc2_env_miss;
@@ -267,6 +268,7 @@ void tc2_host_step(uint32_t n)
     ins_total += n;
     tc2_screen_advance(n);
     { void tc2_h8_run(uint64_t); uint64_t tc2_cycles_now(void); tc2_h8_run(tc2_cycles_now()); }   /* the two H8s catch up (src/tc2_h8.c) */
+    { void tc2_c422_tick(void); tc2_c422_tick(); }                  /* the twin-cabinet link (src/tc2_c422.c, our fork) */
     if (ins_total >= ins_limit) { tc2_on_exit(); exit(0); }
 }
 uint32_t tc2_until_event(void) { return tc2_screen_until_event(); }

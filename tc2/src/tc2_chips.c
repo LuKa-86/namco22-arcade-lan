@@ -27,7 +27,6 @@
 #include "tc2_game.h"
 
 static struct { uint16_t adr; uint32_t ptrom_adr; int test_mode; uint16_t ram[0x10000]; } c417;
-static uint16_t c422[8];
 static struct { uint16_t sdram_a[0x100000], sdram_b[0x100000], sram[0x20000], pczram[0x200]; uint32_t adr; uint16_t status; } c412;
 static struct { uint16_t dram_a[0x40000], dram_b[0x40000], sram[0x8000]; uint32_t adr; } c421;
 static uint16_t *c412_at(uint32_t a)
@@ -77,7 +76,7 @@ int tc2_chips_read(uint32_t p, int size, uint32_t *v)
     case 0x0C400006u: *v = (uint16_t)c421.adr; return 1;
     case 0x0E800000u: *v = 3; return 1;                     /* MAME sub_comm_status_r: the RS-232 link to the sub-board, always ready */
     }
-    if (p >= 0x06400000u && p <= 0x0640000Fu) { *v = c422[(p - 0x06400000u) >> 1]; return 1; }
+    if (p >= 0x06400000u && p <= 0x0640000Fu) { int tc2_c422_read(uint32_t, uint32_t *); return tc2_c422_read(p, v); }   /* the link (src/tc2_c422.c) */
     return 0;
 }
 
@@ -105,12 +104,7 @@ int tc2_chips_write(uint32_t p, int size, uint32_t v)
     case 0x0C400004u: c421.adr = (c421.adr & 0x0000FFFFu) | (v & 0xFFFFu) << 16; return 1;
     case 0x0C400006u: c421.adr = (c421.adr & 0xFFFF0000u) | (v & 0xFFFFu); return 1;
     }
-    if (p >= 0x06400000u && p <= 0x0640000Fu) {
-        const unsigned k = (p - 0x06400000u) >> 1;
-        if (k == 1) { if (v == 0xFFFBu) cause_set(TC2_SRC_C422, 1); else if (v == 0x000Fu) cause_set(TC2_SRC_C422, 0); }
-        c422[k] = (uint16_t)v;
-        return 1;
-    }
+    if (p >= 0x06400000u && p <= 0x0640000Fu) { int tc2_c422_write(uint32_t, uint32_t); return tc2_c422_write(p, v); }   /* the link (src/tc2_c422.c) */
     return 0;
 }
 
@@ -123,7 +117,7 @@ int tc2_chips_load(const char *path)
     FILE *f = fopen(path, "r"); if (!f) return 0;
     char name[32]; int n = 0;
     while (fscanf(f, "%31s", name) == 1) {
-        if (!strcmp(name, "c422")) { unsigned k, v; if (fscanf(f, "%u %x", &k, &v) == 2 && k < 8) c422[k] = (uint16_t)v; }
+        if (!strcmp(name, "c422")) { unsigned k, v; if (fscanf(f, "%u %x", &k, &v) == 2 && k < 8) { void tc2_c422_load_reg(unsigned, uint16_t); tc2_c422_load_reg(k, (uint16_t)v); } }
         else if (!strcmp(name, "c417_test")) { if (fscanf(f, "%d", &c417.test_mode) != 1) break; }
         else if (!strcmp(name, "c417_adr")) { unsigned v; if (fscanf(f, "%x", &v) == 1) c417.adr = (uint16_t)v; }
         else if (!strcmp(name, "c417_ram")) {
