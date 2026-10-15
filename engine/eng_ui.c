@@ -148,21 +148,22 @@ static const eng_ui_page page_display = { "Display", 440, 120, 26, disp_n, NULL,
 /* ---- Audio ------------------------------------------------------------------- */
 static const eng_ui_mixer *mixer;                              /* the game's speakers under the Volume row (eng_ui_set_mixer) */
 void eng_ui_set_mixer(const eng_ui_mixer *m) { mixer = m; }
-static int aud_n(void) { return 2 + (mixer ? mixer->rows() : 0); }   /* Volume, Quick volume (our fork), then the speakers */
+static int aud_n(void) { return 2 + (mixer ? mixer->rows() : 0); }   /* Volume, the speakers, then the volume boxes (our fork: a row for the keys) */
+static bool aud_boxes(int r) { return r == aud_n() - 1; }
 static void aud_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
-    if (r > 1) { snprintf(l, ln, "%s", mixer->name(r - 2)); snprintf(v, vn, "%d%%", mixer->get(r - 2)); return; }
-    if (r == 1) { snprintf(l, ln, "Quick volume"); if (g_eng_disp.volume) snprintf(v, vn, "%d%%", g_eng_disp.volume); else snprintf(v, vn, "Mute"); return; }
+    if (aud_boxes(r)) { snprintf(l, ln, "Volume boxes"); *v = 0; return; }
+    if (r > 0) { snprintf(l, ln, "%s", mixer->name(r - 1)); snprintf(v, vn, "%d%%", mixer->get(r - 1)); return; }
     snprintf(l, ln, "Volume"); snprintf(v, vn, "%d%%", g_eng_disp.volume);
 }
 static void aud_change(int r, int dir)
 {
-    if (r > 1) {                                             /* a mixer row: 5% steps, Enter back to 100% */
-        const int m = mixer->get(r - 2) + dir * 5;
-        mixer->set(r - 2, dir == 0 ? 100 : m < 0 ? 0 : m > mixer->max ? mixer->max : m);
+    if (aud_boxes(r)) { const int v = eng_vol_box_key(dir, g_eng_disp.volume); if (v >= 0) eng_disp_set_volume(v); return; }   /* Left / Right pick a box, Enter sets it */
+    if (r > 0) {                                             /* a mixer row: 5% steps, Enter back to 100% */
+        const int m = mixer->get(r - 1) + dir * 5;
+        mixer->set(r - 1, dir == 0 ? 100 : m < 0 ? 0 : m > mixer->max ? mixer->max : m);
         return;
     }
-    if (r == 1) { eng_disp_set_volume(eng_vol_preset(g_eng_disp.volume, dir)); return; }   /* Mute, 25, 50, 100 % */
     int v = g_eng_disp.volume + (dir ? dir * 5 : 10);
     if (v > 100) v = dir ? 100 : 0;                          /* Enter wraps 100 -> mute */
     if (v < 0) v = 0;
@@ -171,11 +172,7 @@ static void aud_change(int r, int dir)
 static void aud_notes(void (*line)(const char *fmt, ...))
 {
     (void)line;
-    nk_layout_row_dynamic(ctx, 24, 4);
-    if (nk_button_label(ctx, "Mute")) eng_disp_set_volume(0);
-    if (nk_button_label(ctx, "25%"))  eng_disp_set_volume(25);
-    if (nk_button_label(ctx, "50%"))  eng_disp_set_volume(50);
-    if (nk_button_label(ctx, "100%")) eng_disp_set_volume(100);
+    eng_vol_boxes(ctx, aud_boxes(row), g_eng_disp.volume, eng_disp_set_volume);
 }
 static const eng_ui_page page_audio = { "Audio", 300, 120, 26, aud_n, NULL, NULL, aud_text, aud_change, aud_notes };
 
@@ -404,7 +401,7 @@ void eng_ui_draw(bool *quit)
     const int n0 = nrows(tab);
     const float rh = pg->row_h > 0 ? pg->row_h : 26;
     const float lw = pg->label_w > 0 ? pg->label_w : 120;
-    float dh = 48 + n0 * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? (pg->notes_h > 0 ? pg->notes_h : 44) : 0);
+    float dh = 48 + (n0 - (pg == &page_audio ? 1 : 0)) * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? (pg->notes_h > 0 ? pg->notes_h : 44) : 0);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = (pg->drop_w > 0 ? pg->drop_w : 340) < ww - 8 ? (pg->drop_w > 0 ? pg->drop_w : 340) : (float)ww - 8;
     float dx = title_x[tab];
@@ -419,6 +416,7 @@ void eng_ui_draw(bool *quit)
 
         /* the rows: [label][<][value][>]; the selected row is highlighted */
         for (int i = 0; i < n0; i++) {
+            if (pg == &page_audio && aud_boxes(i)) continue;     /* the volume boxes: drawn under the rows (aud_notes) */
             char label[64], value[96];
             pg->text(i, label, sizeof label, value, sizeof value);
             const bool en = row_enabled(tab, i), val = has_value(tab, i);
@@ -438,9 +436,9 @@ void eng_ui_draw(bool *quit)
             }
             if (nk_select_label(ctx, label, NK_TEXT_LEFT, i == row)) row = i;
             if (val && nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_LEFT)) { row = i; pg->change(i, -1); }
-            if (is_audio(tab) && i > 1) {                /* a mixer row */
-                int v = mixer->get(i - 2);
-                if (nk_slider_int(ctx, 0, &v, mixer->max, 1) && v != mixer->get(i - 2)) mixer->set(i - 2, v);
+            if (is_audio(tab) && i > 0) {                /* a mixer row */
+                int v = mixer->get(i - 1);
+                if (nk_slider_int(ctx, 0, &v, mixer->max, 1) && v != mixer->get(i - 1)) mixer->set(i - 1, v);
             } else if (is_audio(tab) && i == 0) {        /* the volume is a slider too */
                 int v = g_eng_disp.volume;
                 if (nk_slider_int(ctx, 0, &v, 100, 1) && v != g_eng_disp.volume) eng_disp_set_volume(v);

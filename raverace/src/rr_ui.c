@@ -94,7 +94,7 @@ static int nrows(int t)
     switch (t) {
     case T_FILE: return 4;
     case T_DISPLAY: return D_N;
-    case T_AUDIO: return 2;                 /* Volume, Quick volume (our fork) */
+    case T_AUDIO: return 2;                 /* Volume, then the volume boxes (our fork: a row for the keys) */
     case T_CONTROLS: return C_N + RR_ACT_N;
     case T_RECORD: return 1;
     case T_NETWORK: return link_page_rows();
@@ -151,7 +151,7 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         }
         break;
     case T_AUDIO:
-        if (r == 1) { snprintf(label, ln, "Quick volume"); if (g_cfg_volume) snprintf(value, vn, "%d%%", g_cfg_volume); else snprintf(value, vn, "Mute"); }
+        if (r == 1) snprintf(label, ln, "Volume boxes");
         else { snprintf(label, ln, "Volume"); snprintf(value, vn, "%d%%", g_cfg_volume); }
         break;
     case T_CONTROLS:
@@ -276,7 +276,7 @@ static void row_change(int t, int r, int dir)
         }
         break;
     case T_AUDIO: {
-        if (r == 1) { rr_host_set_volume(eng_vol_preset(g_cfg_volume, dir)); break; }   /* Mute, 25, 50, 100 % */
+        if (r == 1) { const int b = eng_vol_box_key(dir, g_cfg_volume); if (b >= 0) rr_host_set_volume(b); break; }   /* Left / Right pick a box, Enter sets it */
         int v = g_cfg_volume + (dir ? dir * 5 : 10);
         if (v > 100) v = dir ? 100 : 0;                     /* Enter wraps 100 -> mute */
         if (v < 0) v = 0;
@@ -826,7 +826,7 @@ void rr_ui_draw(bool *quit)
     static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480, 420, 460 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
-    float dh = 48 + n0 * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 176 : 44);
+    float dh = 48 + (n0 - (tab == T_AUDIO ? 1 : 0)) * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 176 : 44);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = drop_w[tab] < ww - 8 ? drop_w[tab] : (float)ww - 8;
     float dx = title_x[tab];
@@ -843,6 +843,7 @@ void rr_ui_draw(bool *quit)
         const int n = nrows(tab);
         const float rh = tab == T_CONTROLS ? 20 : 26;
         for (int i = 0; i < n; i++) {
+            if (tab == T_AUDIO && i == 1) continue;          /* the volume boxes: drawn under the rows */
             char label[64], value[96];
             row_text(tab, i, label, sizeof label, value, sizeof value);
             const bool en = row_enabled(tab, i), val = has_value(tab, i);
@@ -879,11 +880,7 @@ void rr_ui_draw(bool *quit)
             labelf(NK_TEXT_LEFT, "Resolution = render size; the window keeps its size.");
             labelf(NK_TEXT_LEFT, g_cfg_wide ? "Widescreen: more track at the sides." : "");
         } else if (tab == T_AUDIO) {
-            nk_layout_row_dynamic(ctx, 24, 4);
-            if (nk_button_label(ctx, "Mute")) rr_host_set_volume(0);
-            if (nk_button_label(ctx, "25%"))  rr_host_set_volume(25);
-            if (nk_button_label(ctx, "50%"))  rr_host_set_volume(50);
-            if (nk_button_label(ctx, "100%")) rr_host_set_volume(100);
+            eng_vol_boxes(ctx, row == 1, g_cfg_volume, rr_host_set_volume);
         } else if (tab == T_CONTROLS) {
             labelf(NK_TEXT_LEFT, "Select, then press key/button or move control (Esc cancels)");
         } else if (tab == T_RECORD) {

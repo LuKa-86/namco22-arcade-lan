@@ -25,13 +25,27 @@ static inline nk_bool eng_nk_button_sel(struct nk_context *c, const char *text, 
     b.text_normal = b.text_hover = b.text_active = nk_rgb(0, 0, 0);
     return nk_button_label_styled(c, &b, text);
 }
-/* VOLUME PRESETS on the keyboard (the Mute / 25% / 50% / 100% buttons are mouse only): the next preset up or down from v, Enter cycles */
-static inline int eng_vol_preset(int v, int dir)
+/* THE VOLUME BOXES (Mute / 25% / 50% / 100%) on the keyboard too: they are the Audio page's last row -- Down onto them, Left / Right picks
+ * a box (amber), Enter sets it. Our fork. eng_vol_box_key(dir): the box the keys are on moved by dir; returns the volume to set (Enter),
+ * or -1. eng_vol_boxes(c, on_row, set): draws the four, the keys' box amber while on_row; a click sets the volume through set(). */
+static const int eng_vol_box_val[4] = { 0, 25, 50, 100 };
+static const char *const eng_vol_box_name[4] = { "Mute", "25%", "50%", "100%" };
+static int eng_vol_box_at = 3;
+static bool eng_vol_box_fresh = true;                          /* the keys are not on the boxes yet: start from the one that is set */
+static inline int eng_vol_box_key(int dir, int volume)
 {
-    static const int p[4] = { 0, 25, 50, 100 };
-    if (dir > 0) { for (int i = 0; i < 4; i++) if (p[i] > v) return p[i]; return 100; }
-    if (dir < 0) { for (int i = 3; i >= 0; i--) if (p[i] < v) return p[i]; return 0; }
-    for (int i = 0; i < 4; i++) if (p[i] > v) return p[i];
-    return 0;                                                   /* Enter at 100%: round to Mute */
+    if (eng_vol_box_fresh) { eng_vol_box_fresh = false; for (int k = 0; k < 4; k++) if (eng_vol_box_val[k] == volume) eng_vol_box_at = k; }
+    if (dir == 0) return eng_vol_box_val[eng_vol_box_at];
+    eng_vol_box_at += dir;
+    if (eng_vol_box_at < 0) eng_vol_box_at = 0;
+    if (eng_vol_box_at > 3) eng_vol_box_at = 3;
+    return -1;
+}
+static inline void eng_vol_boxes(struct nk_context *c, bool on_row, int volume, void (*set)(int))
+{
+    if (!on_row) { eng_vol_box_fresh = true; for (int k = 0; k < 4; k++) if (eng_vol_box_val[k] == volume) eng_vol_box_at = k; }   /* start from the box that is set */
+    nk_layout_row_dynamic(c, 24, 4);
+    for (int k = 0; k < 4; k++)
+        if (eng_nk_button_sel(c, eng_vol_box_name[k], on_row && k == eng_vol_box_at)) { eng_vol_box_at = k; set(eng_vol_box_val[k]); }
 }
 #endif
