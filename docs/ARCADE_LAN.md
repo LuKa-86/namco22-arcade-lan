@@ -5,7 +5,7 @@ wired LAN the way the original boards were linked by their cable.**
 
 For playing at home or over the internet, use the original project,
 [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile). All the work of rebuilding the games is
-the original author's; this fork only adds the cabinet link described here, and follows their releases (currently 0.7.0).
+the original author's; this fork only adds the cabinet link described here, and follows their releases (currently 0.9.0).
 
 | Game | Arcade LAN | Cabinets |
 |---|---|---|
