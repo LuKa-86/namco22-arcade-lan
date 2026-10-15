@@ -101,19 +101,24 @@ int tc2_window_open(int scale, int fullscreen)
                            eng_disp_win_w(g_eng_disp.scale), eng_disp_win_h(g_eng_disp.scale),
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return 0; }
-    { const char *wp = getenv("TC2_WINPOS");       /* our fork, the link's "try both on this PC": left / right = that half of the screen (no dragging:
-                                                    * a window being dragged stops its game, and the other cabinet loses it) */
-      SDL_Rect b;
-      if (wp && !g_eng_disp.winmode && SDL_GetDisplayUsableBounds(0, &b) == 0) {
-          int w, h; SDL_GetWindowSize(win, &w, &h);
-          const int half = b.w / 2, right = wp[0] == 'r' || wp[0] == 'R';
-          if (w > half) { h = h * half / w; w = half; SDL_SetWindowSize(win, w, h); }
-          SDL_SetWindowPosition(win, b.x + (right ? half : 0) + (half - w) / 2, b.y + (b.h - h) / 2);
-      } }
     glc = SDL_GL_CreateContext(win);
     if (!glc) { fprintf(stderr, "[HOST] OpenGL: %s\n", SDL_GetError()); return 0; }
     SDL_GL_MakeCurrent(win, glc);
     eng_disp_attach(win);
+    { const char *wp = getenv("TC2_WINPOS");       /* our fork, the link's "try both on this PC": left / right = that half of the screen (no dragging:
+                                                    * a window being dragged stops its game, and the other cabinet loses it) */
+      SDL_Rect b;
+      if (wp && !g_eng_disp.winmode && SDL_GetDisplayUsableBounds(0, &b) == 0) {
+          int w0, h0; SDL_GetWindowSize(win, &w0, &h0);
+          int top = 0, lb = 0, bot = 0, rb = 0; SDL_GetWindowBordersSize(win, &top, &lb, &bot, &rb);   /* the title bar and frame, outside the size */
+          const int half = b.w / 2, right = wp[0] == 'r' || wp[0] == 'R';
+          const int aw = half - lb - rb, ah = b.h - top - bot;      /* the picture fills its half, frame and title bar on the screen */
+          int w = aw, h = aw * h0 / w0;
+          if (h > ah) { h = ah; w = ah * w0 / h0; }
+          SDL_SetWindowSize(win, w, h);
+          SDL_SetWindowPosition(win, b.x + (right ? half : 0) + lb + (aw - w) / 2, b.y + top + (ah - h) / 2);
+          fprintf(stderr, "[HOST] window %d x %d at the %s half of the screen (%d x %d)\n", w, h, right ? "right" : "left", b.w, b.h);
+      } }
     eng_vsync_init(&vs, win, getenv("TC2_VSYNC"));
     tc2_smooth_set(eng_cfg_int("motion_smooth", 0));
     eng_pace_reset(&pace);
@@ -387,5 +392,5 @@ void tc2_window_frame(void)
     int ok = pass(1);
     int tc2_c422_linked(void);                                   /* LINKED (our fork): the game plays on under the menu -- a cabinet that stops goes */
     while (ok && !tc2_c422_linked() && (eng_ui_is_open() || paused)) { ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }   /* silent and the other one carries on without it */
-    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
+    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_c422_report(void); tc2_c422_report(); } { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }

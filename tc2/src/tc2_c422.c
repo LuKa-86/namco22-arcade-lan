@@ -18,7 +18,13 @@
  * goes quiet, so here: the sender marks the end of a burst -- a send that finishes with no new one started within two byte times.
  *
  * THE CABLE: every piece of a burst goes to the other PC as a UDP datagram (the session, a sequence number, the end-of-burst flag, the
- * bytes); the receiver drops duplicates and old ones and writes the rest into its ring as they come (polled a few times a frame).
+ * bytes, and the sender's game time -- its CPU cycle count); the receiver drops duplicates and old ones and writes the rest into its ring
+ * at ITS OWN game time = the sender's + LAG (about a frame and a half).
+ * THE TWO GAMES KEEP IN STEP ON GAME TIME, not on the PCs' clocks (the real pair shares a clock; two PCs do not, and a PC can stall: the
+ * graphics driver preparing a new scene took 0.4 - 1.1 s on the Iris Xe, a window being dragged stops its game outright -- the other game
+ * ran on, saw nothing from its partner for those frames and gave the partner's player to the computer, "COM"). Each side tells the other
+ * how far its game has run ("C42T", every few lines); a side that gets more than LAG ahead of its partner waits for it. A wait of more than
+ * 5 s (the partner closed, crashed or unplugged; "C42B" = closed) and the link is broken: the game carries on and handles the lost partner.
  * THE SESSION and the power-on wait: below (tc2_c422_gate). The settings: tc2_link.cfg beside the program (made on the first run, link=off).
  *
  *   TC2_LINK=<side>:<this PC's port>:<other PC>:<its port>     (tests) side L (left / red) or R (right / blue) -- the I/O board's Link ID
@@ -80,6 +86,16 @@ static uint8_t pend[1500]; static int npend;   /* this burst's bytes not yet sen
 static uint64_t poll_at;
 static unsigned long n_bursts_out, n_bursts_in, n_bytes_out, n_bytes_in, n_drops;
 
+/* in step on game time (above) */
+#define FRAME_CYCLES 2822400u             /* 169.344 MHz / 60 */
+static uint64_t lag = FRAME_CYCLES * 3 / 2;
+static uint64_t peer_time;                /* how far the partner's game has run (its last word) */
+static int peer_lost;                     /* the link broke (a wait ran out, or the partner closed): no more waiting */
+static unsigned long n_waits; static uint64_t wait_ms_total, wait_ms_max;
+typedef struct { uint64_t due; int n, end; uint8_t d[1500]; } rx_piece;
+#define RXQ 64
+static rx_piece rxq[RXQ]; static int rxq_head, rxq_n;   /* received, not yet due */
+
 /* THE SESSION (as the real cabinets: they link when they are switched on together; one switched on later, or restarted, plays alone
  * until both are restarted -- the game itself only links two boards that start together: one started 25 s late got a half link).
  * Each start draws a random number; two cabinets waiting at power-on make their session from both numbers.
@@ -109,6 +125,8 @@ static void irq_update(void) { tc2_irq_set(TC2_SRC_C422, (reg[0] & ~reg[1] & 6) 
 
 static void put32(uint8_t *b, uint32_t v) { b[0] = (uint8_t)(v >> 24); b[1] = (uint8_t)(v >> 16); b[2] = (uint8_t)(v >> 8); b[3] = (uint8_t)v; }
 static uint32_t get32(const uint8_t *b) { return (uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | b[3]; }
+static void put64(uint8_t *b, uint64_t v) { put32(b, (uint32_t)(v >> 32)); put32(b + 4, (uint32_t)v); }
+static uint64_t get64(const uint8_t *b) { return (uint64_t)get32(b) << 32 | get32(b + 4); }
 
 /* the settings: tc2_link.cfg beside the program (link=on|off, side=left|right, address=auto|<the other PC>, port=23000, wait=60), or
  * TC2_LINK=side:port:host:port (tests: two copies on one PC) */
@@ -155,6 +173,7 @@ static void open_link(void)
     { const char *sd = getenv("TC2_SIDE"); if (sd && *sd) side = (sd[0] == 'r' || sd[0] == 'R') ? 'R' : 'L'; }   /* the launchers: LEFT / RIGHT cabinet */
     side_right = side == 'R' || side == 'r';
     if (getenv("TC2_LINK_WAIT")) wait_s = atoi(getenv("TC2_LINK_WAIT"));
+    if (getenv("TC2_LINK_LAG")) lag = (uint64_t)(atof(getenv("TC2_LINK_LAG")) * FRAME_CYCLES);   /* TEST: in frames */
     if (!on) { fprintf(stderr, "[C422] link off (tc2_link.cfg): this cabinet plays alone\n"); return; }
 #ifdef _WIN32
     { WSADATA w; WSAStartup(MAKEWORD(2, 2), &w); }
@@ -194,7 +213,7 @@ static void send_hello(void)
 {
     if (sk == BAD_SOCK) return;
     uint8_t b[16]; memcpy(b, "C42H", 4);
-    b[4] = 1; b[5] = (uint8_t)side_right; b[6] = (uint8_t)state; b[7] = 0;
+    b[4] = 2; b[5] = (uint8_t)side_right;                    /* 2: data stamped with game time (1 = the first kit; the two never link) */ b[6] = (uint8_t)state; b[7] = 0;
     put32(b + 8, my_nonce); put32(b + 12, session);
     if (peer_known) sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer);
     if (auto_addr && state != ST_LINKED) {                   /* not found yet: to every PC on the network */
@@ -219,7 +238,13 @@ static void go_alone(const char *why)
 
 static void on_hello(const uint8_t *b, int r, const struct sockaddr_in *from)
 {
-    if (r < 16 || b[4] != 1) return;
+    if (r < 16) return;
+    if (b[4] != 2) {
+        static int said;
+        snprintf(warn_text, sizeof warn_text, "THE OTHER PC HAS A DIFFERENT VERSION OF THE GAME - COPY THE SAME KIT TO BOTH");
+        if (!said) { said = 1; fprintf(stderr, "[C422] WARNING: the PC at %s runs another version of the link (%d, this is 2)\n", inet_ntoa(from->sin_addr), b[4]); }
+        return;
+    }
     const int their_side = b[5] & 1, their_state = b[6];
     const uint32_t nonce = get32(b + 8), their_session = get32(b + 12);
     if (nonce == my_nonce) return;                           /* our own broadcast */
@@ -247,12 +272,13 @@ static void flush(int end)
     if (!npend && !end) return;
     { static int loss = -1; if (loss < 0) { const char *e = getenv("TC2_LINK_LOSS"); loss = e ? atoi(e) : 0; }
       if (loss && rand() % 100 < loss) { tx_seq++; npend = 0; return; } }   /* TEST: lost on the cable */
-    uint8_t b[16 + sizeof pend];
+    uint8_t b[24 + sizeof pend];
     memcpy(b, "C422", 4);
     put32(b + 4, session); put32(b + 8, tx_seq++);
     b[12] = (uint8_t)end; b[13] = 0; b[14] = (uint8_t)(npend >> 8); b[15] = (uint8_t)npend;
-    memcpy(b + 16, pend, (size_t)npend);
-    sendto(sk, (const char *)b, 16 + npend, 0, (struct sockaddr *)&peer, sizeof peer);
+    put64(b + 16, tc2_cycles_now());                         /* this game's time: due at the other end LAG later */
+    memcpy(b + 24, pend, (size_t)npend);
+    sendto(sk, (const char *)b, 24 + npend, 0, (struct sockaddr *)&peer, sizeof peer);
     if (end) n_bursts_out++;
     n_bytes_out += (unsigned long)npend;
     npend = 0;
@@ -286,16 +312,70 @@ static void poll_cable(void)
         if (r < 0) return;
         if (r < 16) continue;
         if (!memcmp(b, "C42H", 4)) { on_hello(b, r, &from); continue; }
-        if (memcmp(b, "C422", 4) || state != ST_LINKED || get32(b + 4) != session) continue;   /* not from our session */
+        if (state != ST_LINKED || get32(b + 4) != session) continue;                      /* not from our session */
+        if (!memcmp(b, "C42T", 4)) { const uint64_t t = get64(b + 8); if (t > peer_time) peer_time = t; continue; }
+        if (!memcmp(b, "C42B", 4)) {
+            if (!peer_lost) fprintf(stderr, "[C422] the other cabinet was closed (frame %u): the link is broken\n", rr_frame);
+            peer_lost = 1; continue;
+        }
+        if (memcmp(b, "C422", 4) || r < 24) continue;
         const uint32_t seq = get32(b + 8);
         const int end = b[12] & 1, n = b[14] << 8 | b[15];
-        if (16 + n > r) continue;
+        if (24 + n > r || n > (int)sizeof rxq[0].d) continue;
+        const uint64_t ts = get64(b + 16);
+        if (ts > peer_time) peer_time = ts;
         if (rx_seq_last != 0xFFFFFFFFu && (int32_t)(seq - rx_seq_last) <= 0) continue;     /* a duplicate or a late one */
         if (rx_seq_last != 0xFFFFFFFFu && seq != rx_seq_last + 1) n_drops += seq - rx_seq_last - 1;
         rx_seq_last = seq;
-        receive(b + 16, n, end);
-        if (logon) fprintf(stderr, "[C422] f%u in  %3d bytes%s (rx at %03X)\n", rr_frame, n, end ? " END" : "", reg[6] & 0xFFF);
+        if (rxq_n == RXQ) {                                  /* full (cannot happen in step): the oldest goes in now */
+            rx_piece *o = &rxq[rxq_head]; receive(o->d, o->n, o->end); rxq_head = (rxq_head + 1) % RXQ; rxq_n--;
+        }
+        rx_piece *q = &rxq[(rxq_head + rxq_n++) % RXQ];
+        q->due = ts + lag; q->n = n; q->end = end; memcpy(q->d, b + 24, (size_t)n);
+        if (logon) fprintf(stderr, "[C422] f%u in  %3d bytes%s (sent at %llu, due %llu)\n", rr_frame, n, end ? " END" : "", (unsigned long long)ts, (unsigned long long)q->due);
     }
+}
+
+/* our game's time to the other side (it may run up to LAG past it) */
+static void send_time(uint64_t now)
+{
+    if (sk == BAD_SOCK || state != ST_LINKED || peer_lost) return;
+    uint8_t b[16]; memcpy(b, "C42T", 4); put32(b + 4, session); put64(b + 8, now);
+    sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer);
+}
+
+/* the received pieces whose time has come, into the ring */
+static void deliver(uint64_t now)
+{
+    while (rxq_n && rxq[rxq_head].due <= now) {
+        rx_piece *p = &rxq[rxq_head];
+        receive(p->d, p->n, p->end);
+        if (logon) fprintf(stderr, "[C422] f%u ring %3d bytes%s (rx at %03X)\n", rr_frame, p->n, p->end ? " END" : "", reg[6] & 0xFFF);
+        rxq_head = (rxq_head + 1) % RXQ; rxq_n--;
+    }
+}
+
+/* AHEAD OF THE PARTNER by more than LAG: wait for it (its game stalled, or its PC runs a little slow). The window is kept alive meanwhile. */
+static void wait_for_peer(uint64_t now)
+{
+    if (state != ST_LINKED || peer_lost || sk == BAD_SOCK || now <= peer_time + lag) return;
+    const uint64_t t0 = ms_now(); uint64_t told = t0;
+    send_time(now);
+    while (now > peer_time + lag && !peer_lost) {
+        fd_set fs; FD_ZERO(&fs); FD_SET(sk, &fs);
+        struct timeval tv = { 0, 2000 };
+        select((int)sk + 1, &fs, NULL, NULL, &tv);
+        poll_cable();
+        const uint64_t t = ms_now();
+        if (t - told >= 20) { told = t; send_time(now); if (SDL_WasInit(SDL_INIT_VIDEO)) SDL_PumpEvents(); }
+        if (t - t0 >= 5000) {
+            peer_lost = 1;
+            fprintf(stderr, "[C422] the other cabinet has not answered for 5 s (frame %u): the link is broken, this cabinet plays on\n", rr_frame);
+        }
+    }
+    const uint64_t w = ms_now() - t0;
+    n_waits++; wait_ms_total += w; if (w > wait_ms_max) wait_ms_max = w;
+    if (w >= 100) fprintf(stderr, "[C422] waited %llu ms for the other cabinet (frame %u)\n", (unsigned long long)w, rr_frame);
 }
 
 /* POWER-ON: wait for the other cabinet (up to wait= seconds), as the real pair links only when both are switched on. pump (the window, or
@@ -350,7 +430,11 @@ void tc2_c422_tick(void)
         burst_open = 0; idle_at = 0; flush(1);
         if (logon) fprintf(stderr, "[C422] f%u burst end\n", rr_frame);
     }
-    if (now >= poll_at) { poll_at = now + POLL_CYCLES; poll_cable(); }
+    if (now >= poll_at) { poll_at = now + POLL_CYCLES; poll_cable(); send_time(now); }
+    { static int at = -1, ms; if (at < 0) { at = 0; const char *e = getenv("TC2_LINK_STALL"); if (e) sscanf(e, "%d:%d", &at, &ms); }   /* TEST: frame:ms, */
+      if (at > 0 && (int)rr_frame >= at) { at = 0; fprintf(stderr, "[C422] TEST: this PC stalls %d ms\n", ms); SDL_Delay((Uint32)ms); } }   /* a PC that stalls once */
+    wait_for_peer(now);
+    deliver(now);
 }
 
 int tc2_c422_read(uint32_t p, uint32_t *v)
@@ -384,6 +468,9 @@ void tc2_c422_load_reg(unsigned k, uint16_t v) { if (k < 8) reg[k] = v; }
 void tc2_c422_report(void)
 {
     if (state == ST_OFF) return;
-    fprintf(stderr, "[C422] link: %s; %lu bursts / %lu bytes out, %lu bursts / %lu bytes in, %lu datagrams lost\n", state == ST_LINKED ? "LINKED" : "alone",
-            n_bursts_out, n_bytes_out, n_bursts_in, n_bytes_in, n_drops);
+    if (sk != BAD_SOCK && state == ST_LINKED && !peer_lost)  /* closing: tell the other cabinet now (it would wait 5 s for us) */
+        for (int i = 0; i < 3; i++) { uint8_t b[16]; memcpy(b, "C42B", 4); put32(b + 4, session); memset(b + 8, 0, 8); sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer); }
+    fprintf(stderr, "[C422] link: %s%s; %lu bursts / %lu bytes out, %lu bursts / %lu bytes in, %lu datagrams lost; waited for the other %lu times, %llu ms in all, longest %llu ms\n",
+            state == ST_LINKED ? "LINKED" : "alone", peer_lost ? " (then broken)" : "", n_bursts_out, n_bytes_out, n_bursts_in, n_bytes_in, n_drops,
+            n_waits, (unsigned long long)wait_ms_total, (unsigned long long)wait_ms_max);
 }
