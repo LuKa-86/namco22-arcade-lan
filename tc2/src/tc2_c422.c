@@ -142,7 +142,8 @@ static void cfg_read(char *side, char *host, size_t hn, unsigned *lport, unsigne
                        "# side: which cabinet this PC is in -- left (the red player) or right (the blue player). The two PCs must differ.\n"
                        "# address: auto finds the other cabinet on the network by itself; or the other PC's address, e.g. 192.168.1.20\n"
                        "# port: the same number on both PCs. wait: seconds to wait at power-on for the other cabinet (then it plays alone).\n"
-                       "link=off\nside=left\naddress=auto\nport=23000\nwait=60\n");
+                       "# lights: the link lights (off, bottom-left, bottom-centre, bottom-right, top-left, top-centre, top-right)\n"
+                       "link=off\nside=left\naddress=auto\nport=23000\nwait=60\nlights=bottom-left\n");
             fclose(f);
         }
         return;
@@ -161,9 +162,40 @@ static void cfg_read(char *side, char *host, size_t hn, unsigned *lport, unsigne
     fclose(f);
 }
 
+/* THE LINK LIGHTS (as Tokyo Wars' and Rave Racer's, engine/link_host.c): lights= in tc2_link.cfg beside the program -- off, bottom-left
+ * (the default), bottom-centre, bottom-right, top-left, top-centre, top-right. Read whatever else says how to link (the launchers' TC2_LINK). */
+static int lights_pos = 1;
+static uint64_t heard_ms;                 /* the last datagram from the partner */
+static void lights_read(void)
+{
+    static const char *const key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
+    FILE *f = fopen(getenv("TC2_CABINET_DIR") ? "../tc2_link.cfg" : "tc2_link.cfg", "r");
+    if (!f) return;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        char k[64], v[64];
+        if (line[0] == '#' || sscanf(line, " %63[^= ] = %63s", k, v) != 2 || strcmp(k, "lights")) continue;
+        lights_pos = !strcmp(v, "on") ? 1 : 0;
+        for (int i = 1; i < 7; i++) if (!strcmp(v, key[i])) lights_pos = i;
+    }
+    fclose(f);
+}
+/* where (0 = not shown) and the two lights: [0] this cabinet (blue, flickers as it sends), [1] the other one -- 1 green (messages arriving,
+ * flickers with them), 3 red (nothing for a second, or the link broke), 4 grey (not linked: playing alone). lit = bright this frame. */
+int tc2_c422_lights(int kind[2], int lit[2])
+{
+    if (!lights_pos || state == ST_OFF || state == ST_WAIT) return 0;
+    kind[0] = 0; lit[0] = (int)(n_bursts_out / 8) & 1;
+    if (state != ST_LINKED) { kind[1] = 4; lit[1] = 1; }
+    else if (peer_lost || ms_now() - heard_ms > 1000) { kind[1] = 3; lit[1] = 1; }
+    else { kind[1] = 1; lit[1] = (int)(n_bursts_in / 8) & 1; }
+    return lights_pos;
+}
+
 static void open_link(void)
 {
     static int done; if (done) return; done = 1;
+    lights_read();
     logon = getenv("TC2_C422LOG") != NULL;
     char side = 'L', host[256] = "auto"; unsigned lport = 23000, pport = 23000; int on = 0;
     const char *e = getenv("TC2_LINK");
@@ -326,6 +358,7 @@ static void poll_cable(void)
         if (r < 16) continue;
         if (!memcmp(b, "C42H", 4)) { on_hello(b, r, &from); continue; }
         if (state != ST_LINKED || get32(b + 4) != session) continue;                      /* not from our session */
+        heard_ms = ms_now();
         if (!memcmp(b, "C42G", 4)) { void tc2_guns_other_claimed(const char *); b[r < (int)sizeof b ? r : (int)sizeof b - 1] = 0; tc2_guns_other_claimed((const char *)b + 8); continue; }
         if (!memcmp(b, "C42T", 4)) { const uint64_t t = get64(b + 8); if (t > peer_time) peer_time = t; continue; }
         if (!memcmp(b, "C42B", 4)) {

@@ -377,11 +377,51 @@ void eng_ui_draw_message(const char *const *lines, int n)
     nk_sdl_render(NK_ANTI_ALIASING_ON);
 }
 
+/* THE LINK LIGHTS (our fork; src/tc2_c422.c tc2_c422_lights, drawn as Tokyo Wars' and Rave Racer's engine/link_lights_nk.h): "LINK" and one
+ * light per cabinet, 1 = left (red player), 2 = right (blue player), while the menu is closed. true = drawn */
+static bool draw_link_lights(void)
+{
+    int tc2_c422_lights(int kind[2], int lit[2]), tc2_c422_link_right(void);
+    int kind[2], lit[2];
+    const int pos = tc2_c422_lights(kind, lit);
+    if (!pos) return false;
+    int ww, wh; SDL_GetWindowSize(uwin, &ww, &wh);
+    const float bw = 24, bh = 20, lw = 36, w = lw + 2 * (bw + 4) + 20, h = bh + 14;
+    const float x = pos == 1 || pos == 4 ? 6.0f : pos == 3 || pos == 6 ? (float)ww - w - 6 : ((float)ww - w) / 2;
+    const float y = pos >= 4 ? 6.0f : (float)wh - h - 6;
+    if (nk_begin(ctx, "linklights", nk_rect(x, y, w, h), NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_NO_INPUT)) {
+        static const struct nk_color col[] = { { 60, 130, 255, 255 }, { 40, 200, 70, 255 }, { 255, 165, 0, 255 }, { 215, 35, 35, 255 }, { 85, 85, 85, 255 } };
+        struct nk_command_buffer *cv = nk_window_get_canvas(ctx);
+        const struct nk_user_font *f = ctx->style.font;
+        const int right = tc2_c422_link_right();
+        nk_layout_row_begin(ctx, NK_STATIC, bh, 3);
+        nk_layout_row_push(ctx, lw);
+        nk_label(ctx, "LINK", NK_TEXT_LEFT);
+        for (int cab = 0; cab < 2; cab++) {                      /* cabinet 1 (left) first */
+            const int i = (cab == 1) == (right != 0) ? 0 : 1;   /* 0 = this one */
+            nk_layout_row_push(ctx, bw);
+            struct nk_rect r;
+            if (!nk_widget(&r, ctx)) continue;
+            struct nk_color c = col[kind[i]];
+            if (!lit[i]) c = nk_rgba(c.r / 3, c.g / 3, c.b / 3, 255);
+            nk_fill_rect(cv, r, 3, c);
+            if (i == 0) nk_stroke_rect(cv, r, 3, 2, nk_rgb(255, 255, 255));
+            char t[4]; const int len = snprintf(t, sizeof t, "%d", cab + 1);
+            const float tw = f->width(f->userdata, f->height, t, len);
+            nk_draw_text(cv, nk_rect(r.x + (r.w - tw) / 2, r.y + (r.h - f->height) / 2, tw + 2, f->height), t, len, f, c, nk_rgb(255, 255, 255));
+        }
+        nk_layout_row_end(ctx);
+    }
+    nk_end(ctx);
+    return true;
+}
+
 void eng_ui_draw(bool *quit)
 {
     if (quit_req && quit) *quit = true;
     if (!ctx) return;
-    if (!open_) {                                    /* the menu-button hint (a pad has no Esc), for a few seconds after the start */
+    if (!open_) {
+        bool any = draw_link_lights();                                    /* the menu-button hint (a pad has no Esc), for a few seconds after the start */
         if (hint_left > 0 && hint_text[0]) {
             hint_left--;
             int hw, hh; SDL_GetWindowSize(uwin, &hw, &hh);
@@ -391,8 +431,9 @@ void eng_ui_draw(bool *quit)
                 nk_label(ctx, hint_text, NK_TEXT_CENTERED);
             }
             nk_end(ctx);
-            nk_sdl_render(NK_ANTI_ALIASING_ON);
+            any = true;
         }
+        if (any) nk_sdl_render(NK_ANTI_ALIASING_ON);
         return;
     }
     int ww, wh;
