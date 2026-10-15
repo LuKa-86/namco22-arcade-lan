@@ -69,7 +69,8 @@ extern uint32_t rr_frame;
 static uint16_t reg[8];
 static int logon = -1;
 static int side_right;                    /* the Link ID switch (src/tc2_h8.c reads it) */
-int tc2_c422_link_right(void) { return side_right; }
+static void open_link(void);
+int tc2_c422_link_right(void) { open_link(); return side_right; }   /* read early by the window (src/tc2_guns.c): the settings first */
 
 /* the send in progress */
 static int tx_busy;                       /* bytes are going out */
@@ -209,9 +210,21 @@ static void open_link(void)
             lport, auto_addr ? "found on the network" : host, pport);
 }
 
+/* ONE GUN A SCREEN (src/tc2_guns.c): the device this game took, told to the other game on this PC ("C42G", with every hello) */
+static char my_claim[256];
+static void send_claim(void)
+{
+    if (sk == BAD_SOCK || state != ST_LINKED || !my_claim[0]) return;
+    uint8_t b[8 + sizeof my_claim]; memcpy(b, "C42G", 4); put32(b + 4, session);
+    const size_t n = strlen(my_claim) + 1; memcpy(b + 8, my_claim, n);
+    sendto(sk, (const char *)b, (int)(8 + n), 0, (struct sockaddr *)&peer, sizeof peer);
+}
+void tc2_c422_send_claim(const char *name) { snprintf(my_claim, sizeof my_claim, "%s", name); send_claim(); }
+
 static void send_hello(void)
 {
     if (sk == BAD_SOCK) return;
+    send_claim();
     uint8_t b[16]; memcpy(b, "C42H", 4);
     b[4] = 2; b[5] = (uint8_t)side_right;                    /* 2: data stamped with game time (1 = the first kit; the two never link) */ b[6] = (uint8_t)state; b[7] = 0;
     put32(b + 8, my_nonce); put32(b + 12, session);
@@ -313,6 +326,7 @@ static void poll_cable(void)
         if (r < 16) continue;
         if (!memcmp(b, "C42H", 4)) { on_hello(b, r, &from); continue; }
         if (state != ST_LINKED || get32(b + 4) != session) continue;                      /* not from our session */
+        if (!memcmp(b, "C42G", 4)) { void tc2_guns_other_claimed(const char *); b[r < (int)sizeof b ? r : (int)sizeof b - 1] = 0; tc2_guns_other_claimed((const char *)b + 8); continue; }
         if (!memcmp(b, "C42T", 4)) { const uint64_t t = get64(b + 8); if (t > peer_time) peer_time = t; continue; }
         if (!memcmp(b, "C42B", 4)) {
             if (!peer_lost) fprintf(stderr, "[C422] the other cabinet was closed (frame %u): the link is broken\n", rr_frame);

@@ -68,6 +68,14 @@ static SDL_Rect picture_rect(int ex)
 bool ss22_host_pointer(float *nx, float *ny, bool *inside)
 {
     if (!win || pic_r.w <= 0 || pic_r.h <= 0) return false;
+    { bool tc2_guns_state(float *, float *, bool *, uint32_t *, int *);   /* one gun a screen (src/tc2_guns.c, our fork): this game's own gun, */
+      float sx, sy; bool on; uint32_t b; int mv, dw, dh;                  /* calibrated to the whole screen */
+      if (tc2_guns_state(&sx, &sy, &on, &b, &mv)) {
+          SDL_GL_GetDrawableSize(win, &dw, &dh);
+          *nx = (sx * dw - pic_r.x) / pic_r.w; *ny = (sy * dh - pic_r.y) / pic_r.h;
+          *inside = on && *nx >= 0 && *nx <= 1 && *ny >= 0 && *ny <= 1;
+          return true;
+      } }
     int mx, my, ww, wh, dw, dh;
     SDL_GetMouseState(&mx, &my); SDL_GetWindowSize(win, &ww, &wh); SDL_GL_GetDrawableSize(win, &dw, &dh);
     const float px = (float)mx * dw / (ww ? ww : 1), py = (float)my * dh / (wh ? wh : 1);
@@ -97,7 +105,24 @@ int tc2_window_open(int scale, int fullscreen)
     { static char cfg[64]; snprintf(cfg, sizeof cfg, "%s.cfg", tc2_game.tag); eng_disp_load(cfg, scale, fullscreen != 0); }
     g_eng_disp_light_gun = true;                 /* a light-gun game: the Display page shows the crosshair row */
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
-    win = SDL_CreateWindow(tc2_game.window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    /* $TC2_MONITOR=N (our fork, one gun a screen): full screen on the Nth monitor from the left; one monitor only = the left / right half of it */
+    int mon = -1, wpos = (int)SDL_WINDOWPOS_CENTERED;
+    { const char *m = getenv("TC2_MONITOR");
+      if (m && *m) {
+          const int want = atoi(m), count = SDL_GetNumVideoDisplays();
+          int order[16], k = 0; SDL_Rect r[16];
+          for (int i = 0; i < count && k < 16; i++) if (SDL_GetDisplayBounds(i, &r[k]) == 0) order[k] = i, k++;
+          for (int i = 1; i < k; i++) for (int j = i; j > 0 && r[j].x < r[j - 1].x; j--) { SDL_Rect t = r[j]; r[j] = r[j - 1]; r[j - 1] = t; int o = order[j]; order[j] = order[j - 1]; order[j - 1] = o; }
+          if (k >= 2 && want >= 1 && want <= k) {
+              mon = order[want - 1]; wpos = (int)SDL_WINDOWPOS_CENTERED_DISPLAY(mon); g_eng_disp.winmode = 1;
+              fprintf(stderr, "[HOST] full screen on monitor %d of %d (from the left), %d x %d\n", want, k, r[want - 1].w, r[want - 1].h);
+          } else {
+              fprintf(stderr, "[HOST] monitor %d: this PC has %d monitor(s) -- a window on the %s half of the screen instead\n", want, k, want >= 2 ? "right" : "left");
+              g_eng_disp.winmode = 0; { static char pe[32]; snprintf(pe, sizeof pe, "TC2_WINPOS=%s", want >= 2 ? "right" : "left"); putenv(pe); }
+          }
+          SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");   /* the other screen's game takes the focus: this one stays up */
+      } }
+    win = SDL_CreateWindow(tc2_game.window_title, wpos, wpos,
                            eng_disp_win_w(g_eng_disp.scale), eng_disp_win_h(g_eng_disp.scale),
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return 0; }
@@ -105,6 +130,7 @@ int tc2_window_open(int scale, int fullscreen)
     if (!glc) { fprintf(stderr, "[HOST] OpenGL: %s\n", SDL_GetError()); return 0; }
     SDL_GL_MakeCurrent(win, glc);
     eng_disp_attach(win);
+    { void tc2_guns_init(SDL_Window *); tc2_guns_init(win); }    /* one gun a screen ($TC2_OWN_GUN, src/tc2_guns.c, our fork) */
     { const char *wp = getenv("TC2_WINPOS");       /* our fork, the link's "try both on this PC": left / right = that half of the screen (no dragging:
                                                     * a window being dragged stops its game, and the other cabinet loses it) */
       SDL_Rect b;
@@ -197,7 +223,8 @@ static void draw_crosshair(void)
     if (eng_xhair_draw(x, y, (float)r.h)) { glColor3f(1, 1, 1); return; }   /* Display > Crosshair image (src/eng/eng_crosshair.h) */
     for (int pass = 0; pass < 2; pass++) {                    /* a dark outline, then the bright cross: visible on any background */
         glLineWidth(pass ? w : w + 2);
-        if (pass) glColor3f(1.0f, 0.25f, 0.2f); else glColor3f(0, 0, 0);
+        { int tc2_guns_on(void), tc2_c422_link_right(void);       /* one gun a screen: the right screen's player is blue (our fork) */
+          if (!pass) glColor3f(0, 0, 0); else if (tc2_guns_on() && tc2_c422_link_right()) glColor3f(0.3f, 0.55f, 1.0f); else glColor3f(1.0f, 0.25f, 0.2f); }
         glBegin(GL_LINES);
         glVertex2f(x - a, y); glVertex2f(x - gap, y); glVertex2f(x + gap, y); glVertex2f(x + a, y);
         glVertex2f(x, y - a); glVertex2f(x, y - gap); glVertex2f(x, y + gap); glVertex2f(x, y + a);

@@ -735,10 +735,18 @@ static bool  aim_on;                                    /* the crosshair is on t
 static int   aim_src;                                   /* 0 none yet, 1 mouse, 2 stick / keys */
 bool ss22_input_aim(float *nx, float *ny) { if (!game || !game->light_gun || !aim_on) return false; *nx = aim_x; *ny = aim_y; return true; }
 static float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+/* the pointer's buttons (and position, for "it moved"): the system pointer, or with one gun a screen (src/tc2_guns.c, our fork) this game's own gun */
+bool tc2_guns_state(float *sx, float *sy, bool *on_screen, uint32_t *buttons, int *moves);
+static uint32_t mouse_state(int *x, int *y)
+{
+    float a, b; bool o; uint32_t bt; int mv;
+    if (tc2_guns_state(&a, &b, &o, &bt, &mv)) { if (x) *x = mv; if (y) *y = 0; return bt; }
+    return SDL_GetMouseState(x, y);
+}
 static void aim_update(const uint8_t *k)
 {
     static int last_mx = -1, last_my = -1;
-    int mx, my; const uint32_t mb_now = SDL_GetMouseState(&mx, &my);
+    int mx, my; const uint32_t mb_now = mouse_state(&mx, &my);
     float px, py; bool inside;
     const bool have = ss22_host_pointer(&px, &py, &inside);
     if (have && (mx != last_mx || my != last_my)) { aim_src = 1; last_mx = mx; last_my = my; }
@@ -786,7 +794,7 @@ void ss22_input_update(void)
     const uint8_t *k = SDL_GetKeyboardState(NULL);
     uint16_t p = 0;
     int left = 0, right = 0, pk[2] = { 0, 0 };
-    const uint32_t mb = game->light_gun ? SDL_GetMouseState(NULL, NULL) : 0;
+    const uint32_t mb = game->light_gun ? mouse_state(NULL, NULL) : 0;
     if (game->light_gun) aim_update(k);
 
     for (int a = 0; a < game->n; a++) {
