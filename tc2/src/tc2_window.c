@@ -21,9 +21,12 @@
 #include "eng/eng_display.h"
 #include "eng/eng_ui.h"
 #include "eng/eng_vsync.h"
+#include "eng/eng_cfg.h"
+#include "eng/eng_crosshair.h"
 #include "eng/eng_pace.h"
 #include "eng/ss22_input.h"
 #include "tc2_build.h"
+#include "tc2_game.h"
 extern const ss22_input_game tc2_input_game;
 
 int g_eng_hud_edges_on;                       /* eng_display.c's widescreen-HUD switch: no 2D HUD to move on this board yet */
@@ -38,6 +41,11 @@ static int gpu;                                                /* the GPU render
 static GLuint gpu_tex;
 static uint32_t pic[640 * 480];
 static int paused, shots;
+static int smooth_active;                                      /* motion smoothing: this game frame shows in-between frames */
+static const tc2_built *smooth_pic[3]; static double smooth_at[3]; static int smooth_np;   /* the frame's pictures and where each belongs (0..1] */
+static const tc2_built *smooth_shown;
+static const char *smooth_tag;                                 /* ENG_SWAPLOG: which picture the next swap shows */
+static int smooth_frozen;                                      /* the frame's slot may be rewritten (tc2_render_frame_end ran): no more GPU draws from it */
 static SDL_Rect pic_r;                                          /* the GAME's 4:3 area in drawable pixels: the gun aims and the crosshair live here */
 /* widescreen (Display > Widescreen, GPU only): the picture takes the window's shape, (640 + 2 * ex) x 480 board pixels, Hor+ */
 static int wide_ex(void)
@@ -75,8 +83,8 @@ void tc2_crash_box(const char *why)
 {
     if (!win) return;
     char m[512];
-    snprintf(m, sizeof m, "Time Crisis 2 had to stop:\n\n%s\n\nYour settings and scores were not touched. Please report this, with tc2.log if there is one.", why);
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Time Crisis 2", m, win);
+    snprintf(m, sizeof m, "%s had to stop:\n\n%s\n\nYour settings and scores were not touched. Please report this, with %s.log if there is one.", tc2_game.title, why, tc2_game.tag);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, tc2_game.title, m, win);
 }
 
 int tc2_window_open(int scale, int fullscreen)
@@ -86,10 +94,10 @@ int tc2_window_open(int scale, int fullscreen)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    eng_disp_load("tc2.cfg", scale, fullscreen != 0);
+    { static char cfg[64]; snprintf(cfg, sizeof cfg, "%s.cfg", tc2_game.tag); eng_disp_load(cfg, scale, fullscreen != 0); }
     g_eng_disp_light_gun = true;                 /* a light-gun game: the Display page shows the crosshair row */
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
-    win = SDL_CreateWindow("Time Crisis II", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    win = SDL_CreateWindow(tc2_game.window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            eng_disp_win_w(g_eng_disp.scale), eng_disp_win_h(g_eng_disp.scale),
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return 0; }
@@ -98,6 +106,7 @@ int tc2_window_open(int scale, int fullscreen)
     SDL_GL_MakeCurrent(win, glc);
     eng_disp_attach(win);
     eng_vsync_init(&vs, win, getenv("TC2_VSYNC"));
+    tc2_smooth_set(eng_cfg_int("motion_smooth", 0));
     eng_pace_reset(&pace);
     fprintf(stderr, "[HOST] OpenGL: %s; display %d Hz, %s\n", (const char *)glGetString(GL_RENDERER), vs.hz, eng_vsync_mode(&vs));
     if (!eng_ui_init(win, "Time Crisis II")) fprintf(stderr, "[HOST] no menu\n");
@@ -139,14 +148,30 @@ static void draw_picture(void)
     glViewport(0, 0, dw, dh);
 }
 
+/* the OS pointer, shown or hidden. SDL hides it by answering WM_SETCURSOR with no cursor, and on Windows that is not always enough: a
+ * light gun that drives the pointer as an absolute mouse (RS3 Reaper, GitHub #55) left it on screen in play, where Linux hid it. Windows
+ * also keeps a per-program display COUNTER (Win32 ShowCursor): below zero the pointer is hidden over our window whatever WM_SETCURSOR
+ * does, so on Windows the counter is held below zero too while the pointer should be hidden, and put back when it should show. */
+static void set_pointer(int show)
+{
+    if (SDL_ShowCursor(SDL_QUERY) != (show ? SDL_ENABLE : SDL_DISABLE)) SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE);
+#ifdef _WIN32
+    static int hidden;                                           /* our own decrement of the counter is in force */
+    if (!show && !hidden) { int guard = 0; while (ShowCursor(FALSE) >= 0 && ++guard < 64) {} hidden = 1; }
+    else if (show && hidden) { int guard = 0; while (ShowCursor(TRUE) < 0 && ++guard < 64) {} hidden = 0; }
+#endif
+}
+
 /* the aiming CROSSHAIR (Display > Crosshair, ON by default, saved as crosshair=): at the aim point -- the mouse until the gun I/O is in --
- * over the picture, the OS cursor hidden there while it is on */
+ * over the picture; the OS cursor hidden there while it is on, and everywhere in play while it is off */
 static void draw_crosshair(void)
 {
     float ax, ay; int dw, dh;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
     const int on = ss22_input_aim(&ax, &ay);                     /* the copied input module: mouse, absolute-mouse gun, either stick, the keys */
-    SDL_ShowCursor(g_eng_disp.crosshair && on && !eng_ui_is_open() ? SDL_DISABLE : SDL_ENABLE);
+    /* the OS pointer: shown on the menu; in play hidden over the picture with the crosshair on, and ALWAYS with the crosshair off (a light-gun
+     * player turns the crosshair off to see nothing but the game) */
+    set_pointer(eng_ui_is_open() ? 1 : (!g_eng_disp.crosshair || on) ? 0 : 1);
     if (!g_eng_disp.crosshair || !on || eng_ui_is_open()) return;
     const SDL_Rect r = pic_r;
     const float x = r.x + ax * r.w, y = r.y + ay * r.h;
@@ -155,6 +180,7 @@ static void draw_crosshair(void)
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, dw, dh, 0, -1, 1);
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     glDisable(GL_TEXTURE_2D);
+    if (eng_xhair_draw(x, y, (float)r.h)) { glColor3f(1, 1, 1); return; }   /* Display > Crosshair image (src/eng/eng_crosshair.h) */
     for (int pass = 0; pass < 2; pass++) {                    /* a dark outline, then the bright cross: visible on any background */
         glLineWidth(pass ? w : w + 2);
         if (pass) glColor3f(1.0f, 0.25f, 0.2f); else glColor3f(0, 0, 0);
@@ -183,11 +209,66 @@ static void screenshot(void)
     fclose(f); fprintf(stderr, "[HOST] screenshot %s\n", p);
 }
 
+static void draw_crosshair(void);
+/* motion smoothing: the picture for a tick at frac (0..1) of the game frame -- the first of the frame's pictures whose place is at or after it
+ * (at 120: 1/2 then N; at 165: 1/3, 2/3, N), so each tick moves on and none shows an older state than the tick before */
+static void smooth_draw(double frac)
+{
+    int k = 0;
+    while (k + 1 < smooth_np && smooth_at[k] < frac) k++;
+    /* after tc2_render_frame_end the old frame's slot is the back slot: its snapshot is overwritten and the worker rebuilds it, so the old
+     * frame's last ticks re-show what gpu_tex holds instead of drawing from it (a data race, seen as torn pictures with smoothing on) */
+    if (smooth_pic[k] && smooth_pic[k] != smooth_shown && !smooth_frozen) { gpu_tex = tc2_gl_draw(smooth_pic[k]); smooth_shown = smooth_pic[k]; }
+    { static char t[32]; snprintf(t, sizeof t, "at%.2f", smooth_at[k]); smooth_tag = t; }
+}
+static void smooth_extra(void *ctx, double frac) { (void)ctx; smooth_draw(frac); eng_vsync_extra_tag = smooth_tag; draw_picture(); draw_crosshair(); }
+
+/* the new frame's picture(s): the newest built frame drawn on the GPU at the chosen internal resolution (or the software picture), and
+ * with MOTION SMOOTHING (Display > Motion smoothing, src/tc2_render.c) and more than one picture a game frame, its in-between frames */
+static void prepare_frame(void *ctx)
+{
+    (void)ctx;
+    smooth_active = 0; smooth_np = 0; smooth_shown = NULL; smooth_tag = "frame"; smooth_frozen = 0;
+    if (gpu) {
+        /* the internal resolution is a whole multiple of the board's 480 lines; "Native (window size)" (res_h 0) takes the window's height
+         * through eng_disp_render_size like every other game -- it used to be a fixed 1x (640x480) whatever the window (GitHub #44) */
+        { int rw, rh; eng_disp_render_size(&rw, &rh); tc2_gl_set_scale((rh + 240) / 480); }
+        tc2_gl_set_wide(wide_ex());
+        const tc2_built *b = tc2_built_latest();
+        tc2_smooth_rate(vs.lock);
+        const int nm = tc2_smooth_on() && vs.lock && vs.tp < ENG_FRAME_NS && b ? tc2_built_mid_count() : 0;
+        if (nm) {                                                /* the in-between frames at 1/2 (or 1/3, 2/3), then frame N at 1 */
+            smooth_active = 1;
+            for (int k = 0; k < nm; k++) { smooth_pic[smooth_np] = tc2_built_mid(k); smooth_at[smooth_np++] = nm == 1 ? 0.5 : (k + 1) / 3.0; }
+            smooth_pic[smooth_np] = b; smooth_at[smooth_np++] = 1.0;
+            smooth_draw(0.0);                                    /* the first one is ready for the period's first tick */
+        } else if (b) gpu_tex = tc2_gl_draw(b);
+    } else { tc2_text_render(pic); glBindTexture(GL_TEXTURE_2D, tex); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_BGRA, GL_UNSIGNED_BYTE, pic); }
+}
+/* polled presentation: a tick's picture into the back buffer */
+static void present_draw(void *ctx, double frac)
+{
+    (void)ctx;
+    if (smooth_active) smooth_draw(frac); else smooth_tag = "frame";
+    eng_vsync_extra_tag = smooth_tag;
+    draw_picture();
+    draw_crosshair();
+}
+/* from the CPU's slice loop (src/tc2_cpu.c rr_tick): serve a picture tick that came due while the game runs; the clock is read every 8th slice */
+void (*tc2_present_hook)(void);
+static void present_poll(void)
+{
+    static unsigned n;
+    if (++n & 7) return;
+    if (vs.live && eng_vsync_ns() >= vs.pnext) eng_vsync_poll(&vs, win);
+}
+
 /* one window pass: events, the picture (+ the menu), the swap, the pacing. Returns 0 to quit. */
 static int pass(int new_frame)
 {
     bool quit = false;
     SDL_Event e;
+    if (new_frame) smooth_frozen = 1;                            /* tc2_render_frame_end has just run (see smooth_draw) */
     eng_ui_input_begin();
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) quit = true;
@@ -214,13 +295,23 @@ static int pass(int new_frame)
           for (const char *k = getenv("TC2_MENU_KEYS"); k && *k; k++) eng_ui_nav(*k); }
     }
     if (eng_ui_is_open() || paused) ss22_input_neutral(); else if (new_frame) ss22_input_update();
-    if (new_frame && gpu) {                                      /* the newest built frame, drawn on the GPU at the chosen internal resolution */
-        tc2_gl_set_scale(g_eng_disp.res_h > 0 ? (g_eng_disp.res_h + 240) / 480 : 1);
-        tc2_gl_set_wide(wide_ex());
-        const tc2_built *b = tc2_built_latest();
-        if (b) gpu_tex = tc2_gl_draw(b);
-    } else if (new_frame) { tc2_text_render(pic); glBindTexture(GL_TEXTURE_2D, tex); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_BGRA, GL_UNSIGNED_BYTE, pic); }
     eng_vsync_want(&vs, g_eng_disp.fps);
+    /* A FIXED PICTURE RATE (Display > Frame rate other than 60, Auto on a 60+ Hz display), the game running: POLLED PRESENTATION -- the
+     * frame on screen keeps its ticks to the end of its period, then this one's pictures are prepared and served on their ticks, also
+     * while the CPUs run the next frame (tc2_present_poll from the slice loop): before, every tick inside the ~7 ms the emulation takes
+     * waited for it (measured: 6.5% of pictures late at 120, 10% at 165, then a short gap -- an uneven rate) */
+    if (new_frame && vs.lock && !vs.vsync && !vs.swap_blocks && !eng_ui_is_open() && !paused) {   /* not with vsync: the swap blocks, the timer cannot place the ticks */
+        vs.draw = present_draw; vs.extra = NULL;
+        eng_vsync_next_frame(&vs, win, prepare_frame, NULL);
+        tc2_present_hook = present_poll;
+        eng_pace_after(&pace, tc2_game.tag);
+        return !(quit || eng_ui_quit_requested());
+    }
+    tc2_present_hook = NULL;
+    if (vs.live) eng_vsync_resync(&vs);                          /* leaving polled presentation (menu, pause, a blocking swap): clocks from now */
+    if (new_frame) prepare_frame(NULL);
+    if (!new_frame) smooth_active = 0;                            /* the menu / pause: the kept picture (menu included) is re-shown */
+    vs.extra = smooth_active ? smooth_extra : NULL;
     if (eng_vsync_show(&vs)) {
         draw_picture();
         draw_crosshair();
@@ -241,9 +332,10 @@ static int pass(int new_frame)
         eng_pace_before_swap(&pace);
         eng_vsync_capture(&vs, win);
         SDL_GL_SwapWindow(win);
+        eng_vsync_note_swap(smooth_active ? smooth_tag : "frame");
     }
     eng_vsync_after_frame(&vs, win);
-    eng_pace_after(&pace, "tc2");
+    eng_pace_after(&pace, tc2_game.tag);
     return !(quit || eng_ui_quit_requested());
 }
 
@@ -253,5 +345,5 @@ void tc2_window_frame(void)
     if (!win) return;
     int ok = pass(1);
     while (ok && (eng_ui_is_open() || paused)) { ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
-    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
+    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }
