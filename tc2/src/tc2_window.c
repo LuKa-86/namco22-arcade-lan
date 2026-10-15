@@ -101,6 +101,15 @@ int tc2_window_open(int scale, int fullscreen)
                            eng_disp_win_w(g_eng_disp.scale), eng_disp_win_h(g_eng_disp.scale),
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return 0; }
+    { const char *wp = getenv("TC2_WINPOS");       /* our fork, the link's "try both on this PC": left / right = that half of the screen (no dragging:
+                                                    * a window being dragged stops its game, and the other cabinet loses it) */
+      SDL_Rect b;
+      if (wp && !g_eng_disp.winmode && SDL_GetDisplayUsableBounds(0, &b) == 0) {
+          int w, h; SDL_GetWindowSize(win, &w, &h);
+          const int half = b.w / 2, right = wp[0] == 'r' || wp[0] == 'R';
+          if (w > half) { h = h * half / w; w = half; SDL_SetWindowSize(win, w, h); }
+          SDL_SetWindowPosition(win, b.x + (right ? half : 0) + (half - w) / 2, b.y + (b.h - h) / 2);
+      } }
     glc = SDL_GL_CreateContext(win);
     if (!glc) { fprintf(stderr, "[HOST] OpenGL: %s\n", SDL_GetError()); return 0; }
     SDL_GL_MakeCurrent(win, glc);
@@ -276,7 +285,9 @@ static int pass(int new_frame)
         if (e.type == SDL_KEYDOWN && !e.key.repeat) {
             switch (e.key.keysym.scancode) {
             case SDL_SCANCODE_ESCAPE: eng_ui_set_open(true); ss22_input_neutral(); break;
-            case SDL_SCANCODE_P: paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); break;
+            case SDL_SCANCODE_P: { int tc2_c422_linked(void);
+                if (tc2_c422_linked()) { fprintf(stderr, "[HOST] no pause while linked: the other cabinet would lose this one\n"); break; }
+                paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); break; }
             case SDL_SCANCODE_F11: eng_disp_toggle_fullscreen(); break;
             case SDL_SCANCODE_F12: screenshot(); break;
             case SDL_SCANCODE_F6: { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
@@ -315,7 +326,7 @@ static int pass(int new_frame)
     if (eng_vsync_show(&vs)) {
         draw_picture();
         draw_crosshair();
-        if (eng_ui_is_open()) eng_ui_draw(&quit);
+        eng_ui_draw(&quit);                                     /* the menu, or with it closed the hint line (our fork: was the menu only) */
         { /* tests: TC2_WINSHOT=path:pass reads the whole window back (menu included) to a PPM */
           static long at = -2; static char path[512]; static long n;
           if (at == -2) { at = -1; const char *e = getenv("TC2_WINSHOT"); if (e) { snprintf(path, sizeof path, "%s", e); char *c = strrchr(path, ':'); if (c) { *c = 0; at = atol(c + 1); } } }
@@ -339,11 +350,42 @@ static int pass(int new_frame)
     return !(quit || eng_ui_quit_requested());
 }
 
+/* THE LINK'S POWER-ON WAIT (src/tc2_c422.c tc2_c422_gate; our fork): one pass of the window with two lines in a box. S = play alone, Esc / the
+ * window closed = quit. */
+int tc2_window_wait_pump(const char *l1, const char *l2)
+{
+    if (!win) { SDL_Delay(10); return 0; }
+    int key = 0;
+    SDL_Event e;
+    eng_ui_input_begin();
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_QUIT) key = 'Q';
+        if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+            if (e.key.keysym.scancode == SDL_SCANCODE_S) key = 'S';
+            if (e.key.keysym.scancode == SDL_SCANCODE_F11) eng_disp_toggle_fullscreen();
+        }
+    }
+    eng_ui_input_end();
+    int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
+    glViewport(0, 0, dw, dh); glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+    const char *lines[4] = { "TIME CRISIS II  -  TWIN CABINET LINK", "", l1, l2 };
+    eng_ui_draw_message(lines, 4);
+    { static int n; const char *ws = getenv("TC2_WAITSHOT");   /* tests: the wait screen to a PPM (its 30th pass) */
+      if (ws && ++n == 30) { unsigned char *buf = malloc((size_t)dw * dh * 3); glReadBuffer(GL_BACK); glPixelStorei(GL_PACK_ALIGNMENT, 1);
+          glReadPixels(0, 0, dw, dh, GL_RGB, GL_UNSIGNED_BYTE, buf); FILE *f = fopen(ws, "wb");
+          if (f) { fprintf(f, "P6\n%d %d\n255\n", dw, dh); for (int y = dh - 1; y >= 0; y--) fwrite(buf + (size_t)y * dw * 3, 1, (size_t)dw * 3, f); fclose(f); }
+          free(buf); } }
+    SDL_GL_SwapWindow(win);
+    SDL_Delay(16);
+    return key;
+}
+
 /* the frame callback (the start of vertical blank): present it; hold here while the menu is open or the game is paused */
 void tc2_window_frame(void)
 {
     if (!win) return;
     int ok = pass(1);
-    while (ok && (eng_ui_is_open() || paused)) { ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
+    int tc2_c422_linked(void);                                   /* LINKED (our fork): the game plays on under the menu -- a cabinet that stops goes */
+    while (ok && !tc2_c422_linked() && (eng_ui_is_open() || paused)) { ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }   /* silent and the other one carries on without it */
     if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }

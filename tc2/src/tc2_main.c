@@ -13,11 +13,15 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 #include "lift_rt.h"
 #include "tc2_lifted.h"
 #include "tc2_host.h"
 #include "tc2_game.h"
 #include "tc2_regmap.h"
+#include <SDL2/SDL.h>
 
 extern uint8_t tc2_ram[0x1000000], tc2_boot[0x800000];
 void tc2_io_flush(void);
@@ -224,6 +228,11 @@ static void session_rec(uint32_t frame)
 void tc2_on_vblank(uint32_t frame)
 {
     scripted_inputs(frame);
+    { static int rt = -1; static uint64_t t0; static double hz;    /* $TC2_REALTIME=1 (tests, our fork): a headless run held to the board's 59.906 Hz, as a cabinet;
+                                                                    * =1.002: 0.2% fast (a PC whose clock runs fast) */
+      if (rt < 0) { const char *e = getenv("TC2_REALTIME"); rt = e != NULL; hz = 59.906 * (e && atof(e) > 0.5 ? atof(e) : 1.0); t0 = SDL_GetPerformanceCounter(); }
+      if (rt) { const uint64_t f = SDL_GetPerformanceFrequency(), due = t0 + (uint64_t)((double)frame * (double)f / hz);
+                for (uint64_t now; (now = SDL_GetPerformanceCounter()) < due; ) if (due - now > f / 500) SDL_Delay(1); } }
     { static int tf = -2; static const char *tp; if (tf == -2) { const char *e = getenv("TC2_TEXTDUMP"); tf = -1; if (e) { tf = atoi(e); tp = strchr(e, ':'); if (tp) tp++; } }
       if (tf >= 0 && (int)frame == tf && tp) {   /* $TC2_TEXTDUMP=frame:file -- the C361 character RAM + tile map (0x06800000-0x0681FFFF), big-endian */
           uint8_t *tc2_vram_ptr(uint32_t); FILE *f = fopen(tp, "wb"); if (f) { fwrite(tc2_vram_ptr(0x06800000u), 1, 0x20000, f); fclose(f); } } }
@@ -273,6 +282,9 @@ void tc2_host_step(uint32_t n)
 }
 uint32_t tc2_until_event(void) { return tc2_screen_until_event(); }
 
+/* $TC2_CABINET_DIR=<name> (our fork: two cabinets on one PC, the link's "try both" launcher): this copy keeps its log, settings, backup
+ * RAM and tc2_link.cfg in that sub-folder of the program's folder, and reads the ROMs from the program's extracted/ */
+static const char *tc2_xdir = "extracted";
 int main(int argc, char **argv)
 {
 #ifdef _WIN32
@@ -280,6 +292,7 @@ int main(int argc, char **argv)
      * backup RAM), and with no console the log goes to tc2.log beside the .exe (what the crash message points at) */
     { wchar_t wp[MAX_PATH]; DWORD n = GetModuleFileNameW(NULL, wp, MAX_PATH);
       if (n > 0 && n < MAX_PATH) { wchar_t *sl = wcsrchr(wp, L'\\'); if (sl) { *sl = 0; _wchdir(wp); } } }
+    { const char *cd = getenv("TC2_CABINET_DIR"); if (cd && *cd) { _mkdir(cd); if (_chdir(cd) == 0) tc2_xdir = "../extracted"; } }   /* our fork, below */
     freopen("tc2.log", "w", stderr); setvbuf(stderr, NULL, _IONBF, 0);
 #endif
     /* no arguments (a double-click, the player's launcher): the game in a window from power-on */
@@ -293,16 +306,16 @@ int main(int argc, char **argv)
         { char *bp = SDL_GetBasePath();                  /* the program's own folder, on every system (was /proc/self/exe) */
           if (bp) { snprintf(exe_dir, sizeof exe_dir, "%s", bp); size_t k = strlen(exe_dir); while (k > 1 && (exe_dir[k - 1] == '/' || exe_dir[k - 1] == '\\')) exe_dir[--k] = 0; SDL_free(bp); } }
         int tc2_rom_setup(const char *, const char *), tc2_rom_boot(const char *, uint8_t *);
-        if (!tc2_rom_setup("extracted", exe_dir) || !tc2_rom_boot("extracted", tc2_boot)) {
+        if (!tc2_rom_setup(tc2_xdir, exe_dir) || !tc2_rom_boot(tc2_xdir, tc2_boot)) {
             extern char tc2_rom_error[];                  /* a window run (a double-click): say it on screen, there may be no console */
             if (!strcmp(argv[1], "--window")) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, tc2_game.title,
                 tc2_rom_error[0] ? tc2_rom_error : "The game could not read its ROM files in extracted/ (see the log).", NULL);
             return 1;
         }
     }
-    { int tc2_load_data(const char *); if (!tc2_load_data("extracted")) return 1; }
-    { void tc2_h8_init(const char *); tc2_h8_init("extracted"); }
-    { void tc2_render_init(const char *); tc2_render_init("extracted"); }
+    { int tc2_load_data(const char *); if (!tc2_load_data(tc2_xdir)) return 1; }
+    { void tc2_h8_init(const char *); tc2_h8_init(tc2_xdir); }
+    { void tc2_render_init(const char *); tc2_render_init(tc2_xdir); }
     if (getenv("TC2_NO_RASTER")) { void tc2_render_soft(int); tc2_render_soft(0); }   /* profiling: the CPU work of a GPU run (no software fill) */
     /* POWER-ON ("reset" instead of a snapshot): the R4650's reset state as MAME's mips3 device_reset gives it -- PC at the reset vector
      * 0xBFC00000 (KSEG1, the boot ROM), Status = BEV | ERL, Compare 0xFFFFFFFF, Count 0, PRId 0x2200 (R4650), the FPU's FIR the same; main
@@ -326,6 +339,8 @@ int main(int argc, char **argv)
         RS8(0x2078, 0x2200);                          /* PRId */
         RS4(0x1200, 0x2200);                          /* FPU FIR */
         fprintf(stderr, "[TC2] power-on: PC BFC00000, Status 00400004\n");
+        { void tc2_c422_gate(int (*)(const char *, const char *)); int tc2_window_wait_pump(const char *, const char *), tc2_window_active(void);
+          tc2_c422_gate(tc2_window_active() ? tc2_window_wait_pump : NULL); }    /* the twin-cabinet link: wait for the other one (our fork) */
         { void tc2_backup_load(int); int tc2_window_active(void); tc2_backup_load(tc2_window_active()); }
     } else {
         snprintf(p, sizeof p, "%s.ram", argv[1]); if (!load(p, tc2_ram, sizeof tc2_ram)) return 1;

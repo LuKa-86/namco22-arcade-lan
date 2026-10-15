@@ -17,12 +17,14 @@
  * the length from the two bytes before it and expects 0x5A at the start). The chip cannot know where a message ends except that the line
  * goes quiet, so here: the sender marks the end of a burst -- a send that finishes with no new one started within two byte times.
  *
- * THE CABLE: every piece of a burst goes to the other PC as a UDP datagram ("C422", a sequence number, the end-of-burst flag, the bytes);
- * the receiver drops duplicates and old ones and writes the rest into its ring as they come (polled a few times a frame).
+ * THE CABLE: every piece of a burst goes to the other PC as a UDP datagram (the session, a sequence number, the end-of-burst flag, the
+ * bytes); the receiver drops duplicates and old ones and writes the rest into its ring as they come (polled a few times a frame).
+ * THE SESSION and the power-on wait: below (tc2_c422_gate). The settings: tc2_link.cfg beside the program (made on the first run, link=off).
  *
- *   TC2_LINK=<side>:<this PC's port>:<other PC>:<its port>     side L (left / red) or R (right / blue) -- the I/O board's Link ID switch
- *   e.g. TC2_LINK=L:23001:127.0.0.1:23002 and TC2_LINK=R:23002:127.0.0.1:23001 (two copies on one PC)
+ *   TC2_LINK=<side>:<this PC's port>:<other PC>:<its port>     (tests) side L (left / red) or R (right / blue) -- the I/O board's Link ID
+ *   switch; e.g. TC2_LINK=L:23001:127.0.0.1:23002 and TC2_LINK=R:23002:127.0.0.1:23001 (two copies on one PC); TC2_LINK_WAIT=<seconds>
  *   TC2_C422LOG=1   every register access and every burst, to the log
+ *   TC2_LINK_LOSS=<percent>   TEST: that share of this side's datagrams is never sent (a bad cable)
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -44,6 +46,8 @@ typedef int sock_t;
 #define BAD_SOCK (-1)
 #define closesocket close
 #endif
+#include <time.h>
+#include <SDL2/SDL.h>
 #include "tc2_host.h"
 #include "tc2_game.h"
 
@@ -69,56 +73,186 @@ static int burst_open;                    /* bytes have gone since the last end-
 
 /* the cable */
 static sock_t sk = BAD_SOCK;
-static struct sockaddr_in peer;
+static struct sockaddr_in peer;           /* the other cabinet (learned from its hello when the address is "auto") */
+static int peer_known, auto_addr, loopback;
 static uint32_t tx_seq, rx_seq_last = 0xFFFFFFFFu;
 static uint8_t pend[1500]; static int npend;   /* this burst's bytes not yet sent */
 static uint64_t poll_at;
 static unsigned long n_bursts_out, n_bursts_in, n_bytes_out, n_bytes_in, n_drops;
+
+/* THE SESSION (as the real cabinets: they link when they are switched on together; one switched on later, or restarted, plays alone
+ * until both are restarted -- the game itself only links two boards that start together: one started 25 s late got a half link).
+ * Each start draws a random number; two cabinets waiting at power-on make their session from both numbers.
+ *   hello "C42H" (every 100 ms while waiting, every 500 ms after): version, side, state, our number, our session
+ *   data  "C422": the session, a sequence number, the end-of-burst flag, the bytes -- only between the two of a session */
+enum { ST_OFF, ST_WAIT, ST_LINKED, ST_ALONE };
+static int state = ST_OFF;
+static uint32_t my_nonce, their_nonce, session;
+static uint64_t hello_ms;
+static char why_alone[96], warn_text[96];
+int tc2_c422_linked(void) { return state == ST_LINKED; }
+int tc2_c422_state(void) { return state; }
+
+static uint64_t ms_now(void) { return (uint64_t)SDL_GetTicks64(); }
+static uint32_t mix(uint32_t left, uint32_t right)
+{
+    uint32_t h = left * 0x9E3779B1u ^ right;
+    h ^= h >> 15; h *= 0x85EBCA77u; h ^= h >> 13;
+    return h ? h : 1;
+}
+static uint32_t session_with(uint32_t other) { return side_right ? mix(other, my_nonce) : mix(my_nonce, other); }
 
 static uint16_t ram_rd(uint32_t a) { const uint8_t *m = tc2_vram_ptr(a); return m ? (uint16_t)(m[0] << 8 | m[1]) : 0; }
 static void ram_wr(uint32_t a, uint16_t v) { uint8_t *m = tc2_vram_ptr(a); if (m) { m[0] = (uint8_t)(v >> 8); m[1] = (uint8_t)v; } }
 
 static void irq_update(void) { tc2_irq_set(TC2_SRC_C422, (reg[0] & ~reg[1] & 6) != 0); }
 
+static void put32(uint8_t *b, uint32_t v) { b[0] = (uint8_t)(v >> 24); b[1] = (uint8_t)(v >> 16); b[2] = (uint8_t)(v >> 8); b[3] = (uint8_t)v; }
+static uint32_t get32(const uint8_t *b) { return (uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | b[3]; }
+
+/* the settings: tc2_link.cfg beside the program (link=on|off, side=left|right, address=auto|<the other PC>, port=23000, wait=60), or
+ * TC2_LINK=side:port:host:port (tests: two copies on one PC) */
+static int wait_s = 60;
+static void cfg_read(char *side, char *host, size_t hn, unsigned *lport, unsigned *pport, int *on)
+{
+    FILE *f = fopen("tc2_link.cfg", "r");
+    if (!f) {                                                /* the first run: the file, with the link off, to fill in */
+        f = fopen("tc2_link.cfg", "w");
+        if (f) {
+            fprintf(f, "# Time Crisis 2 twin-cabinet link. Set link=on to use it.\n"
+                       "# side: which cabinet this PC is in -- left (the red player) or right (the blue player). The two PCs must differ.\n"
+                       "# address: auto finds the other cabinet on the network by itself; or the other PC's address, e.g. 192.168.1.20\n"
+                       "# port: the same number on both PCs. wait: seconds to wait at power-on for the other cabinet (then it plays alone).\n"
+                       "link=off\nside=left\naddress=auto\nport=23000\nwait=60\n");
+            fclose(f);
+        }
+        return;
+    }
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        char k[64], v[192];
+        if (line[0] == '#' || sscanf(line, " %63[^= ] = %191s", k, v) != 2) continue;
+        if (!strcmp(k, "link")) *on = !strcmp(v, "on") || !strcmp(v, "1") || !strcmp(v, "yes");
+        else if (!strcmp(k, "side")) *side = (v[0] == 'r' || v[0] == 'R') ? 'R' : 'L';
+        else if (!strcmp(k, "address")) snprintf(host, hn, "%s", v);
+        else if (!strcmp(k, "port")) *lport = *pport = (unsigned)atoi(v);
+        else if (!strcmp(k, "other_port")) *pport = (unsigned)atoi(v);
+        else if (!strcmp(k, "wait")) wait_s = atoi(v);
+    }
+    fclose(f);
+}
+
 static void open_link(void)
 {
     static int done; if (done) return; done = 1;
     logon = getenv("TC2_C422LOG") != NULL;
-    const char *e = getenv("TC2_LINK"); if (!e || !*e) return;
-    char side = 'L', host[256] = ""; unsigned lport = 0, pport = 0;
-    if (sscanf(e, "%c:%u:%255[^:]:%u", &side, &lport, host, &pport) != 4) { fprintf(stderr, "[C422] TC2_LINK=%s: expected side:port:host:port\n", e); return; }
+    char side = 'L', host[256] = "auto"; unsigned lport = 23000, pport = 23000; int on = 0;
+    const char *e = getenv("TC2_LINK");
+    if (e && *e) {
+        if (sscanf(e, "%c:%u:%255[^:]:%u", &side, &lport, host, &pport) != 4) { fprintf(stderr, "[C422] TC2_LINK=%s: expected side:port:host:port\n", e); return; }
+        on = 1;
+    } else cfg_read(&side, host, sizeof host, &lport, &pport, &on);
+    { const char *sd = getenv("TC2_SIDE"); if (sd && *sd) side = (sd[0] == 'r' || sd[0] == 'R') ? 'R' : 'L'; }   /* the launchers: LEFT / RIGHT cabinet */
     side_right = side == 'R' || side == 'r';
+    if (getenv("TC2_LINK_WAIT")) wait_s = atoi(getenv("TC2_LINK_WAIT"));
+    if (!on) { fprintf(stderr, "[C422] link off (tc2_link.cfg): this cabinet plays alone\n"); return; }
 #ifdef _WIN32
     { WSADATA w; WSAStartup(MAKEWORD(2, 2), &w); }
 #endif
     sk = socket(AF_INET, SOCK_DGRAM, 0);
     if (sk == BAD_SOCK) { fprintf(stderr, "[C422] no socket\n"); return; }
+    auto_addr = !strcmp(host, "auto");
+    loopback = !strcmp(host, "127.0.0.1") || !strcmp(host, "localhost");   /* both copies on this PC: this PC only (no firewall question) */
     struct sockaddr_in me; memset(&me, 0, sizeof me);
-    const int loop = !strcmp(host, "127.0.0.1") || !strcmp(host, "localhost");   /* both copies on this PC: this PC only (no firewall question) */
-    me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(loop ? INADDR_LOOPBACK : INADDR_ANY); me.sin_port = htons((uint16_t)lport);
-    if (bind(sk, (struct sockaddr *)&me, sizeof me) != 0) { fprintf(stderr, "[C422] cannot use port %u\n", lport); closesocket(sk); sk = BAD_SOCK; return; }
+    me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(loopback ? INADDR_LOOPBACK : INADDR_ANY); me.sin_port = htons((uint16_t)lport);
+    if (bind(sk, (struct sockaddr *)&me, sizeof me) != 0) {
+        fprintf(stderr, "[C422] cannot use port %u (is the game already running?): this cabinet plays alone\n", lport);
+        snprintf(why_alone, sizeof why_alone, "PORT %u IS IN USE - IS THE GAME ALREADY RUNNING?", lport);
+        closesocket(sk); sk = BAD_SOCK; state = ST_ALONE; return;
+    }
 #ifdef _WIN32
     { u_long nb = 1; ioctlsocket(sk, FIONBIO, &nb); }
+    { BOOL yes = TRUE; setsockopt(sk, SOL_SOCKET, SO_BROADCAST, (const char *)&yes, sizeof yes); }
 #else
     fcntl(sk, F_SETFL, fcntl(sk, F_GETFL) | O_NONBLOCK);
+    { int yes = 1; setsockopt(sk, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes); }
 #endif
-    struct addrinfo hints, *res = NULL; memset(&hints, 0, sizeof hints); hints.ai_family = AF_INET; hints.ai_socktype = SOCK_DGRAM;
-    if (getaddrinfo(host, NULL, &hints, &res) != 0 || !res) { fprintf(stderr, "[C422] cannot find %s\n", host); closesocket(sk); sk = BAD_SOCK; return; }
-    peer = *(struct sockaddr_in *)res->ai_addr; peer.sin_port = htons((uint16_t)pport); freeaddrinfo(res);
-    fprintf(stderr, "[C422] link cable: this cabinet is %s (Link ID), port %u -> %s:%u\n", side_right ? "RIGHT / blue" : "LEFT / red", lport, host, pport);
+    memset(&peer, 0, sizeof peer); peer.sin_family = AF_INET; peer.sin_port = htons((uint16_t)pport);
+    if (!auto_addr) {
+        struct addrinfo hints, *res = NULL; memset(&hints, 0, sizeof hints); hints.ai_family = AF_INET; hints.ai_socktype = SOCK_DGRAM;
+        if (getaddrinfo(host, NULL, &hints, &res) != 0 || !res) { fprintf(stderr, "[C422] cannot find %s: looking on the whole network instead\n", host); auto_addr = 1; }
+        else { peer.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr; peer_known = 1; freeaddrinfo(res); }
+    }
+    my_nonce = (uint32_t)SDL_GetPerformanceCounter() ^ (uint32_t)time(NULL) * 2654435761u ^ (uint32_t)(uintptr_t)&me;
+    if (!my_nonce) my_nonce = 1;
+    state = ST_WAIT;
+    fprintf(stderr, "[C422] link on: this cabinet is %s (Link ID), port %u, the other cabinet %s:%u\n", side_right ? "RIGHT / blue" : "LEFT / red",
+            lport, auto_addr ? "found on the network" : host, pport);
+}
+
+static void send_hello(void)
+{
+    if (sk == BAD_SOCK) return;
+    uint8_t b[16]; memcpy(b, "C42H", 4);
+    b[4] = 1; b[5] = (uint8_t)side_right; b[6] = (uint8_t)state; b[7] = 0;
+    put32(b + 8, my_nonce); put32(b + 12, session);
+    if (peer_known) sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer);
+    if (auto_addr && state != ST_LINKED) {                   /* not found yet: to every PC on the network */
+        struct sockaddr_in bc = peer; bc.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+        sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&bc, sizeof bc);
+    }
+}
+
+static void go_linked(uint32_t other, const struct sockaddr_in *from)
+{
+    their_nonce = other; session = session_with(other); state = ST_LINKED;
+    if (auto_addr || !peer_known) { peer.sin_addr = from->sin_addr; peer_known = 1; }
+    fprintf(stderr, "[C422] LINKED with the %s cabinet at %s (session %08X)\n", side_right ? "left" : "right", inet_ntoa(from->sin_addr), session);
+    for (int i = 0; i < 3; i++) send_hello();
+}
+static void go_alone(const char *why)
+{
+    if (state == ST_ALONE) return;
+    state = ST_ALONE; snprintf(why_alone, sizeof why_alone, "%s", why);
+    fprintf(stderr, "[C422] NOT linked: %s -- this cabinet plays alone (restart both cabinets to link them)\n", why);
+}
+
+static void on_hello(const uint8_t *b, int r, const struct sockaddr_in *from)
+{
+    if (r < 16 || b[4] != 1) return;
+    const int their_side = b[5] & 1, their_state = b[6];
+    const uint32_t nonce = get32(b + 8), their_session = get32(b + 12);
+    if (nonce == my_nonce) return;                           /* our own broadcast */
+    if (their_side == side_right) {                          /* both cabinets set to the same side */
+        static int said;
+        snprintf(warn_text, sizeof warn_text, "THE OTHER PC IS ALSO SET TO %s - SET ONE OF THEM TO %s", side_right ? "RIGHT" : "LEFT", side_right ? "LEFT" : "RIGHT");
+        if (!said) { said = 1; fprintf(stderr, "[C422] WARNING: a PC at %s is also set to side=%s in tc2_link.cfg\n", inet_ntoa(from->sin_addr), side_right ? "right" : "left"); }
+        return;
+    }
+    if (!auto_addr && peer_known && !loopback && from->sin_addr.s_addr != peer.sin_addr.s_addr) return;   /* not the address we were given */
+    if (state == ST_WAIT) {
+        if (their_state == ST_WAIT) go_linked(nonce, from);
+        else if (their_state == ST_LINKED && their_session == session_with(nonce)) go_linked(nonce, from);   /* it has just decided: with us */
+        else go_alone(their_state == ST_LINKED ? "THE OTHER CABINET WAS ALREADY PLAYING" : "THE OTHER CABINET STARTED WITHOUT THIS ONE");
+    } else if (state == ST_LINKED && nonce != their_nonce) {
+        static uint32_t told;
+        if (told != nonce) { told = nonce; fprintf(stderr, "[C422] the other cabinet restarted: it plays alone until both are restarted\n"); }
+    }
 }
 
 /* a piece of a burst onto the cable (end = the line goes quiet after it) */
 static void flush(int end)
 {
-    if (sk == BAD_SOCK) { npend = 0; return; }
+    if (sk == BAD_SOCK || state != ST_LINKED) { npend = 0; return; }
     if (!npend && !end) return;
-    uint8_t b[12 + sizeof pend];
+    { static int loss = -1; if (loss < 0) { const char *e = getenv("TC2_LINK_LOSS"); loss = e ? atoi(e) : 0; }
+      if (loss && rand() % 100 < loss) { tx_seq++; npend = 0; return; } }   /* TEST: lost on the cable */
+    uint8_t b[16 + sizeof pend];
     memcpy(b, "C422", 4);
-    b[4] = (uint8_t)(tx_seq >> 24); b[5] = (uint8_t)(tx_seq >> 16); b[6] = (uint8_t)(tx_seq >> 8); b[7] = (uint8_t)tx_seq; tx_seq++;
-    b[8] = (uint8_t)end; b[9] = 0; b[10] = (uint8_t)(npend >> 8); b[11] = (uint8_t)npend;
-    memcpy(b + 12, pend, (size_t)npend);
-    sendto(sk, (const char *)b, 12 + npend, 0, (struct sockaddr *)&peer, sizeof peer);
+    put32(b + 4, session); put32(b + 8, tx_seq++);
+    b[12] = (uint8_t)end; b[13] = 0; b[14] = (uint8_t)(npend >> 8); b[15] = (uint8_t)npend;
+    memcpy(b + 16, pend, (size_t)npend);
+    sendto(sk, (const char *)b, 16 + npend, 0, (struct sockaddr *)&peer, sizeof peer);
     if (end) n_bursts_out++;
     n_bytes_out += (unsigned long)npend;
     npend = 0;
@@ -144,20 +278,48 @@ static void receive(const uint8_t *d, int n, int end)
 static void poll_cable(void)
 {
     if (sk == BAD_SOCK) return;
+    const uint64_t t = ms_now();
+    if (t - hello_ms >= (state == ST_WAIT ? 100u : 500u)) { hello_ms = t; send_hello(); }
     for (int k = 0; k < 64; k++) {
         uint8_t b[2048]; struct sockaddr_in from; socklen_t fl = sizeof from;
         const int r = (int)recvfrom(sk, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
-        if (r < 12) return;
-        if (memcmp(b, "C422", 4)) continue;
-        const uint32_t seq = (uint32_t)b[4] << 24 | (uint32_t)b[5] << 16 | (uint32_t)b[6] << 8 | b[7];
-        const int end = b[8] & 1, n = b[10] << 8 | b[11];
-        if (12 + n > r) continue;
+        if (r < 0) return;
+        if (r < 16) continue;
+        if (!memcmp(b, "C42H", 4)) { on_hello(b, r, &from); continue; }
+        if (memcmp(b, "C422", 4) || state != ST_LINKED || get32(b + 4) != session) continue;   /* not from our session */
+        const uint32_t seq = get32(b + 8);
+        const int end = b[12] & 1, n = b[14] << 8 | b[15];
+        if (16 + n > r) continue;
         if (rx_seq_last != 0xFFFFFFFFu && (int32_t)(seq - rx_seq_last) <= 0) continue;     /* a duplicate or a late one */
         if (rx_seq_last != 0xFFFFFFFFu && seq != rx_seq_last + 1) n_drops += seq - rx_seq_last - 1;
         rx_seq_last = seq;
-        receive(b + 12, n, end);
+        receive(b + 16, n, end);
         if (logon) fprintf(stderr, "[C422] f%u in  %3d bytes%s (rx at %03X)\n", rr_frame, n, end ? " END" : "", reg[6] & 0xFFF);
     }
+}
+
+/* POWER-ON: wait for the other cabinet (up to wait= seconds), as the real pair links only when both are switched on. pump (the window, or
+ * NULL headless) shows the two lines and returns 'S' to stop waiting (play alone), 'Q' to quit, 0 otherwise. */
+void tc2_c422_gate(int (*pump)(const char *l1, const char *l2))
+{
+    open_link();
+    if (state != ST_WAIT) return;
+    const uint64_t t0 = ms_now();
+    while (state == ST_WAIT) {
+        poll_cable();
+        const int left = wait_s - (int)((ms_now() - t0) / 1000);
+        if (left <= 0) { go_alone("THE OTHER CABINET DID NOT ANSWER"); break; }
+        char l1[96], l2[128];
+        snprintf(l1, sizeof l1, "WAITING FOR THE %s CABINET...  %d", side_right ? "LEFT (RED)" : "RIGHT (BLUE)", left);
+        snprintf(l2, sizeof l2, "%s", warn_text[0] ? warn_text : "SWITCH BOTH CABINETS ON TOGETHER.   PRESS S TO PLAY ALONE");
+        int k = 0;
+        if (pump) k = pump(l1, l2); else SDL_Delay(10);
+        if (k == 'Q') exit(0);
+        if (k == 'S') { go_alone("S WAS PRESSED"); break; }
+    }
+    void eng_ui_set_hint(const char *, int);
+    if (pump && state == ST_LINKED) eng_ui_set_hint(side_right ? "LINKED WITH THE LEFT (RED) CABINET" : "LINKED WITH THE RIGHT (BLUE) CABINET", 60 * 6);
+    if (pump && state == ST_ALONE) { static char h[128]; snprintf(h, sizeof h, "NOT LINKED: %s", why_alone); eng_ui_set_hint(h, 60 * 8); }
 }
 
 static void tx_start(uint64_t now)
@@ -221,7 +383,7 @@ void tc2_c422_load_reg(unsigned k, uint16_t v) { if (k < 8) reg[k] = v; }
 
 void tc2_c422_report(void)
 {
-    if (sk == BAD_SOCK && !n_bytes_out) return;
-    fprintf(stderr, "[C422] link: %lu bursts / %lu bytes out, %lu bursts / %lu bytes in, %lu datagrams lost\n",
+    if (state == ST_OFF) return;
+    fprintf(stderr, "[C422] link: %s; %lu bursts / %lu bytes out, %lu bursts / %lu bytes in, %lu datagrams lost\n", state == ST_LINKED ? "LINKED" : "alone",
             n_bursts_out, n_bytes_out, n_bursts_in, n_bytes_in, n_drops);
 }

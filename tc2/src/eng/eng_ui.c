@@ -21,6 +21,8 @@
 #define NK_SDL_GL2_IMPLEMENTATION
 #include "../../third_party/nuklear.h"
 #include "../../third_party/nuklear_sdl_gl2.h"
+#include "eng_nk_style.h"                      /* our fork: the amber selected row, the volume boxes on the keys */
+#include "eng_nk_click.h"                      /* our fork: quick clicks / touchpad taps */
 
 #include "eng_ui.h"
 #include "eng_crosshair.h"
@@ -182,7 +184,7 @@ static const eng_ui_page page_display = { "Display", 440, 120, 26, disp_n, NULL,
 
 /* ---- Audio ------------------------------------------------------------------- */
 extern int g_c352_gain_music, g_c352_gain_fx, g_c352_gain_voice;   /* c352.c: the music, effects and speech gains (percent) */
-static int aud_n(void) { return 4; }
+static int aud_n(void) { return 5; }                  /* Volume, Music, Effects, Voice; 4 = the volume boxes (our fork: a row for the keys) */
 static int *aud_ptr(int r) { return r == 1 ? &g_c352_gain_music : r == 3 ? &g_c352_gain_voice : &g_c352_gain_fx; }
 static void aud_set(int r, int v)
 {
@@ -193,10 +195,12 @@ static void aud_set(int r, int v)
 static int aud_get(int r) { return r == 0 ? g_eng_disp.volume : *aud_ptr(r); }
 static void aud_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
+    if (r == 4) { snprintf(l, ln, "Volume boxes"); *v = 0; return; }
     snprintf(l, ln, "%s", r == 0 ? "Volume" : r == 1 ? "Music volume" : r == 2 ? "Effects volume" : "Voice volume"); snprintf(v, vn, "%d%%", aud_get(r));
 }
 static void aud_change(int r, int dir)
 {
+    if (r == 4) { const int b = eng_vol_box_key(dir, g_eng_disp.volume); if (b >= 0) eng_disp_set_volume(b); return; }   /* Left / Right pick, Enter sets */
     int v = aud_get(r) + (dir ? dir * 5 : 10);
     if (v > 100) v = dir ? 100 : 0;                          /* Enter wraps 100 -> mute */
     aud_set(r, v);
@@ -204,11 +208,7 @@ static void aud_change(int r, int dir)
 static void aud_notes(void (*line)(const char *fmt, ...))
 {
     (void)line;
-    nk_layout_row_dynamic(ctx, 24, 4);
-    if (nk_button_label(ctx, "Mute")) eng_disp_set_volume(0);
-    if (nk_button_label(ctx, "25%"))  eng_disp_set_volume(25);
-    if (nk_button_label(ctx, "50%"))  eng_disp_set_volume(50);
-    if (nk_button_label(ctx, "100%")) eng_disp_set_volume(100);
+    eng_vol_boxes(ctx, row == 4, g_eng_disp.volume, eng_disp_set_volume);
 }
 static const eng_ui_page page_audio = { "Audio", 300, 120, 26, aud_n, NULL, NULL, aud_text, aud_change, aud_notes };
 
@@ -238,6 +238,7 @@ bool eng_ui_init(SDL_Window *win, const char *title)
     struct nk_font *font = nk_font_atlas_add_default(atlas, 15 * ui_scale, &cfg);
     nk_sdl_font_stash_end();
     font->handle.height /= ui_scale;
+    eng_nk_style_highlight(ctx);
     nk_style_set_font(ctx, &font->handle);
     /* the three every game shares come first; the game's pages are added after */
     if (npages == 0) { pages[npages++] = &page_file; pages[npages++] = &page_display; pages[npages++] = &page_audio; }
@@ -264,7 +265,7 @@ void eng_ui_set_open(bool on) {
     if (input_cap_cb) { input_cap_cb(NULL, cap_u); input_cap_cb = NULL; }
     if (on && row >= nrows(tab)) row = 0;
 }
-void eng_ui_input_begin(void) { if (ctx) nk_input_begin(ctx); }
+void eng_ui_input_begin(void) { if (ctx) { nk_input_begin(ctx); nkc_begin(); } }
 void eng_ui_input_end(void)   { if (ctx) nk_input_end(ctx); }
 void eng_ui_capture_key(void (*cb)(SDL_Scancode, void *), void *u) { input_cap_cb = NULL; cap_cb = cb; cap_u = u; }
 void eng_ui_capture_input(bool (*cb)(const SDL_Event *, void *), void *u) { cap_cb = NULL; input_cap_cb = cb; cap_u = u; }
@@ -347,7 +348,7 @@ bool eng_ui_event(SDL_Event *e)
     }
     if (k >= 0) { nav(k); return true; }
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) return true;   /* the game does not see keys while open */
-    nk_sdl_handle_event(e);                              /* mouse */
+    nkc_event(e);                                        /* mouse (a quick click held a frame: eng_nk_click.h) */
     return true;
 }
 
@@ -361,6 +362,20 @@ static void note_line(const char *fmt, ...)      /* what a page's notes() calls:
 
 static char hint_text[96]; static int hint_left;
 void eng_ui_set_hint(const char *text, int frames) { snprintf(hint_text, sizeof hint_text, "%s", text ? text : ""); hint_left = frames; }
+
+/* a few centred lines in a box over the picture (the twin-cabinet link's power-on wait, src/tc2_c422.c; our fork) */
+void eng_ui_draw_message(const char *const *lines, int n)
+{
+    if (!ctx || n <= 0) return;
+    int ww, wh; SDL_GetWindowSize(uwin, &ww, &wh);
+    const float w = 600 < ww - 16 ? 600.0f : (float)ww - 16, h = 24.0f + (float)n * 22;
+    if (nk_begin(ctx, "linkwait", nk_rect(((float)ww - w) / 2, ((float)wh - h) / 2, w, h), NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER | NK_WINDOW_NO_INPUT)) {
+        nk_layout_row_dynamic(ctx, 18, 1);
+        for (int i = 0; i < n; i++) nk_label(ctx, lines[i], NK_TEXT_CENTERED);
+    }
+    nk_end(ctx);
+    nk_sdl_render(NK_ANTI_ALIASING_ON);
+}
 
 void eng_ui_draw(bool *quit)
 {
@@ -408,7 +423,7 @@ void eng_ui_draw(bool *quit)
     const int n0 = nrows(tab);
     const float rh = pg->row_h > 0 ? pg->row_h : 26;
     const float lw = pg->label_w > 0 ? pg->label_w : 120;
-    float dh = 48 + n0 * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? 44 : 0);
+    float dh = 48 + (n0 - (pg == &page_audio ? 1 : 0)) * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? 44 : 0);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = (pg->drop_w > 0 ? pg->drop_w : 340) < ww - 8 ? (pg->drop_w > 0 ? pg->drop_w : 340) : (float)ww - 8;
     float dx = title_x[tab];
@@ -423,6 +438,7 @@ void eng_ui_draw(bool *quit)
 
         /* the rows: [label][<][value][>]; the selected row is highlighted */
         for (int i = 0; i < n0; i++) {
+            if (pg == &page_audio && i == 4) continue;           /* the volume boxes: drawn under the rows (aud_notes) */
             char label[64], value[96];
             pg->text(i, label, sizeof label, value, sizeof value);
             const bool en = row_enabled(tab, i), val = has_value(tab, i);
@@ -445,7 +461,7 @@ void eng_ui_draw(bool *quit)
             if (is_audio(tab)) {                         /* the volume is a slider too */
                 int v = aud_get(i);
                 if (nk_slider_int(ctx, 0, &v, 100, 1) && v != aud_get(i)) aud_set(i, v);
-            } else if (nk_button_label(ctx, value[0] ? value : label)) { row = i; pg->change(i, 0); }
+            } else if (eng_nk_button_sel(ctx, value[0] ? value : label, pg == &page_file && i == row)) { row = i; pg->change(i, 0); }
             if (val && nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_RIGHT)) { row = i; pg->change(i, +1); }
             if (!en) nk_widget_disable_end(ctx);
         }
