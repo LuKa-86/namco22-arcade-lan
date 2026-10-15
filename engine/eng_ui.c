@@ -20,8 +20,10 @@
 #define NK_SDL_GL2_IMPLEMENTATION
 #include "../third_party/nuklear.h"
 #include "../third_party/nuklear_sdl_gl2.h"
+#include "eng_nk_style.h"
 
 #include "eng_ui.h"
+#include "eng_crosshair.h"
 #include "eng_vsync.h"
 #include "eng_display.h"
 #include "link_lights_nk.h"
@@ -59,13 +61,14 @@ static void file_change(int r, int dir)
 static const eng_ui_page page_file = { "File", 220, 0, 0, file_n, file_val, NULL, file_text, file_change, NULL };
 
 /* ---- Display: the choices of engine/eng_display.h ------------------------------ */
-enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_CROSS, D_N };   /* D_CROSS last: only light-gun games show it */
+enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_CROSS, D_XIMG, D_N };   /* D_CROSS.. last: only light-gun games show them */
 static int disp_n(void) { return g_eng_disp_light_gun ? D_N : D_CROSS; }
 static bool disp_enabled(int r)
 {
     if (r == D_SIZE) return g_eng_disp.winmode == 0;
     if (r == D_ASPECT) return !g_eng_disp.wide;
     if (r == D_HUD) return g_eng_disp.wide;
+    if (r == D_XIMG) return g_eng_disp.crosshair;
     return true;
 }
 static void disp_text(int r, char *l, size_t ln, char *v, size_t vn)
@@ -82,6 +85,7 @@ static void disp_text(int r, char *l, size_t ln, char *v, size_t vn)
     case D_HUD:     snprintf(l, ln, "Widescreen HUD"); snprintf(v, vn, "%s", g_eng_disp.hud_edges ? "at the screen edges" : "original (4:3 centre)"); break;
     case D_FPS:     snprintf(l, ln, "Frame rate"); snprintf(v, vn, "%s", eng_vsync_rate_name(g_eng_disp.fps)); break;
     case D_CROSS:   snprintf(l, ln, "Crosshair"); snprintf(v, vn, "%s", g_eng_disp.crosshair ? "ON" : "OFF"); break;
+    case D_XIMG:    snprintf(l, ln, "Crosshair image"); snprintf(v, vn, eng_xhair_count() ? "%s" : "%s (no PNG in crosshairs/)", eng_xhair_name()); break;
     }
 }
 static void disp_change(int r, int dir)
@@ -103,6 +107,7 @@ static void disp_change(int r, int dir)
     case D_HUD:     eng_disp_set_hud_edges(!g_eng_disp.hud_edges); break;
     case D_FPS:     eng_disp_set_fps(eng_vsync_rate_step(g_eng_disp.fps, d)); break;
     case D_CROSS:   eng_disp_set_crosshair(!g_eng_disp.crosshair); break;
+    case D_XIMG:    eng_xhair_step(d); break;
     }
 }
 static void labelf(nk_flags align, const char *fmt, ...)
@@ -198,6 +203,7 @@ bool eng_ui_init(SDL_Window *win, const char *title)
     nk_sdl_font_stash_end();
     font->handle.height /= ui_scale;
     nk_style_set_font(ctx, &font->handle);
+    eng_nk_style_highlight(ctx);
     /* the three every game shares come first; the game's pages are added after */
     if (npages == 0) { pages[npages++] = &page_file; pages[npages++] = &page_display; pages[npages++] = &page_audio; }
     else {                                     /* pages were added before init: put the standard ones in front */
@@ -235,7 +241,7 @@ static bool layer_modal(void) { for (int i = 0; i < nlayers; i++) if (layers[i]-
 void eng_ui_goto(int p, int r) { if (p >= 0 && p < npages) { tab = p; row = r; } }
 
 /* one navigation step from the keyboard, a pad or a hat */
-enum { K_UP, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_TABPREV, K_TABNEXT };
+enum { K_UP, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_TABPREV, K_TABNEXT, K_EXIT };
 static void nav(int k)
 {
     const int n = nrows(tab);
@@ -246,6 +252,7 @@ static void nav(int k)
     case K_RIGHT: if (row < 0) tab = cyc(tab, +1, npages); else if (has_value(tab, row)) pages[tab]->change(row, +1); break;
     case K_OK:    if (row < 0) row = 0; else if (row_enabled(tab, row)) pages[tab]->change(row, 0); break;
     case K_BACK:  open_ = false; break;
+    case K_EXIT:  quit_req = true; break;                   /* Esc opens the menu, Esc again leaves the game */
     case K_TABPREV: tab = cyc(tab, -1, npages); row = 0; break;
     case K_TABNEXT: tab = cyc(tab, +1, npages); row = 0; break;
     }
@@ -293,7 +300,8 @@ bool eng_ui_event(SDL_Event *e)
         case SDL_SCANCODE_LEFT: k = K_LEFT; break;
         case SDL_SCANCODE_RIGHT: k = K_RIGHT; break;
         case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: if (!rep) k = K_OK; break;
-        case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;
+        case SDL_SCANCODE_ESCAPE: if (!rep) k = K_EXIT; break;     /* Esc twice = exit; Backspace / pad B = back to the game */
+        case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;
         case SDL_SCANCODE_TAB: if (!rep) k = (e->key.keysym.mod & KMOD_SHIFT) ? K_TABPREV : K_TABNEXT; break;
         case SDL_SCANCODE_PAGEUP: if (!rep) k = K_TABPREV; break;
         case SDL_SCANCODE_PAGEDOWN: if (!rep) k = K_TABNEXT; break;
@@ -384,7 +392,7 @@ void eng_ui_draw(bool *quit)
             if (nk_select_label(ctx, pages[t]->name, NK_TEXT_CENTERED, t == tab) && t != tab) { tab = t; row = 0; }
         }
         nk_layout_row_push(ctx, (float)ww - x - 8 > 60 ? (float)ww - x - 8 : 60);
-        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Esc: close" : "Arrows, Enter, Esc", NK_TEXT_RIGHT);
+        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Backspace: resume   Esc: exit game" : "Arrows, Enter   Backspace: resume   Esc: exit game", NK_TEXT_RIGHT);
         nk_menubar_end(ctx);
     }
     nk_end(ctx);

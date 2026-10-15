@@ -32,6 +32,7 @@ void rr_hw_link_on(int cabinet, bool seed_id);   /* seed_id: a cabinet's first r
 bool rr_hw_eeprom_persist(const char *path);
 void rr_hw_eeprom_save(void);
 void rr_hw_sci_irq(void);
+bool rr_hw_select_screen(void);          /* the game's AT/MT, course or class select is up (GitHub #35) */
 void rr_hw_drive_io(void);            /* the I/O board's answer (handle_driving_io) into shared RAM 0x30..0x3A */
 void rr_hw_keycus_force(uint32_t v);   /* trace oracle: the next keycus read returns v (MAME's random answer) */
 int  rr_env_init(void);                /* trace oracle (rr_env.c): RR_ENV=<file> replays what MAME's devices returned + where its interrupts landed */

@@ -227,6 +227,15 @@ void rr_hw_link_on(int cabinet, bool seed_id)
     eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));
     fprintf(stderr, "[LINK] first run of cabinet %d: the game's own LINK ID set to %d (change it in the test menu, GAME OPTIONS)\n", cabinet + 1, (cabinet & 7) + 1);
 }
+/* GitHub #35: is the game on one of its wheel-position selection screens (rr_game_t.select_addr / select_vals)? */
+bool rr_hw_select_screen(void)
+{
+    const uint32_t a = g_rr_game->select_addr - 0x10000000u;
+    if (!g_rr_game->select_addr || a + 1 >= RR_WRAM_SIZE) return false;
+    const uint16_t v = (uint16_t)(g_rr.wram[a] << 8 | g_rr.wram[a + 1]);
+    for (int i = 0; i < 4 && g_rr_game->select_vals[i]; i++) if (v == g_rr_game->select_vals[i]) return true;
+    return false;
+}
 
 static char    nv_path[512];
 static uint8_t nv_saved[RR_EEPROM_SIZE];
