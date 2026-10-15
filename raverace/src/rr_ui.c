@@ -94,7 +94,7 @@ static int nrows(int t)
     switch (t) {
     case T_FILE: return 4;
     case T_DISPLAY: return D_N;
-    case T_AUDIO: return 1;
+    case T_AUDIO: return 2;                 /* Volume, Quick volume (our fork) */
     case T_CONTROLS: return C_N + RR_ACT_N;
     case T_RECORD: return 1;
     case T_NETWORK: return link_page_rows();
@@ -150,7 +150,10 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         case D_HUD:     { extern int g_eng_hud_edges_on; snprintf(label, ln, "Widescreen HUD"); snprintf(value, vn, "%s", g_eng_hud_edges_on ? "at the screen edges" : "original (4:3 centre)"); break; }
         }
         break;
-    case T_AUDIO: snprintf(label, ln, "Volume"); snprintf(value, vn, "%d%%", g_cfg_volume); break;
+    case T_AUDIO:
+        if (r == 1) { snprintf(label, ln, "Quick volume"); if (g_cfg_volume) snprintf(value, vn, "%d%%", g_cfg_volume); else snprintf(value, vn, "Mute"); }
+        else { snprintf(label, ln, "Volume"); snprintf(value, vn, "%d%%", g_cfg_volume); }
+        break;
     case T_CONTROLS:
         if (r == C_FREEPLAY) { snprintf(label, ln, "Free play"); snprintf(value, vn, "%s", rr_hw_freeplay() ? "ON" : "OFF (coins)"); }
         else if (r == C_FFB) {
@@ -273,6 +276,7 @@ static void row_change(int t, int r, int dir)
         }
         break;
     case T_AUDIO: {
+        if (r == 1) { rr_host_set_volume(eng_vol_preset(g_cfg_volume, dir)); break; }   /* Mute, 25, 50, 100 % */
         int v = g_cfg_volume + (dir ? dir * 5 : 10);
         if (v > 100) v = dir ? 100 : 0;                     /* Enter wraps 100 -> mute */
         if (v < 0) v = 0;
@@ -858,10 +862,10 @@ void rr_ui_draw(bool *quit)
             }
             if (nk_select_label(ctx, label, NK_TEXT_LEFT, i == row)) row = i;
             if (val && nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_LEFT)) { row = i; row_change(tab, i, -1); }
-            if (tab == T_AUDIO) {                        /* the volume is a slider too */
+            if (tab == T_AUDIO && i == 0) {              /* the volume is a slider too */
                 int v = g_cfg_volume;
                 if (nk_slider_int(ctx, 0, &v, 100, 1) && v != g_cfg_volume) rr_host_set_volume(v);
-            } else if (nk_button_label(ctx, value[0] ? value : label)) { row = i; row_change(tab, i, 0); }
+            } else if (eng_nk_button_sel(ctx, value[0] ? value : label, tab == T_FILE && i == row)) { row = i; row_change(tab, i, 0); }
             if (val && nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_RIGHT)) { row = i; row_change(tab, i, +1); }
             if (!en) nk_widget_disable_end(ctx);
         }
