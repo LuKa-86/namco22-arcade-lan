@@ -21,6 +21,7 @@
 #include "../third_party/nuklear.h"
 #include "../third_party/nuklear_sdl_gl2.h"
 #include "eng_nk_style.h"
+#include "eng_nk_click.h"
 
 #include "eng_ui.h"
 #include "eng_crosshair.h"
@@ -229,7 +230,7 @@ void eng_ui_set_open(bool on) {
     if (input_cap_cb) { input_cap_cb(NULL, cap_u); input_cap_cb = NULL; }
     if (on && row >= nrows(tab)) row = 0;
 }
-void eng_ui_input_begin(void) { if (ctx) nk_input_begin(ctx); }
+void eng_ui_input_begin(void) { if (ctx) { nk_input_begin(ctx); nkc_begin(); } }
 void eng_ui_input_end(void)   { if (ctx) nk_input_end(ctx); }
 void eng_ui_capture_key(void (*cb)(SDL_Scancode, void *), void *u) { input_cap_cb = NULL; cap_cb = cb; cap_u = u; }
 void eng_ui_capture_input(bool (*cb)(const SDL_Event *, void *), void *u) { cap_cb = NULL; input_cap_cb = cb; cap_u = u; }
@@ -289,7 +290,7 @@ bool eng_ui_event(SDL_Event *e)
     }
     int k = -1;
     if (layer_modal()) {                                 /* a layer's window has the keyboard: only the mouse goes on to Nuklear */
-        if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP && e->type != SDL_TEXTINPUT && e->type != SDL_CONTROLLERBUTTONDOWN) nk_sdl_handle_event(e);
+        if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP && e->type != SDL_TEXTINPUT && e->type != SDL_CONTROLLERBUTTONDOWN) nkc_event(e);
         return true;
     }
     if (e->type == SDL_KEYDOWN) {
@@ -300,8 +301,7 @@ bool eng_ui_event(SDL_Event *e)
         case SDL_SCANCODE_LEFT: k = K_LEFT; break;
         case SDL_SCANCODE_RIGHT: k = K_RIGHT; break;
         case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: if (!rep) k = K_OK; break;
-        case SDL_SCANCODE_ESCAPE: if (!rep) k = K_EXIT; break;     /* Esc twice = exit; Backspace / pad B = back to the game */
-        case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;
+        case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;   /* Esc closes the menu (our fork: never quits -- File > Exit does) */
         case SDL_SCANCODE_TAB: if (!rep) k = (e->key.keysym.mod & KMOD_SHIFT) ? K_TABPREV : K_TABNEXT; break;
         case SDL_SCANCODE_PAGEUP: if (!rep) k = K_TABPREV; break;
         case SDL_SCANCODE_PAGEDOWN: if (!rep) k = K_TABNEXT; break;
@@ -325,7 +325,7 @@ bool eng_ui_event(SDL_Event *e)
     }
     if (k >= 0) { nav(k); return true; }
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) return true;   /* the game does not see keys while open */
-    nk_sdl_handle_event(e);                              /* mouse */
+    nkc_event(e);                                        /* mouse (a quick click held a frame: engine/eng_nk_click.h) */
     return true;
 }
 
@@ -392,7 +392,7 @@ void eng_ui_draw(bool *quit)
             if (nk_select_label(ctx, pages[t]->name, NK_TEXT_CENTERED, t == tab) && t != tab) { tab = t; row = 0; }
         }
         nk_layout_row_push(ctx, (float)ww - x - 8 > 60 ? (float)ww - x - 8 : 60);
-        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Backspace: resume   Esc: exit game" : "Arrows, Enter   Backspace: resume   Esc: exit game", NK_TEXT_RIGHT);
+        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Esc: close" : "Arrows, Enter, Esc", NK_TEXT_RIGHT);
         nk_menubar_end(ctx);
     }
     nk_end(ctx);

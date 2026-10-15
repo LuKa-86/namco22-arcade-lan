@@ -286,6 +286,18 @@ bool ss22_host_frame(void)
             ke.type = SDL_KEYDOWN; ke.key.state = SDL_PRESSED; ke.key.keysym.scancode = SDL_GetScancodeFromName(genv("MENU_PRESS"));
             SDL_PushEvent(&ke);
         } } }
+    { static int cf = -2, cx, cy, n;                                     /* <tag>_MENU_CLICK=<frame>:<x>:<y>: a QUICK click (press and release in one
+                                                                          * frame, a touchpad tap) at window x,y -- tests engine/eng_nk_click.h */
+      if (cf == -2) { cf = -1; const char *e = genv("MENU_CLICK"); if (e) sscanf(e, "%d:%d:%d", &cf, &cx, &cy); }
+      if (cf >= 0 && ++n == cf) {
+          SDL_Event me; memset(&me, 0, sizeof me);
+          me.type = SDL_MOUSEMOTION; me.motion.windowID = SDL_GetWindowID(win); me.motion.x = cx; me.motion.y = cy; SDL_PushEvent(&me);
+          memset(&me, 0, sizeof me);
+          me.type = SDL_MOUSEBUTTONDOWN; me.button.windowID = SDL_GetWindowID(win); me.button.button = SDL_BUTTON_LEFT; me.button.state = SDL_PRESSED;
+          me.button.clicks = 1; me.button.x = cx; me.button.y = cy; SDL_PushEvent(&me);
+          me.type = SDL_MOUSEBUTTONUP; me.button.state = SDL_RELEASED; SDL_PushEvent(&me);
+          fprintf(stderr, "[HOST] test: quick click at %d,%d\n", cx, cy);
+      } }
     static eng_pace pl;
     static int ftm = -1; if (ftm < 0) ftm = getenv("ENG_FTIME") != NULL;
     struct timespec a0, a1, a2, a3; if (ftm) clock_gettime(CLOCK_MONOTONIC, &a0);

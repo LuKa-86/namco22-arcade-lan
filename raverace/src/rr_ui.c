@@ -11,8 +11,7 @@
  *   Left/Right    change the value (on the tab strip: switch page)
  *   Enter/Space   select / toggle / step the value
  *   Tab, PgUp/PgDn, pad LB/RB   switch page from anywhere
- *   Esc                         exit the game (Esc opened the menu: Esc twice quits)
- *   Backspace (pad B / Start)   close
+ *   Esc, Backspace (pad B / Start)   close (our fork: Esc never quits the game; File > Exit does)
  *
  * Every change goes through the host's setters (rr_host.c), which apply it and
  * save it to rr_controls.cfg at once.
@@ -37,6 +36,7 @@
 #include "../../third_party/nuklear.h"          /* the tree's one copy, shared with Prop Cycle */
 #include "../../third_party/nuklear_sdl_gl2.h"  /* Prop Cycle's backend: the window is OpenGL */
 #include "../../engine/eng_nk_style.h"
+#include "../../engine/eng_nk_click.h"
 
 #include "rr_ui.h"
 #include "rr_game.h"
@@ -400,7 +400,7 @@ static void chat_overlay(int ww, int wh)
 }
 bool rr_ui_quit_requested(void) { return quit_req; }
 void rr_ui_set_open(bool on) { if (!on) { close_menu(); return; } open_ = true; rebinding = -1; if (row >= nrows(tab)) row = 0; }
-void rr_ui_input_begin(void) { if (ctx) nk_input_begin(ctx); }
+void rr_ui_input_begin(void) { if (ctx) { nk_input_begin(ctx); nkc_begin(); } }
 void rr_ui_input_end(void)   { if (ctx) nk_input_end(ctx); }
 
 /* one navigation step from the keyboard, a pad or a hat */
@@ -453,7 +453,7 @@ bool rr_ui_event(SDL_Event *e)
             default: break;
             }
         } else if (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_MOUSEBUTTONUP || e->type == SDL_MOUSEWHEEL) {
-            nk_sdl_handle_event(e);                    /* typing never blocks the mouse: Send / Close / Ready / the X stay clickable */
+            nkc_event(e);                              /* typing never blocks the mouse: Send / Close / Ready / the X stay clickable */
         }
         return true;
     }
@@ -474,8 +474,7 @@ bool rr_ui_event(SDL_Event *e)
         case SDL_SCANCODE_LEFT: k = K_LEFT; break;
         case SDL_SCANCODE_RIGHT: k = K_RIGHT; break;
         case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: if (!rep) k = K_OK; break;
-        case SDL_SCANCODE_ESCAPE: if (!rep) k = K_EXIT; break;     /* Esc twice = exit; Backspace / pad B = back to the game */
-        case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;
+        case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_BACKSPACE: if (!rep) k = K_BACK; break;   /* Esc closes the menu (our fork: never quits -- File > Exit does) */
         case SDL_SCANCODE_TAB: if (!rep) k = (e->key.keysym.mod & KMOD_SHIFT) ? K_TABPREV : K_TABNEXT; break;
         case SDL_SCANCODE_PAGEUP: if (!rep) k = K_TABPREV; break;
         case SDL_SCANCODE_PAGEDOWN: if (!rep) k = K_TABNEXT; break;
@@ -499,7 +498,7 @@ bool rr_ui_event(SDL_Event *e)
     }
     if (k >= 0) { nav(k); kb_moved = true; return true; }
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) return true;   /* the game does not see keys while open */
-    nk_sdl_handle_event(e);                              /* mouse */
+    nkc_event(e);                                        /* mouse (a quick click held a frame: engine/eng_nk_click.h) */
     return true;
 }
 /* RR_MENU_TEST and friends drive the menu without an input device */
@@ -814,7 +813,7 @@ void rr_ui_draw(bool *quit)
             if (nk_select_label(ctx, tab_name[t], NK_TEXT_CENTERED, t == tab) && t != tab) { tab = t; row = 0; }
         }
         nk_layout_row_push(ctx, (float)ww - x - 8 > 60 ? (float)ww - x - 8 : 60);
-        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Backspace: resume   Esc: exit game" : "Arrows, Enter   Backspace: resume   Esc: exit game", NK_TEXT_RIGHT);
+        nk_label(ctx, row < 0 ? "<- Left/Right ->   Down: open   Esc: close" : "Arrows, Enter, Esc", NK_TEXT_RIGHT);
         nk_menubar_end(ctx);
     }
     nk_end(ctx);
