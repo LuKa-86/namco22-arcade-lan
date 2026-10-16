@@ -13,8 +13,18 @@
 #include "frame_rule.h"
 
 static bool from_capture;                 /* --render-dump: no CPU or DSP is running, the capture says what is on screen */
-void ss22_video_pdp_begin(void)      { eng_pdp_begin(g_ss22_in_vblank); }
-void ss22_video_render_refresh(void) { eng_render_refresh(); }
+static int pdplog = -1;                   /* SS22_PDPLOG=1: when the master begins (PDP) and refreshes, and which updates draw (finding dropped 3D frames) */
+static bool pdp_log(void) { if (pdplog < 0) pdplog = getenv("SS22_PDPLOG") != NULL; return pdplog; }
+extern uint32_t rr_frame; unsigned ss22_run_slice(void);
+/* A begin just after the vblank still counts as one inside it when the game says so (ss22_game.pdp_late_slices): the list is current
+ * for the update that follows, as on the board, where a master that starts a little late still draws its frame. */
+void ss22_video_pdp_begin(void)
+{
+    const bool vb = g_ss22_in_vblank || ss22_run_slice() < (unsigned)g_ss22_game->pdp_late_slices;
+    if (pdp_log()) fprintf(stderr, "[PDP] f%u s%u begin%s\n", rr_frame, ss22_run_slice(), g_ss22_in_vblank ? " (vblank)" : vb ? " (late, counted)" : "");
+    eng_pdp_begin(vb);
+}
+void ss22_video_render_refresh(void) { if (pdp_log()) fprintf(stderr, "[PDP] f%u refresh%s\n", rr_frame, g_ss22_in_vblank ? " (vblank)" : ""); eng_render_refresh(); }
 
 static uint32_t poly_word(int i) { return g_ss22.poly[i & 0x7FFF]; }
 
@@ -52,6 +62,7 @@ void ss22_video_prepare(void)
     ss22_regs r;
     memset(&r, 0, sizeof r);
     r.walk = eng_frame_walks(from_capture || ss22_dsp_slave_active());
+    if (pdp_log()) fprintf(stderr, "[PDP] f%u update: %s\n", rr_frame, r.walk ? "drawn" : "NO 3D");
     r.poly_word = poly_word;
     r.pal = g_ss22.pal;
     r.mixer = g_ss22.mixer;

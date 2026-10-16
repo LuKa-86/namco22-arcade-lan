@@ -102,6 +102,10 @@ typedef struct ss22_game {
      * has no link support here. link_debug: the game's own link state, printed with <TAG>_LINKDBG=1 every 60 frames (NULL = none). */
     void (*link_cabinet)(int id);
     void (*link_debug)(uint32_t frame);
+    /* a master PDP begin in the first N slices (of 16) of a frame still marks the next update's list current, as one in the vblank does
+     * (engine/ss22_video.c); 0 = MAME's rule exactly. Cyber Cycles sets its master going only after its link work, which in a 4-cabinet
+     * race ends after the vblank: under MAME's rule every such frame lost its 3D (black). */
+    int  pdp_late_slices;
 } ss22_game;
 
 /* Run the game's start script NAME (ss22_game.start) from now: its frame n counts from this call. The Esc menu's way to --stage. */

@@ -187,6 +187,8 @@ static const ss22_game game = {
     .link_id_byte = 0x26,               /* link play: the operator setting's cabinet number = EEPROM byte 0x26, bits 0-1 */
     .link_report = cc_link_report, .link_good = cc_link_good, .link_game_id = cc_link_game_id,
     .link_cabinet = cc_link_cabinet, .link_debug = cc_link_debug,
+    .pdp_late_slices = 6,               /* the main loop does the link work (FUN_00000CB4) before it sets the master going (0x93A): with 4
+                                         * cabinets that ends ~2 slices after the vblank, and MAME's rule would drop the frame's 3D */
     .frame = cc_frame,
 };
 

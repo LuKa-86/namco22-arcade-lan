@@ -61,6 +61,7 @@ static bool video_on;
 #define SLICES 16
 static uint32_t slice;
 static int vblank_slices;
+unsigned ss22_run_slice(void) { return (unsigned)(slice % SLICES); }   /* the slice within the frame (engine/ss22_video.c) */
 static long dsp_steps_per_frame = 166667;  /* the C71 at 40 MHz retires 10 M instructions/s: 1/59.9 s */
 static long serial_acc;                    /* MAME's dsp_serial timer: 100 Hz */
 
