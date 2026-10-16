@@ -22,6 +22,7 @@ static struct {
     uint16_t tx[LNK_MAX_WORDS];
     int      unacked;
     uint16_t q[QMAX][LNK_MAX_WORDS]; int qlen[QMAX]; int qhead, qn;
+    int      per_frame, this_frame;         /* lan139_set_per_frame: frames handed over per video frame (0 = no limit) */
     lan139_stats st;
 } C;
 
@@ -108,6 +109,9 @@ bool lan139_tick(bool new_slice)
         if (n <= 0) break;
         C.qlen[slot] = n; C.qn++;
     }
-    if (!(C.status & ST_RX) && C.qn) deliver();
+    if (!(C.status & ST_RX) && C.qn && (!C.per_frame || C.this_frame < C.per_frame)) { deliver(); C.this_frame++; }
     return lan139_irq();
 }
+
+void lan139_set_per_frame(int n) { C.per_frame = n > 0 ? n : 0; }
+void lan139_frame(void)          { C.this_frame = 0; }

@@ -31,6 +31,7 @@ typedef struct {
     uint32_t        vics_ctl[0x20];          /* VICS control, host-order words */
     const uint16_t *spotram;                 /* the spot RAM: 0x800 host-order words (text_hw.c) */
     bool            spot_enabled;            /* (spot enable & 1) && (chipselect & 0xC000) */
+    int             hold_frames;             /* !walk: draw the last list again for up to this many updates in a row (0 = no 3D at once) */
 } ss22_regs;
 
 /* WIDESCREEN: the game's HUD description (engine/hud_edges.h); NULL or no marks = the HUD stays where the game put it. The pointer must

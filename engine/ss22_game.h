@@ -106,6 +106,10 @@ typedef struct ss22_game {
      * (engine/ss22_video.c); 0 = MAME's rule exactly. Cyber Cycles sets its master going only after its link work, which in a 4-cabinet
      * race ends after the vblank: under MAME's rule every such frame lost its 3D (black). */
     int  pdp_late_slices;
+    /* an update that still loses its list draws the last one again, up to N in a row (0 = a black 3D layer, MAME): a link that
+     * delivers in bursts (4 copies on one PC) can push the begin later still, and one held frame is not seen where black is */
+    int  pdp_hold_frames;
+    int  link_rx_per_frame;                  /* link play: received frames handed to the game per video frame (engine/lan139.h); 0 = no limit */
 } ss22_game;
 
 /* Run the game's start script NAME (ss22_game.start) from now: its frame n counts from this call. The Esc menu's way to --stage. */

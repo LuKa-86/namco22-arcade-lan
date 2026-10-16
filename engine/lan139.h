@@ -25,6 +25,11 @@ void     lan139_reg_w(unsigned unit, uint16_t data, uint16_t mask);
 bool     lan139_tick(bool new_slice);                 /* finish a send, take in a frame; true = interrupt wanted. Called a few times a
                                                      * scheduler slice (new_slice on the first) so a frame is forwarded within the slice */
 bool     lan139_irq(void);                            /* the interrupt condition now */
+/* At most N received frames handed to the game per video frame, the rest kept for the next (0 = no limit, the default). The real
+ * line brings each cabinet a steady few a frame; when a PC stalls and the network then delivers a burst, a game whose driver copies
+ * every frame received since the last one in its main loop (Cyber Cycles: a 16-message queue) would otherwise get them all at once. */
+void     lan139_set_per_frame(int n);
+void     lan139_frame(void);                          /* every video frame */
 
 typedef struct { uint32_t tx, rx, rx_dropped, rx_unacked, tx_restart; } lan139_stats;
 const lan139_stats *lan139_get_stats(void);

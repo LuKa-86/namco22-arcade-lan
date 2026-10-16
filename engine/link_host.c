@@ -97,6 +97,7 @@ bool link_host_open(const link_host_game *g)
 {
     if (cfg.id < 0) return true;                                       /* not linked */
     G = g;
+    lan139_set_per_frame(g->rx_per_frame);
     cfg.tag = g->tag;
     if (!cfg.nodes) {                                                  /* the set's size: --link-cabinets, else the addresses given, else 4 */
         cfg.nodes = 4;
@@ -549,6 +550,7 @@ void link_host_frame(uint32_t frame, bool headless)
           lnk_send_restart(); restart_in = 60;
       } }
     if (!on) return;
+    lan139_frame();
     restart_all_check();
     if (restart_in >= 0 && restart_in-- == 0) restart_all_now();
     if (headless) pace();

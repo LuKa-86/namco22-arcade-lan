@@ -92,7 +92,7 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
 {
     (void)pedal2;
     /* CC_AUTO picks the test player: 0 rides (coin, start, full throttle, gentle weave; default), 4 never coins up (the attract loop),
-     * 6 goes into the test menu and steps through it */
+     * 6 goes into the test menu and steps through it, 9 sits still once started (see below) */
     static int v = -1; if (v < 0) { const char *e = getenv("CC_AUTO"); v = e ? atoi(e) : 0; }
     *wheel = 0x200;
     if (v == 4) return;
@@ -114,6 +114,7 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     }
     if (n % 600 >= 300 && n % 600 < 306) *p |= IN_COIN;
     if (n % 300 >= 150 && n % 300 < 156 && n > 400) *p |= IN_START;
+    if (v == 9) return;                      /* 9: coins up and starts, then sits still on the grid (no throttle) */
     if (n > 700) *pedal1 = 0x300;
     if (v == 7) {                            /* 7: hard riding -- full bank each way, brake pulses (matched by MAME's play_hard.lua) */
         *wheel = ((n / 120) % 2 == 0) ? 0x004 : 0x3FC;
@@ -127,6 +128,14 @@ uint8_t g_lift_cov[0x200000];                /* gen/: which instructions have ru
 uint32_t g_lift_pc;                          /* gen/: the instruction last started (LIFT_LAST_PC) */
 static void cc_frame(long n)
 {
+    { static int pl = -1; if (pl < 0) pl = getenv("CC_PEERLOG") != NULL;   /* CC_PEERLOG=1: the link driver's view of each cabinet, every frame */
+      if (pl) {                                                              /* (0xE0A668 + cab * 0x100: +0 frames since its last message, */
+          char b[160]; int k = 0;                                            /*  saturating at 0x20 = gone; +4 its game state) */
+          for (uint32_t c = 0; c < 4; c++) k += snprintf(b + k, sizeof b - (size_t)k, "  %u: age %2u st %02X", c + 1,
+                                                         (unsigned)rr_read(0xE0A668 + c * 0x100, 2), (unsigned)rr_read(0xE0A66C + c * 0x100, 1));
+          fprintf(stderr, "[PEER] f%ld me %u st %02X fwdq %u%s\n", n, (unsigned)(rr_read(0xE08400, 2) & 3) + 1, (unsigned)rr_read(0xE0A65C, 2),
+                  (unsigned)rr_read(0xE0A634, 2), b);   /* fwdq: messages queued for FUN_00000CB4 (16 = full) */
+      } }
     { static int on = -1; if (on < 0) on = getenv("CC_PCLOG") != NULL;      /* CC_PCLOG=1: where the 68K is at each frame's end */
       if (on && n % 20 == 0) fprintf(stderr, "[CC] f%ld pc %06X  D0 %08X A0 %08X SP %08X\n", n, (unsigned)g_lift_pc, (unsigned)RG4(0x00), (unsigned)RG4(0x20), (unsigned)RG4(0x3C)); }
     { static long c0 = -2, c1; if (c0 == -2) { c0 = -1; const char *e = getenv("CC_COV"); if (e) sscanf(e, "%ld:%ld", &c0, &c1); }   /* CC_COV=from:to -> cc_cov.txt: every instruction run in those frames */
@@ -189,6 +198,9 @@ static const ss22_game game = {
     .link_cabinet = cc_link_cabinet, .link_debug = cc_link_debug,
     .pdp_late_slices = 6,               /* the main loop does the link work (FUN_00000CB4) before it sets the master going (0x93A): with 4
                                          * cabinets that ends ~2 slices after the vblank, and MAME's rule would drop the frame's 3D */
+    .pdp_hold_frames = 2,               /* a begin still too late (now and then, on a busy PC): that update shows the last 3D again */
+    .link_rx_per_frame = 6,             /* 4 cabinets bring 4 a frame; a burst after a PC stalls (12-16 at once) made FUN_00000CB4 copy
+                                         * for 5+ slices (a late 3D begin = the blink) and overrun its 16 x 0x200 copy area at 0xE08606 */
     .frame = cc_frame,
 };
 

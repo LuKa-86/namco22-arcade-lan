@@ -61,6 +61,7 @@ void ss22_video_prepare(void)
 {
     ss22_regs r;
     memset(&r, 0, sizeof r);
+    r.hold_frames = g_ss22_game->pdp_hold_frames;
     r.walk = eng_frame_walks(from_capture || ss22_dsp_slave_active());
     if (pdp_log()) fprintf(stderr, "[PDP] f%u update: %s\n", rr_frame, r.walk ? "drawn" : "NO 3D");
     r.poly_word = poly_word;

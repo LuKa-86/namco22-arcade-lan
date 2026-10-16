@@ -557,7 +557,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     if (cab > 0) {
         if (g->link_id_byte < 0) { fprintf(stderr, "[%s] link play: %s's cabinet number is not known yet\n", g->tag, g->name); return 2; }
         static link_host_game lg; lg = (link_host_game){ g->tag, link_raise, link_deliver, g->link_report, g->link_good, g->link_game_id,
-                                                         eng_ui_set_hint, link_before_restart };
+                                                         eng_ui_set_hint, link_before_restart, g->link_rx_per_frame };
         if (!link_host_open(&lg)) {
             if (win_scale) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g->name, "The link could not start.\n\nUsually another copy of the game is still running as the same cabinet (it may be hidden, e.g. the automatic check): close it, or restart the PC, and try again.\n\nDetails are in the log file beside the program.", NULL);
             return 2;

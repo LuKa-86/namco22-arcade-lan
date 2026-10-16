@@ -143,12 +143,14 @@ void ss22_prepare(const ss22_regs *r)
                         items[i].w, items[i].h, items[i].idx, items[i].tile, items[i].prioverchar ? "  prio" : "");
     }
 
-    qn = 0; qorder = 0;
+    static int held;                                  /* updates in a row that kept the last list (r->hold_frames) */
     if (r->walk) {
+        held = 0; qn = 0; qorder = 0;
         eng_list_cfg cfg = { ENG_LIST_HEAD_SS22, 0, NULL, NULL, NULL, NULL };
         eng_walk_list(r->poly_word, &cfg, push_quad, NULL);
         eng_quad_sort(qbuf, qn, 0);
-    }
+    } else if (held < r->hold_frames) held++;         /* a dropped update: the last list again, not a black 3D layer */
+    else { qn = 0; qorder = 0; }
     ss22_qhist_report();
     ss22_cliplog_report();
 }
