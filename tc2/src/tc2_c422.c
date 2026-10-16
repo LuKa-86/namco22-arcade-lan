@@ -397,7 +397,8 @@ static void deliver(uint64_t now)
     while (rxq_n && rxq[rxq_head].due <= now) {
         rx_piece *p = &rxq[rxq_head];
         receive(p->d, p->n, p->end);
-        if (logon) fprintf(stderr, "[C422] f%u ring %3d bytes%s (rx at %03X)\n", rr_frame, p->n, p->end ? " END" : "", reg[6] & 0xFFF);
+        if (logon) { fprintf(stderr, "[C422] f%u ring %3d bytes%s (rx at %03X):", rr_frame, p->n, p->end ? " END" : "", reg[6] & 0xFFF);
+                     for (int i = 0; i < p->n; i++) fprintf(stderr, " %02X", p->d[i]); fprintf(stderr, "\n"); }
         rxq_head = (rxq_head + 1) % RXQ; rxq_n--;
     }
 }
@@ -460,6 +461,10 @@ static void tx_start(uint64_t now)
 void tc2_c422_tick(void)
 {
     open_link();
+    { static int lf = -2, lt; if (lf == -2) { const char *e = getenv("TC2_C422LOG_AT"); lf = -1; if (e) { lf = 0; sscanf(e, "%d-%d", &lf, &lt); } }   /* TEST: from-to frames */
+      if (lf >= 0) logon = (int)rr_frame >= lf && (int)rr_frame <= lt; }
+    { static int at = -2; static double lg; if (at == -2) { const char *e = getenv("TC2_LINK_LAG2"); at = -1; if (e) sscanf(e, "%d:%lf", &at, &lg); }   /* TEST: frame:lag */
+      if (at >= 0 && (int)rr_frame >= at) { lag = (uint64_t)(lg * FRAME_CYCLES); at = -1; fprintf(stderr, "[C422] TEST: lag now %.2f frames\n", lg); } }
     const uint64_t now = tc2_cycles_now();
     while (tx_busy && now >= tx_next) {
         const unsigned tx = reg[7] & 0xFFF;

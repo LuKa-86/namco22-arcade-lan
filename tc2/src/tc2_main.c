@@ -233,6 +233,11 @@ void tc2_on_vblank(uint32_t frame)
       if (rt < 0) { const char *e = getenv("TC2_REALTIME"); rt = e != NULL; hz = 59.906 * (e && atof(e) > 0.5 ? atof(e) : 1.0); t0 = SDL_GetPerformanceCounter(); }
       if (rt) { const uint64_t f = SDL_GetPerformanceFrequency(), due = t0 + (uint64_t)((double)frame * (double)f / hz);
                 for (uint64_t now; (now = SDL_GetPerformanceCounter()) < due; ) if (due - now > f / 500) SDL_Delay(1); } }
+    { static int rf = -2, rt, re; static char rd[512];        /* $TC2_RAMDUMP=dir:from-to:every (tests, our fork): the first 4 MB of RAM, r<frame>.bin */
+      if (rf == -2) { rf = -1; const char *e = getenv("TC2_RAMDUMP"); if (e) { snprintf(rd, sizeof rd, "%s", e); char *c = strrchr(rd, ':'); char *c2 = c ? (*c = 0, strrchr(rd, ':')) : NULL;
+                      if (c && c2) { *c2 = 0; re = atoi(c + 1); if (sscanf(c2 + 1, "%d-%d", &rf, &rt) != 2) rf = -1; } } }
+      if (rf >= 0 && (int)frame >= rf && (int)frame <= rt && re > 0 && ((int)frame - rf) % re == 0) {
+          char p[600]; snprintf(p, sizeof p, "%s/r%05u.bin", rd, frame); FILE *f = fopen(p, "wb"); if (f) { fwrite(tc2_ram, 1, 0x400000, f); fclose(f); } } }
     { static int tf = -2; static const char *tp; if (tf == -2) { const char *e = getenv("TC2_TEXTDUMP"); tf = -1; if (e) { tf = atoi(e); tp = strchr(e, ':'); if (tp) tp++; } }
       if (tf >= 0 && (int)frame == tf && tp) {   /* $TC2_TEXTDUMP=frame:file -- the C361 character RAM + tile map (0x06800000-0x0681FFFF), big-endian */
           uint8_t *tc2_vram_ptr(uint32_t); FILE *f = fopen(tp, "wb"); if (f) { fwrite(tc2_vram_ptr(0x06800000u), 1, 0x20000, f); fclose(f); } } }

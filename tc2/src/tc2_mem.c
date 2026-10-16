@@ -283,3 +283,16 @@ void rr_write(uint32_t a, int size, uint32_t v)
 }
 
 void tc2_io_flush(void) { if (io_log) fflush(io_log); }
+
+/* $TC2_WATCH=<address>[:<bytes>] in a TC2_WATCH build (include/lift_rt.h; tests, our fork): each write there, with the instruction, to the log */
+uint32_t tc2_watch_lo = 0xFFFFFFFFu, tc2_watch_n;
+__attribute__((constructor)) static void watch_init(void)
+{
+    const char *e = getenv("TC2_WATCH"); if (!e) return;
+    unsigned lo = 0, n = 1; sscanf(e, "%x:%u", &lo, &n); tc2_watch_lo = lo & 0x0FFFFFFFu; tc2_watch_n = n;
+}
+void tc2_watch_hit(uint32_t p, uint64_t v, int size)
+{
+    extern uint32_t rr_pc, rr_frame;
+    fprintf(stderr, "[WATCH] f%u pc %08X writes %d byte(s) %0*llX at %08X\n", rr_frame, rr_pc, size, size * 2, (unsigned long long)v, p);
+}
