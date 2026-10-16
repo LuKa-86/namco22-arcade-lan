@@ -96,6 +96,16 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     static int v = -1; if (v < 0) { const char *e = getenv("CC_AUTO"); v = e ? atoi(e) : 0; }
     *wheel = 0x200;
     if (v == 4) return;
+    if (v == 8) {                            /* 8: the SWITCH TEST (test + service): bank each way, throttle, brake, then both to leave */
+        if (n > 300) *p |= IN_TEST;
+        if (n >= 600 && n < 606) *p |= IN_SERVICE;
+        if (n >= 900 && n < 1100) *wheel = 0x004;
+        if (n >= 1100 && n < 1300) *wheel = 0x3FC;
+        if (n >= 1400 && n < 1600) *pedal1 = 0x300;
+        if (n >= 1700 && n < 1900) *pedal2 = 0x100;
+        if (n >= 2000 && n < 2100) { *pedal1 = 0x300; *pedal2 = 0x100; }
+        return;
+    }
     if (v == 6) {
         if (n > 300 && n < 9000) *p |= IN_TEST;
         if (n % 480 >= 300 && n % 480 < 306) *p |= IN_START;
