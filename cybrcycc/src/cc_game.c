@@ -105,6 +105,11 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     if (n % 600 >= 300 && n % 600 < 306) *p |= IN_COIN;
     if (n % 300 >= 150 && n % 300 < 156 && n > 400) *p |= IN_START;
     if (n > 700) *pedal1 = 0x300;
+    if (v == 7) {                            /* 7: hard riding -- full bank each way, brake pulses (matched by MAME's play_hard.lua) */
+        *wheel = ((n / 120) % 2 == 0) ? 0x004 : 0x3FC;
+        if (n > 700 && n % 200 < 30) { *pedal1 = 0; *pedal2 = 0x100; }
+        return;
+    }
     *wheel = ((n / 90) % 2 == 0) ? 0x180 : 0x280;
 }
 
