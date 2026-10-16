@@ -79,7 +79,7 @@ static const ss22_action actions[] = {
 };
 static const ss22_input_game input = {
     actions, (int)(sizeof actions / sizeof *actions),
-    0x004, 0x3FC, 0x180, 40,
+    0x004, 0x3FC, 0x1F8, 40,               /* a held bank key goes to full bank (MAME PORT_MINMAX 0x004..0x3FC): the real bike drifts at full lean */
     { 0x300, 0x100 }, 40,
     { "Enter, then press the new key (Esc cancels)", "Alternates: 6, keypad Enter, A D W S", "Pad: stick banks, triggers = throttle / brake" },
     ss22_snd_inputs,
