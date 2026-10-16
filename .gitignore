@@ -98,3 +98,14 @@ __pycache__/
 /tokyowar/soak/
 /raverace/soak/
 /raverace/gen/rr_c25.c
+# Cyber Cycles feasibility test: ROM-derived or scratch files
+/cybrcycc/extracted/
+/cybrcycc/gen/
+/cybrcycc/build/
+/cybrcycc/shots*/
+/cybrcycc/*.bin
+/cybrcycc/*.pcode
+/cybrcycc/*.log
+/cybrcycc/*.out
+/cybrcycc/*.nv
+/cybrcycc/*.cfg
