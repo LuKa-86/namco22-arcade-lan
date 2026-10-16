@@ -170,6 +170,7 @@ class Lifter:
         if name == 'RETURN':
             return ('{ uint32_t t_ = (uint32_t)%s; if (rr_return(t_)) return; RR_POLL(); if (t_ >= 0x%XU && t_ <= 0x%XU) { pc_ = t_; goto resume_; } '
                     'rr_jump(t_, 0x%XU); return; }' % (r(inp[0]), self.lo, self.hi, A))
+        if name == 'RAWC': return inp[0]                           # C written by fix_divide
         if name == 'CALLOTHER':
             u = self.userops.get(vn(inp[0])[1], '?')
             self.note('CALLOTHER %s' % u)
@@ -225,9 +226,57 @@ class Lifter:
                     return
             return
 
+    def fix_divide(self, ins):
+        """GHIDRA'S 68020 DIVIDES ARE WRONG IN TWO WAYS. (1) divs.l <ea>,Dr:Dq with the 64-bit dividend builds it as
+        (sext(Dr) << 32) | SEXT(Dq): whenever Dq's top bit is set, its sign bits wipe out Dr (the unsigned form zero-extends,
+        correctly). (2) No form handles overflow: the CPU leaves the registers as they were and sets V when the quotient does not
+        fit (16 bits for divs.w / divu.w, 32 for the long forms) -- Ghidra writes the truncated quotient. A game's fixed-point
+        a * b / c (muls.l to 64 bits, then divs.l) is exactly (1); a racing game's physics is full of it.
+        Rewrite every divide from the 68020 manual: the p-code is kept up to the divisor's value (its effective address), then C."""
+        mn = ins.text.split()[0] if ins.text else ''
+        if not mn.startswith(('divs', 'divu')) or self.rom is None: return
+        ops = ins.ops
+        k = next((n for n, o in enumerate(ops) if o[0] in ('INT_SDIV', 'INT_DIV', 'INT_SREM', 'INT_REM')), None)
+        if k is None: return
+        op = int.from_bytes(self.rom[ins.addr:ins.addr + 2], 'big')
+        A = ins.addr
+        flags_ok = 'RS1(0x44, (q_ >> %d) & 1); RS1(0x45, q_ == 0); RS1(0x46, 0); RS1(0x47, 0);'
+        ovf = 'RS1(0x46, 1); RS1(0x47, 0);'
+        zero = 'rr_trap(0x%XU, 0x%XU, "divide by zero (the CPU would take exception 5)"); return;' % (A, A)
+        if (op & 0xFFC0) == 0x4C40:                                    # divs.l / divu.l / divsl.l / divul.l
+            ext = int.from_bytes(self.rom[A + 2:A + 4], 'big')
+            dq, dr, sgn, big = (ext >> 12) & 7, ext & 7, (ext >> 11) & 1, (ext >> 10) & 1
+            if sgn:
+                num = '(int64_t)(((uint64_t)RG4(0x%X) << 32) | RG4(0x%X))' % (dr * 4, dq * 4) if big else '(int64_t)(int32_t)RG4(0x%X)' % (dq * 4)
+                c = ('{ int64_t n_ = %s; int64_t d_ = (int32_t)RG4(0x300); if (d_ == 0) { %s } '
+                     'if (n_ == INT64_MIN && d_ == -1) { %s } else { int64_t q_ = n_ / d_, r_ = n_ %% d_; '
+                     'if (q_ < INT32_MIN || q_ > INT32_MAX) { %s } else { %sRS4(0x%X, (uint32_t)q_); %s } } }'
+                     % (num, zero, ovf, ovf, 'RS4(0x%X, (uint32_t)r_); ' % (dr * 4) if dr != dq else '', dq * 4, flags_ok % 31))
+            else:
+                num = '(((uint64_t)RG4(0x%X) << 32) | RG4(0x%X))' % (dr * 4, dq * 4) if big else '(uint64_t)RG4(0x%X)' % (dq * 4)
+                c = ('{ uint64_t n_ = %s; uint64_t d_ = RG4(0x300); if (d_ == 0) { %s } uint64_t q_ = n_ / d_, r_ = n_ %% d_; '
+                     'if (q_ > 0xFFFFFFFFULL) { %s } else { %sRS4(0x%X, (uint32_t)q_); %s } }'
+                     % (num, zero, ovf, 'RS4(0x%X, (uint32_t)r_); ' % (dr * 4) if dr != dq else '', dq * 4, flags_ok % 31))
+        elif (op & 0xF0C0) in (0x81C0, 0x80C0):                        # divs.w / divu.w <ea>,Dn: 32 / 16 -> rem:quot
+            dn = (op >> 9) & 7
+            dv = self.rd(ops[k][2][1])
+            if op & 0x0100:
+                c = ('{ int64_t n_ = (int32_t)RG4(0x%X); int64_t d_ = (int16_t)(%s); if (d_ == 0) { %s } int64_t q_ = n_ / d_, r_ = n_ %% d_; '
+                     'if (q_ < -32768 || q_ > 32767) { %s } else { RS4(0x%X, ((uint32_t)(uint16_t)r_ << 16) | (uint16_t)q_); %s } }'
+                     % (dn * 4, dv, zero, ovf, dn * 4, flags_ok % 15))
+            else:
+                c = ('{ uint64_t n_ = RG4(0x%X); uint64_t d_ = (uint16_t)(%s); if (d_ == 0) { %s } uint64_t q_ = n_ / d_, r_ = n_ %% d_; '
+                     'if (q_ > 0xFFFF) { %s } else { RS4(0x%X, ((uint32_t)r_ << 16) | (uint32_t)q_); %s } }'
+                     % (dn * 4, dv, zero, ovf, dn * 4, flags_ok % 15))
+        else:
+            return
+        ins.ops = ops[:k] + [('RAWC', '-', [c])]
+        self.note('divide rewritten (%s)' % mn)
+
     def function(self, f, out):
         ins = f.ins
         for i in ins: self.fix_preindexed(i)
+        for i in ins: self.fix_divide(i)
         self.cur_addrs = {i.addr for i in ins}
         self.lo, self.hi = min(self.cur_addrs), max(self.cur_addrs)
         self.temps = set()

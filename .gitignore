@@ -110,3 +110,4 @@ __pycache__/
 /cybrcycc/*.nv
 /cybrcycc/*.cfg
 /cybrcycc/sheet*.png
+/cybrcycc/cmp*.png
