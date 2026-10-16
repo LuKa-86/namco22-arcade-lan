@@ -124,6 +124,38 @@ static void cc_frame(long n)
       if (c0 >= 0 && n == c1) { FILE *f = fopen("cc_cov.txt", "w"); if (f) { for (unsigned a = 0; a < sizeof g_lift_cov; a++) if (g_lift_cov[a]) fprintf(f, "%X\n", a << 1); fclose(f); } } }
 }
 
+/* THE CABINET LINK (engine/lan139.c, --link N / link.cfg). The game's link driver: FUN_00000C06 init, FUN_00000CB4 the per-frame send
+ * (a message: 0x5A, the cabinet number + 0x10 per hop, the payload, its length with bit 8 = the last word), FUN_00000A5C the SCI
+ * handler -- it checks a message, and a message from another cabinet that has made fewer than 5 hops is queued to go on round the
+ * ring (store and forward, as Tokyo Wars). The cabinet number (0-3) is work RAM 0xE08400, set at boot from the operator setting at
+ * 0xE0AFAE = EEPROM byte 0x26 bits 0-1 (the settings block 0xE0AF88 is the EEPROM, byte for byte; FUN_00006F04 sets it).
+ * The driver's counters: 0xE0A628 messages received, 0xE0A62A sends finished, 0xE0A62C no end mark found, 0xE0A62E no 0x5A. */
+static uint16_t w16(uint32_t a) { return (uint16_t)rr_read(a, 2); }
+static void cc_link_cabinet(int id)
+{
+    g_ss22.eeprom[0x26] = (uint8_t)((g_ss22.eeprom[0x26] & ~3u) | (unsigned)(id & 3));
+    g_ss22.wram[0xAFAE] = (uint8_t)((g_ss22.wram[0xAFAE] & ~3u) | (unsigned)(id & 3));   /* the settings copy, for a renumbering after boot */
+}
+static int  cc_link_game_id(void) { return (int)(w16(0xE08400) & 3); }
+static bool cc_link_good(void)                /* messages are still arriving: the count moved within the last second */
+{
+    static uint16_t last; static uint32_t quiet;
+    const uint16_t n = w16(0xE0A628);
+    if (n != last) { last = n; quiet = 0; } else if (quiet < 1000) quiet++;
+    return quiet < 60;
+}
+static void cc_link_report(char *buf, int n)
+{
+    snprintf(buf, (size_t)n, "game: cabinet %u, received %u, sent %u, no end %u, no 5A %u", (unsigned)(w16(0xE08400) & 3) + 1,
+             w16(0xE0A628), w16(0xE0A62A), w16(0xE0A62C), w16(0xE0A62E));
+}
+static void cc_link_debug(uint32_t f)
+{
+    fprintf(stderr, "[CC] link f%u game: cab %u rx %u tx %u noend %u no5A %u fwdq %u pend %04X/%04X/%04X/%04X\n", f,
+            w16(0xE08400), w16(0xE0A628), w16(0xE0A62A), w16(0xE0A62C), w16(0xE0A62E), w16(0xE0A634),
+            w16(0xE0A606), w16(0xE0A60A), w16(0xE0A60E), w16(0xE0A612));
+}
+
 static const ss22_game game = {
     .name = "Cyber Cycles", .tag = "CC", .lname = "cc", .logname = "cybrcycc.log", .zip = "cybrcycc.zip",
     .board = &cc_board,
@@ -142,7 +174,9 @@ static const ss22_game game = {
     .presses = presses, .n_presses = (int)(sizeof presses / sizeof *presses),
     .autoplay = autoplay,
     .pedal_full = { 0x300, 0x100 },
-    .link_id_byte = -1,                 /* link play: not looked at yet */
+    .link_id_byte = 0x26,               /* link play: the operator setting's cabinet number = EEPROM byte 0x26, bits 0-1 */
+    .link_report = cc_link_report, .link_good = cc_link_good, .link_game_id = cc_link_game_id,
+    .link_cabinet = cc_link_cabinet, .link_debug = cc_link_debug,
     .frame = cc_frame,
 };
 
