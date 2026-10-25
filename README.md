@@ -42,13 +42,13 @@ the arcade has and keeping them running.
 |---|---|---|---|
 | **Tokyo Wars** | 1996 | up to 4, linked | Team tank battles |
 | **Rave Racer** | 1995 | up to 4, linked | Linked races |
+| **Ace Driver** | 1994 | up to 8, linked (tested with 4) | Linked races; **new link** in this fork (the original project's build plays solo) |
 | **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
 | **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
 
-The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Ace Driver, Cyber Commando,
-Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
+The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Cyber Commando, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
 those, use the original project's releases. The package below keeps to the linked games and the new ones.
 
 ## What the fork adds
@@ -149,7 +149,7 @@ in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 ## Version history
 
 - **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
-  geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer. The launcher, with the automatic start
+  geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer; Ace Driver links (up to 8). The launcher, with the automatic start
   and the restart watchdog; the package with a folder per game; the session recording switch.
 - **0.9.0**: Time Crisis II twin-cabinet link, one gun per screen with both cabinets on one PC, link lights for every
   game.
@@ -195,7 +195,7 @@ friends) is kept as it is, hidden by *Arcade mode*, so their releases keep mergi
 MIT License; see `LICENSE`. Copyright of the original project is its author's; this fork's additions are under the same
 licence.
 
-This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Time Crisis, Cyber Cycles,
+This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Ace Driver, Time Crisis, Cyber Cycles,
 Alpine Racer and Cyber Sled are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
 each game.
 

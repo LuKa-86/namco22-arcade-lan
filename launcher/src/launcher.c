@@ -87,6 +87,9 @@ static const game_t games[] = {
     { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
       "Racing for up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
       8, { NET_MODES("roms") } },
+    { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
+      "Formula racing for up to eight linked cabinets (tested with four).", "Keys: 5 coin (two a credit), arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
+      8, { NET_MODES("roms") } },
     { "timecrs2", "Time Crisis II", "1997", "Time Crisis II", "TimeCrisis2-ArcadeLAN.exe",
       "The twin light-gun cabinet: the left and right sides link for two players.", "Mouse or light gun to shoot, the pedal to take cover; Esc settings.",
       "tc2_link.cfg",
@@ -493,7 +496,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
             text(cb, f_big, r.x + 28 * k, r.y + 12 * k, games[i].name, s ? C_AMBER : C_TEXT);
-            char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (games[i].nmodes == 6 ? "twin cabinet link" : "up to 4 linked cabinets") : "one cabinet");
+            char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (games[i].nmodes == 6 ? "twin cabinet link" : !strcmp(games[i].id, "acedrive") ? "up to 8 linked cabinets" : "up to 4 linked cabinets") : "one cabinet");
             text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
         }
         /* the chosen game: picture, lines, the ways to play */

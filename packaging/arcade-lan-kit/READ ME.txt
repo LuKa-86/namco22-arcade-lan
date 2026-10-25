@@ -16,6 +16,7 @@ WHAT IS IN THIS FOLDER
   games\                    one folder per game: its program, its roms\ and its settings
      Tokyo Wars\            up to 4 linked cabinets
      Rave Racer\            up to 4 linked cabinets
+     Ace Driver\            up to 8 linked cabinets (tested with 4; linked play new in this package)
      Time Crisis II\        the twin cabinet: left and right sides linked
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Alpine Racer\          one cabinet (new in this package)
@@ -33,6 +34,7 @@ Put your MAME ROM zips in each game's roms folder. Do not unzip them; the game u
 itself the first time it starts.
    games\Tokyo Wars\roms        tokyowar.zip
    games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
+   games\Ace Driver\roms        acedrive.zip  and  namcoc74.zip
    games\Cyber Cycles\roms      cybrcycc.zip
    games\Alpine Racer\roms      alpinerjc.zip
    games\Cyber Sled\roms        cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
