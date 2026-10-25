@@ -46,6 +46,14 @@ static const eng_rom_t ace_roms[] = {
     { "c74.bin", 0x4000, NULL, NULL },        /* the sound MCU BIOS: namcoc74.zip */
 };
 
+int ads_supp_jump(uint32_t t, uint32_t at);   /* gen_supp/ads_lifted_tab.c (tools/supplement.sh) */
+/* what the game writes on a blank EEPROM's first start, for the link to put the cabinet number in before the game boots (0x2C8C0: it
+ * looks for a valid block in 0x000..0x0E0 -- none = it starts over -- then reads the settings block 0x100, magic 0x0141; 8-bit checksums) */
+static const struct rr_ee_init ad_ee_init[2] = {
+    { 0x000, { [31] = 0xFF } },
+    { 0x100, { 0x01, 0x41, 0x10, 0x00, 0x03, 0xE0, 0x0B, 0xC0, 0x28, 0x28, 0x28, 0x28, 0x02, 0x01, 0x01, 0x00,
+               0x00, 0x00, 0x00, 0x00, 0x5B, 0x5B, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41 } },
+};
 static const rr_game_t ace = {
     .name = "acedrive", .title = "Ace Driver", .cfg_file = "ad_controls.cfg", .nv_file = "ad_eeprom.nv", .entry = L_440,
     .prg = { "ad2_prguu.6d", "ad2_prgum.8d", "ad2_prglm.2d", "ad2_prgll.4d" },      /* ROM_LOAD32_BYTE offsets 0, 1, 2, 3 */
@@ -72,6 +80,8 @@ static const rr_game_t ace = {
     .log_file = "acedriver.log",                         /* A6-0x7FC8: the mode task's resume slot (0x4C36 / 0x4C48) */                       /* the master's busy-wait poll is not measured for this game yet */
     /* LINK PLAY (our fork): the cabinet number is A6-0x73FC = 0x10000C04 (0x2D222 copies it from the settings' 0x1000C18A); the
      * settings are EEPROM block 0x100 (magic 0x0141, read at 0x2C900; parsed at 0x2D14A: byte 0x11 -> 0x1000C18B), 8-bit checksum */
-    .link_cab_addr = 0x10000C04, .link_cab_ram2 = 0x1000C18A, .link_ee_block = { 0x100, -1 }, .link_ee_byte = 0x11, .link_ee_sum8 = 1,
+    .link_cab_addr = 0x10000C04, .link_ee_block = { 0x100, -1 }, .link_ee_byte = 0x11, .link_ee_sum8 = 1, .link_ee_init = ad_ee_init, .nlink_ee_init = 2,
+    .ram_code_at = 0x10010000, .ram_code_rom = 0x60000, .ram_code_size = 0x10000,   /* its program 0x60000.. copied to work RAM (the linked race runs the other cars from it) */
+    .supp_jump = ads_supp_jump,                       /* gen_supp/: the code gen/rr_lifted.c lacks (tools/supplement.sh) */
 };
 const rr_game_t *g_rr_game = &ace;

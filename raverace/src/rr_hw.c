@@ -231,30 +231,24 @@ static bool eeprom_block_set8(uint32_t blk, int byte, uint8_t v)
     b[31] = (uint8_t)~sum;
     return true;
 }
-/* our fork: a game that keeps its cabinet number elsewhere (rr_game_t link_*, Ace Driver) writes all its settings on a blank EEPROM's
- * first start, so the number is set once the game has: in the EEPROM (kept) and in the game's own copies in work RAM (used now) */
-static int seed_cab = -1;
-void rr_hw_link_frame(uint32_t frame)
-{
-    if (seed_cab < 0 || frame < 240) return;            /* (4 s: past the game's own start-up checks of the EEPROM) */
-    bool ok = false;
-    for (int i = 0; i < 2; i++) if (g_rr_game->link_ee_block[i] >= 0)
-        ok |= g_rr_game->link_ee_sum8 ? eeprom_block_set8((uint32_t)g_rr_game->link_ee_block[i], g_rr_game->link_ee_byte, (uint8_t)seed_cab)
-                                      : (eeprom_block_set((uint32_t)g_rr_game->link_ee_block[i], g_rr_game->link_ee_byte, (uint8_t)seed_cab), true);
-    if (!ok && frame < 1800) return;                    /* the game has not written its settings yet: try again next frame */
-    const uint32_t ram[2] = { g_rr_game->link_cab_addr, g_rr_game->link_cab_ram2 };
-    for (int i = 0; i < 2; i++) if (ram[i]) { const uint32_t a = ram[i] - 0x10000000u; g_rr.wram[a] = 0; g_rr.wram[a + 1] = (uint8_t)seed_cab; }
-    fprintf(stderr, "[LINK] cabinet %d: the game's own cabinet number set to %d%s\n", seed_cab + 1, seed_cab + 1, ok ? "" : " (in work RAM only: no valid settings in the EEPROM)");
-    seed_cab = -1;
-}
 void rr_hw_link_on(int cabinet, bool seed_id)
 {
     link_on = true;
     lan139_init(g_rr.sci);
     if (!seed_id) return;
-    if (g_rr_game->link_cab_addr) { seed_cab = cabinet & 7; return; }   /* (rr_hw_link_frame) */
-    eeprom_block_set(0x2C0, 0, (uint8_t)(cabinet & 7));
-    eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));
+    if (g_rr_game->link_cab_addr) {                     /* our fork: the game's own place for it (rr_game_t link_*: Ace Driver) */
+        bool blank = true;                              /* a blank EEPROM (the very first run): the game's own first-start blocks first, */
+        for (int i = 0; i < 32; i++) if (g_rr.eeprom[g_rr_game->link_ee_block[0] + i] != 0xFF) blank = false;   /* or it starts over */
+        if (blank) for (int i = 0; i < g_rr_game->nlink_ee_init; i++) memcpy(g_rr.eeprom + g_rr_game->link_ee_init[i].at, g_rr_game->link_ee_init[i].b, 32);
+        bool ok = false;
+        for (int i = 0; i < 2; i++) if (g_rr_game->link_ee_block[i] >= 0)
+            ok |= g_rr_game->link_ee_sum8 ? eeprom_block_set8((uint32_t)g_rr_game->link_ee_block[i], g_rr_game->link_ee_byte, (uint8_t)(cabinet & 7))
+                                          : (eeprom_block_set((uint32_t)g_rr_game->link_ee_block[i], g_rr_game->link_ee_byte, (uint8_t)(cabinet & 7)), true);
+        if (!ok) { fprintf(stderr, "[LINK] cabinet %d: the game's settings in the EEPROM are not valid: its cabinet number is not set (set it in the test menu)\n", cabinet + 1); return; }
+    } else {
+        eeprom_block_set(0x2C0, 0, (uint8_t)(cabinet & 7));
+        eeprom_block_set(0x2E0, 0, (uint8_t)(cabinet & 7));
+    }
     fprintf(stderr, "[LINK] first run of cabinet %d: the game's own LINK ID set to %d (change it in the test menu, GAME OPTIONS)\n", cabinet + 1, (cabinet & 7) + 1);
 }
 /* GitHub #35: is the game on one of its wheel-position selection screens (rr_game_t.select_addr / select_vals)? */

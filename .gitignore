@@ -127,3 +127,7 @@ __pycache__/
 /alpiner/sheet*.png
 /alpiner/cmp*.png
 /launcher/build/
+# Ace Driver supplement (acedriver/tools/supplement.sh): its Ghidra p-code and the address list are scratch; gen_supp/ads_* is kept
+/acedriver/acedriver.pcode
+/acedriver/gen_supp/known.txt
+/acedriver/build/

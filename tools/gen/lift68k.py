@@ -322,11 +322,26 @@ extern uint8_t g_lift_cov[];        /* one byte per even address: this instructi
 #endif
 '''
 
+def supplement_rename(text, supp):
+    """SUPPLEMENT mode: our functions get their own names (XL_...), and our table its own lookup, so they link beside a game's own
+    lifted program (which owns L_..., rr_jump, rr_call_ind)"""
+    text = re.sub(r'\bL_([0-9A-F]+)', r'XL_\1', text)
+    return text.replace('void rr_jump(uint32_t t, uint32_t at)\n{', 'int %s(uint32_t t, uint32_t at)\n{' % supp)
+
 def main():
     pcode, outdir, prefix = sys.argv[1:4]
     parts = int(sys.argv[4]) if len(sys.argv) > 4 else 8
     fns, userops = parse(pcode)
     fns = [f for f in fns if f.ins]
+    # SUPPLEMENT mode (LIFT_SUPPLEMENT=<file of instruction addresses the game's own lifted program already has>, LIFT_SUPP_NAME=<the
+    # lookup function's name>): only the functions that program lacks (code it never found: Ace Driver's run from a copy in RAM). Every
+    # call or jump outside them goes through the game's own rr_jump / rr_call_ind; the host calls <name>(target, at) when that program
+    # has no instruction there (it returns 0 when we have none either).
+    supp = os.environ.get('LIFT_SUPP_NAME')
+    if os.environ.get('LIFT_SUPPLEMENT'):
+        known = {int(x, 16) for x in open(os.environ['LIFT_SUPPLEMENT']).read().split()}
+        n0 = len(fns); fns = [f for f in fns if f.entry not in known]
+        print('supplement: %d of %d functions are new' % (len(fns), n0))
     L = Lifter(fns, userops)
     if len(sys.argv) > 5: L.rom = open(sys.argv[5], 'rb').read()
     os.makedirs(outdir, exist_ok=True)
@@ -382,6 +397,26 @@ void (*rd_lifted_entry(uint32_t ep))(uint32_t)
   return 0;
 }
 ''')
+    if supp:                                    # SUPPLEMENT mode: our own names, and our table answers <supp>() instead of rr_jump
+        files = [os.path.join(outdir, prefix + '_lifted.h'), os.path.join(outdir, prefix + '_lifted_tab.c')]
+        files += [os.path.join(outdir, '%s_lifted_%02d.c' % (prefix, n)) for n in range(parts)]
+        for p in files:
+            s = open(p, encoding='utf-8').read()
+            if p.endswith('_tab.c'):
+                s = s[:s.index('void rr_jump(uint32_t t, uint32_t at)\n{')] + '''int %s(uint32_t t, uint32_t at)   /* 1: ours, run; 0: not ours either */
+{
+  (void)at;
+  int lo = 0, hi = (int)(sizeof rr_ia_ / sizeof rr_ia_[0]) - 1;
+  while (lo <= hi) {
+    int mid = (lo + hi) / 2;
+    if (t < rr_ia_[mid]) hi = mid - 1;
+    else if (t > rr_ia_[mid]) lo = mid + 1;
+    else { rr_fnp_[rr_if_[mid]](t); return 1; }
+  }
+  return 0;
+}
+''' % supp
+            open(p, 'w', encoding='utf-8', newline='\n').write(supplement_rename(s, supp))
     print('%d functions, %d instructions -> %s/%s_lifted_*.c' % (len(fns), len(addrs), outdir, prefix))
     for w, n in sorted(L.warn.items(), key=lambda x: -x[1]): print('  note: %s x%d' % (w, n))
 

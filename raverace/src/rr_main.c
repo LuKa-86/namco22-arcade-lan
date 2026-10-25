@@ -256,7 +256,6 @@ void rr_tick(void)
     if (++slice % SLICES) return;
     frame++;
     link_host_frame(frame, !windowed);
-    rr_hw_link_frame(frame);                          /* our fork: a game whose cabinet number is set after its own start-up (Ace Driver) */
     sweep_tick();
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
@@ -402,9 +401,28 @@ static void link_report_own(char *buf, int n) { snprintf(buf, (size_t)n, "game: 
 static void link_before_restart(void) { rr_hw_eeprom_save(); rr_audio_close(); rr_host_close(); }   /* the safety net's restart */
 static link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id, rr_ui_set_hint, link_before_restart };
 
+/* our fork: a jump the lifted program has no instruction for. Into the game's copy of its program in work RAM (rr_game_t ram_code_*):
+ * the same code in the program, when the copy still holds the program's bytes there. Then the SUPPLEMENT (rr_game_t supp_jump), the
+ * code the shipped lifted program lacks. */
+void rr_jump(uint32_t t, uint32_t at);
+extern bool (*rr_trap_hook)(uint32_t at, uint32_t target, const char *what);
+static bool unknown_jump(uint32_t at, uint32_t t, const char *what)
+{
+    const rr_game_t *g = g_rr_game;
+    if (strncmp(what, "jump", 4)) return false;
+    if (g->ram_code_size && t >= g->ram_code_at && t - g->ram_code_at + 16 <= g->ram_code_size) {
+        const uint32_t r = g->ram_code_rom + (t - g->ram_code_at);
+        bool same = true;
+        for (uint32_t i = 0; i < 16; i += 2) if (rr_read(t + i, 2) != rr_read(r + i, 2)) same = false;   /* changed since the copy: not ours */
+        if (same) { if (g->supp_jump && g->supp_jump(r, at)) return true; rr_jump(r, at); return true; }
+    }
+    return g->supp_jump && g->supp_jump(t, at);
+}
+
 int main(int argc, char **argv)
 {
     int frames_given = 0;
+    rr_trap_hook = unknown_jump;
     const int cab = link_host_prescan(argc, argv);    /* a linked copy: its own log (raveracer_cabN.log, acedriver_cabN.log) */
     char logname[64], title[64];
     {   /* the game's own names (rr_game_t title / log_file; Rave Racer's when it has none) */

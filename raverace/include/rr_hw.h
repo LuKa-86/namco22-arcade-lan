@@ -27,8 +27,6 @@ bool rr_hw_freeplay(void);
 /* LINK PLAY (engine/lan139.c; only with --link): the C139's registers and buffer, its IRQ (syscon line 2), the cabinet number */
 void rr_hw_link_on(int cabinet, bool seed_id);   /* seed_id: a cabinet's first run -- GAME OPTIONS -> LINK (settings group 3 byte 0,
                                                     * EEPROM 0x2C0 -> WRAM 0x10001060) from --link; later runs keep the test menu's value */
-void rr_hw_link_frame(uint32_t frame);           /* every frame: sets a pending cabinet number once the game has written its settings
-                                                    * (rr_game_t link_*: Ace Driver) */
 /* THE EEPROM (the test menu's settings, the records) kept in a file beside the game, as MAME's nvram: loaded at boot when the file holds
  * one image (true), written back (temp file + rename) when the game has changed it. Interactive and linked runs only. */
 bool rr_hw_eeprom_persist(const char *path);

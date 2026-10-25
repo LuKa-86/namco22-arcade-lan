@@ -68,11 +68,19 @@ typedef struct {
     /* LINK PLAY (our fork, engine/link_host.h): where this game keeps its own cabinet number, so the link can seed it on a cabinet's
      * first run and compare it across the set. link_cab_addr 0 = Rave Racer's (work RAM 0x100091A0, EEPROM settings group 3 byte 0 at
      * 0x2C0 / 0x2E0, 16-bit checksums, and its link status at A6 + 0x1102..0x1108). Otherwise: the 16-bit work-RAM word holding the
-     * cabinet number (0-based) and a second work-RAM copy of it (the parsed settings; 0 = none), the EEPROM blocks (32 bytes each;
-     * -1 = none) and the byte in them, and their checksum (0 = a 16-bit ~sum of bytes 0..29 in 30..31, Rave Racer's; 1 = an 8-bit ~sum
-     * of bytes 0..30 in 31, Ace Driver's). Set a few seconds into the run (rr_hw_link_frame), once the game has written its settings. */
-    uint32_t link_cab_addr, link_cab_ram2;
+     * cabinet number (0-based), the EEPROM blocks (32 bytes each; -1 = none) and the byte in them, their checksum (0 = a 16-bit ~sum
+     * of bytes 0..29 in 30..31, Rave Racer's; 1 = an 8-bit ~sum of bytes 0..30 in 31, Ace Driver's), and the blocks the game itself
+     * writes on its first start, written first when the EEPROM is still blank (the game derives its car slot from the number once, at
+     * start-up, so the number must be in the EEPROM before it boots -- and on a blank EEPROM the game would start over). */
+    uint32_t link_cab_addr;
     int link_ee_block[2], link_ee_byte, link_ee_sum8;
+    const struct rr_ee_init { uint16_t at; uint8_t b[32]; } *link_ee_init; int nlink_ee_init;
+    /* CODE RUN FROM A COPY IN WORK RAM (our fork): the game copies ram_code_size bytes of its program from ram_code_rom to ram_code_at
+     * at start-up and jumps there (Ace Driver's linked race: the other cars' tasks). A jump into the copy goes to the same translated
+     * code in the program, when the bytes there are still the program's (rr_main.c). 0 = none. supp_jump: the SUPPLEMENT, code the
+     * shipped lifted program lacks (acedriver/tools/supplement.sh): runs target t and returns 1 when it has it, else 0; NULL = none. */
+    uint32_t ram_code_at, ram_code_rom, ram_code_size;
+    int (*supp_jump)(uint32_t t, uint32_t at);
 } rr_game_t;
 
 extern const rr_game_t *g_rr_game;

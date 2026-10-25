@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "lift_rt.h"
 #include "lift_cpu.h"
 
@@ -49,8 +50,10 @@ static void rr_fatal(int code, const char *why)
     exit(code);
 }
 
+bool (*rr_trap_hook)(uint32_t at, uint32_t target, const char *what);   /* our fork: a host that can handle it (true: not a trap) */
 void rr_trap(uint32_t at, uint32_t target, const char *what)
 {
+    if (rr_trap_hook && rr_trap_hook(at, target, what)) return;
     snprintf(rr_last_trap, sizeof rr_last_trap, "frame %u: 0x%06X -> 0x%08X: %s", rr_frame, at, target, what);
     rd_budget_out();                                 /* a probe's mutated state trapped: abandon the probe */
     { extern int rd_quiet; if (rd_quiet) return; }   /* a fuzz probe's mutated state (src/rd), not the game */
