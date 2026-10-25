@@ -98,7 +98,7 @@ __pycache__/
 /tokyowar/soak/
 /raverace/soak/
 /raverace/gen/rr_c25.c
-# Cyber Cycles feasibility test: ROM-derived or scratch files
+# Cyber Cycles (our port): ROM-derived or scratch files
 /cybrcycc/extracted/
 /cybrcycc/gen/
 /cybrcycc/build/
@@ -111,3 +111,18 @@ __pycache__/
 /cybrcycc/*.cfg
 /cybrcycc/sheet*.png
 /cybrcycc/cmp*.png
+# Alpine Racer (our port): ROM-derived or scratch files
+/alpiner/extracted/
+/alpiner/gen/
+/alpiner/build/
+/alpiner/shots*/
+/alpiner/ghidra_proj/
+/alpiner/*.bin
+/alpiner/*.pcode
+/alpiner/*.log
+/alpiner/run.out
+/alpiner/*.nv
+/alpiner/*.cfg
+/alpiner/*.rec
+/alpiner/sheet*.png
+/alpiner/cmp*.png
