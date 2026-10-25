@@ -5,31 +5,55 @@
 # Namco 22: Arcade LAN
 
 **A fork of [namco22-decompile](https://github.com/spacestate1/namco22-decompile) by
-[spacestate1](https://github.com/spacestate1), made for real arcade cabinets.**
+[spacestate1](https://github.com/spacestate1), made to keep real arcade cabinets running.**
 
 namco22-decompile rebuilds Namco's 1990s arcade games (System 21, 22 and 23) so they run natively on a PC. All of that
-work is spacestate1's. This fork adds one thing on top: an **Arcade LAN**, so cabinets that have a PC in place of
-their original boards link over a wired network the way the boards linked over their cable. They link when switched
-on, take coins as normal, and need no menus. Huge respect and thanks to spacestate1; please star and support
+work is spacestate1's. This fork puts those games into real cabinets: a PC in place of the original boards, the
+cabinets linked over a wired network the way the boards were linked by their cable, starting by themselves when the
+cabinet is switched on. Huge respect and thanks to spacestate1; please star and support
 [the original project](https://github.com/spacestate1/namco22-decompile), and use it for playing at home or online.
 
 **You need your own copy of the games.** This repository contains no ROMs or game data.
 
-> **Project status:** a hobby project for restoring real cabinets, with no regular updates or support. The link has
-> been tested with up to four PCs on a home network and with up to four copies on one PC. It has not yet run in a full
-> arcade installation. Bug reports and pull requests are welcome but may not get picked up. You are welcome to fork it
-> under the same licence (MIT).
+## Why this exists
 
-## What the Arcade LAN adds
+This project was made for an arcade that runs Tokyo Wars, Rave Racer, Cyber Cycles, Prop Cycle and Time
+Crisis II cabinets. Their original hardware has been problematic over the years, and the aim is a reliable way to keep
+the real machines running. It started with restoring a 4-player Tokyo Wars set-up and has grown from there.
 
-### Link play for the cabinets
+The goal is **set up and forget**: switch a cabinet on, and its PC boots, starts its game full screen, finds the other
+cabinets on the network and links with them, with nobody touching a keyboard, every day.
 
-| Game | Cabinets | Status |
-|---|---|---|
-| **Tokyo Wars** | up to 4 | Linked battles, team play; tested with 4 |
-| **Rave Racer** | up to 4 | Linked races; tested with 4 |
-| **Time Crisis II** | 2 (the twin cabinet) | Linked LINK PLAY; one known issue, see below |
-| **Cyber Cycles** | up to 4 | A new port, on the `cybrcycc-feasibility` branch: plays, links 2 or 4 bikes |
+The fork follows the original project's releases, so it has the same games available, but its focus is the games
+the arcade has and keeping them running.
+
+> **Project status:** a hobby project, with no regular updates or support. The link has been tested with up to four
+> PCs on a home network and with up to four copies on one PC; it has not yet run in a full arcade installation. Bug
+> reports and pull requests are welcome but may not get picked up. You are welcome to fork it under the same licence
+> (MIT).
+
+<p align="center">
+  <img src="docs/images/launcher.png" alt="The launcher: the games, and the ways to play the chosen one" width="85%">
+</p>
+
+## The games
+
+| Game | Year | Cabinets | |
+|---|---|---|---|
+| **Tokyo Wars** | 1996 | up to 4, linked | Team tank battles |
+| **Rave Racer** | 1995 | up to 4, linked | Linked races |
+| **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
+| **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
+| **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
+| **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
+
+The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Ace Driver, Cyber Commando,
+Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
+those, use the original project's releases. The package below keeps to the linked games and the new ones.
+
+## What the fork adds
+
+### The cabinet link
 
 - **Links at power-on, like the boards.** Each cabinet looks for the others when its game starts, and only then. When
   all are there, or the start-up wait runs out, they begin together. A cabinet that starts late, or restarts after a
@@ -38,7 +62,7 @@ on, take coins as normal, and need no menus. Huge respect and thanks to spacesta
   ID, team colour, car type and so on) are kept per cabinet.
 - **LAN only.** Nothing uses the internet. **Find cabinets** on the Network page fills in every PC's address by itself.
 - **Safety net.** If its partners disappear, a cabinet shows *LINK LOST - RESTARTING* and starts again, alone, instead
-  of being left in a battle nobody else is in (or carries on, if you prefer).
+  of being left in a battle nobody else is in.
 - **Link lights**: small status lights in a corner of the screen, one per cabinet, for setting up.
 - **The same rules as the chips.** The link is a model of Namco's C139 link chip (and the C422 for Time Crisis II),
   read from each game's own driver, so the games run their original link code unchanged.
@@ -47,54 +71,68 @@ on, take coins as normal, and need no menus. Huge respect and thanks to spacesta
   <img src="docs/images/tokyowar-link-4cab.jpg" alt="Tokyo Wars: the four cabinets' screens during one linked battle" width="80%">
 </p>
 
-### Also in this fork
+### The launcher and the package
 
-- **Party mode**: two or four linked copies on one PC as a split screen, one player per controller (or the keyboard).
-- **Session recordings on or off**: each game keeps the inputs of the last session played, so a problem can be
-  replayed exactly. `record=off` in `link.cfg` (or the kit menu's Tools page) turns that off.
+`Namco 22 Arcade LAN.exe` is a full-screen front end for the package, made for a cabinet screen. Pick a game and how to
+play it with the keyboard, a controller or the mouse:
+
+- **Cabinet on the network** (full screen or in a window), **Time Crisis II's left or right side**, both screens on one
+  PC, two or four linked copies on one PC to try the link, and **party mode** (two or four players on one PC, split
+  screen, a controller each).
+- **Start a game when Windows starts**: the launcher counts down (a key or button gives the menu instead) and starts the
+  chosen game. **If the game ever closes, it starts it again**, so the cabinet always comes back to its attract mode.
+- **Settings for every game at once**: the link lights, and the session recordings (each game keeps the last session's
+  inputs so a problem can be replayed exactly; off keeps none).
+- The Rave Racer 4-cabinet check, and this PC's network address.
+
+```
+Namco 22 Arcade LAN\
+  Namco 22 Arcade LAN.exe       the launcher
+  READ ME.txt
+  games\<Game>\                 <Name>-ArcadeLAN.exe, its roms\ (your zips) and its own settings
+  tools\                        the Rave Racer 4-cabinet check
+  advanced\                     a .bat for every button in the launcher
+```
+
+### Also
+
 - **Esc only opens and closes the menu** (the original's double-Esc quits, which an arcade does not want).
 - **Fix**: quick clicks and touchpad taps in the menus are no longer lost.
 
-## Version history
+## Putting a PC in a cabinet
 
-The fork follows the original project's releases; each is merged in and the link tests are run again.
-
-- **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
-  geometry fix). Adds the session recording switch; the Cyber Cycles port is on its own branch.
-- **0.9.0**: Time Crisis II twin-cabinet link, one gun per screen with both cabinets on one PC, link lights for every game.
-- **0.7.0**: party mode, *Arcade mode* (the original's online pages hidden, kept for later merges).
-- **0.5.4**: the frame timing choice (the original's new timer or 0.4.0's).
-- **0.4.0**: the first Arcade LAN: Tokyo Wars and Rave Racer, the Network page, Find cabinets, the safety net.
-
-## Requirements
-
-- One PC per cabinet with Windows 10 or 11 (64-bit) and working OpenGL. Modest PCs are fine.
-- **A wired network**: a simple switch and cables. The games expect every cabinet to answer within about a tenth of a
-  second, all the time. Wi-Fi reconnects and power saving break that.
-- **Full screen** on each cabinet. In a window, a PC with modest graphics can freeze for a moment, which can drop the
+- **Video**: an original 15 kHz arcade monitor needs a converter from the PC's VGA/HDMI output to the monitor's RGB
+  (a 15 kHz-capable graphics set-up or a scan converter); or fit an LCD in the cabinet.
+- **Controls**: the wheels, pedals, levers, guns and buttons go through an encoder board the PC sees as a keyboard,
+  joystick or game controller, for example an Ultimarc A-PAC (analog: wheels, pedals, levers) or I-PAC (buttons). Set
+  the keys or axes once on each game's Esc menu > Controls page and calibrate in the game's own test menu, as on the
+  real machine.
+- **Network**: a cable from each cabinet to one switch, and a fixed address for each PC. The games expect every cabinet
+  to answer within about a tenth of a second, all the time; Wi-Fi reconnects and power saving break that.
+- **Start-up**: set Windows to sign in by itself and switch off sleep, then choose the game in the launcher's
+  *Start a game when Windows starts*.
+- **Full screen** on every cabinet. In a window, a PC with modest graphics can freeze for a moment, which can drop the
   link with three or more cabinets.
-- The same build on every cabinet, and Windows Firewall allowing it on the cabinets' network (*Private*).
-- Your own game files: MAME ROM sets, 0.271 or later (`tokyowar.zip`; `raverace.zip` + `namcoc74.zip`;
-  `timecrs2.zip`; `cybrcycc` for Cyber Cycles).
 
 ## Setting up
 
-1. Build the games (below) and put a kit together:
-   `tools/make_arcade_kit.sh <kit folder> <folder with your MAME zips>`. For Time Crisis II, also unpack its files with
-   `tc2/tools/setup_roms.py` into `<kit>/Time Crisis 2/extracted`.
-2. Copy the kit folder to every cabinet PC.
-3. On every PC, start the game with its **FULL SCREEN** launcher (or `0 - START HERE - choose a game.bat`). On each
-   one, press **Esc**, open **Network**, choose **Find cabinets**, then **Use the N found**. That fills in the address
-   list (the same on every PC) with *This cabinet* on *Auto*.
+1. Build the games and the launcher (below), then put the package together:
+   `tools/make_arcade_kit.sh <package folder> <folder with your MAME zips>`. Each game's zips go into its own `roms`
+   folder, and each game unpacks them on its first start.
+2. Copy the package folder to every cabinet PC.
+3. On every PC, start the game as **Cabinet on the network - FULL SCREEN** in the launcher. On each one, press **Esc**,
+   open **Network**, choose **Find cabinets**, then **Use the N found**. That fills in the address list (the same on
+   every PC) with *This cabinet* on *Auto*. Time Crisis II's two sides find each other by themselves.
 4. Close the game on every PC and start them all again. They wait up to a minute for each other, then link.
+5. In the launcher's Settings, choose the game for *Start a game when Windows starts*.
 
-The kit's `READ ME - LINK TEST.txt` walks through every launcher, testing on one PC first, and what each message
-means. [docs/ARCADE_LAN.md](docs/ARCADE_LAN.md) describes the link in more detail.
+The package's `READ ME.txt` walks through all of it; [docs/ARCADE_LAN.md](docs/ARCADE_LAN.md) describes the link in
+more detail.
 
 ## Settings
 
-The link settings are in `link.cfg` beside the program; the **Network** page in the Esc menu edits them (Time Crisis
-II has its own, `Time Crisis 2\tc2_link.cfg`).
+Each game's link settings are in `link.cfg` in its folder (Time Crisis II: `tc2_link.cfg`); the game's **Network** page
+in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 
 | Setting | |
 |---|---|
@@ -108,10 +146,19 @@ II has its own, `Time Crisis 2\tc2_link.cfg`).
 | `record` | `on` (default) or `off`: the last session's inputs, `<game>_last.rec` |
 | `arcade_mode` | `on` (default) hides the original's online pages; `off` brings them back |
 
+## Version history
+
+- **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
+  geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer. The launcher, with the automatic start
+  and the restart watchdog; the package with a folder per game; the session recording switch.
+- **0.9.0**: Time Crisis II twin-cabinet link, one gun per screen with both cabinets on one PC, link lights for every
+  game.
+- **0.7.0**: party mode, *Arcade mode* (the original's online pages hidden, kept for later merges).
+- **0.5.4**: the frame timing choice (the original's new timer or 0.4.0's).
+- **0.4.0**: the first Arcade LAN: Tokyo Wars and Rave Racer, the Network page, Find cabinets, the safety net.
+
 ## Known issues
 
-- **Time Crisis II**: if one player CONTINUEs while the other is still playing, the other cabinet treats them as a
-  computer partner until its game restarts. Fresh joins and new games work. (Work on this is paused.)
 - Rare: when a cabinet is switched off without warning, the others may show a link blip of about a third of a second
   before carrying on.
 - Not yet tested with real controllers in party mode, or in a full arcade installation.
@@ -124,10 +171,13 @@ its sound and DSP programs are translated from them at build time (see the origi
 
 ```
 cmake -S tokyowar -B tokyowar/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DZLIB_LIBRARY=/mingw64/lib/libz.a
-ninja -C tokyowar/build          # the same for raverace and tc2 (Time Crisis II's first build takes ~20 minutes)
+ninja -C tokyowar/build          # the same for raverace, tc2, cybrcycc, alpiner and cybsled (cs21, -j1)
+cmake -S launcher -B launcher/build -G Ninja && ninja -C launcher/build
 ```
 
-The link tests run four copies on one PC over 127.0.0.1, with network faults injected:
+Cyber Cycles and Alpine Racer are translated from the game's own program with Ghidra and this fork's 68020 translator
+(`tools/gen/lift68k.py`, `tools/gen/ghidra/`); their `tools/import.sh` / `regen.sh` need `N22TOOLS` set to the folder
+with Ghidra and a JDK. The link tests run four copies on one PC over 127.0.0.1, with network faults injected:
 `tokyowar/tools/link_tests.sh` and `raverace/tools/link_tests.sh` (`gather`, `missing`, `bad`, `skew`, `crash`).
 
 ## How it works
@@ -145,15 +195,16 @@ friends) is kept as it is, hidden by *Arcade mode*, so their releases keep mergi
 MIT License; see `LICENSE`. Copyright of the original project is its author's; this fork's additions are under the same
 licence.
 
-This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Time Crisis and Cyber Cycles
-are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of each game.
+This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Time Crisis, Cyber Cycles,
+Alpine Racer and Cyber Sled are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
+each game.
 
 ## Credits
 
 - **[spacestate1](https://github.com/spacestate1)** for [namco22-decompile](https://github.com/spacestate1/namco22-decompile),
   the rebuilt games this fork is built on, and the long reverse-engineering work behind them. This fork would not exist
   without it. Their README is kept in [docs/ORIGINAL_README.md](docs/ORIGINAL_README.md).
-- **Claude** (Anthropic's AI, through Claude Code) wrote the Arcade LAN changes.
+- **Claude** (Anthropic's AI, through Claude Code) wrote the fork's changes, the new ports and the launcher.
 - [MAME](https://www.mamedev.org) served as the reference for how the boards behave, and [Ghidra](https://ghidra-sre.org)
-  made the analysis of the games' link drivers possible.
+  made the analysis of the games' programs possible.
 - Namco, for the games and the cabinets.

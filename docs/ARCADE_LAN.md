@@ -12,6 +12,7 @@ the original author's; this fork only adds the cabinet link described here, and 
 | Tokyo Wars | yes | up to 4 |
 | Rave Racer | yes | tested with 4 |
 | Time Crisis II | yes (C422, the twin cabinet) | 2 |
+| Cyber Cycles | yes (this fork's own port) | up to 4, tested with 4 |
 
 ## What it does
 

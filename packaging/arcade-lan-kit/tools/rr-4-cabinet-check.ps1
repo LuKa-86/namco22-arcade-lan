@@ -3,7 +3,7 @@
 # network loopback. Each one puts a coin in, starts, chooses linked play and drives a race by itself.
 # Afterwards each cabinet's log is read and the result is shown as PASS or FAIL.
 $ErrorActionPreference = 'Stop'
-Set-Location (Split-Path $PSScriptRoot -Parent)
+Set-Location (Join-Path (Split-Path $PSScriptRoot -Parent) 'games\Rave Racer')   # the game's folder: its program, roms and logs
 $seconds = 100
 $frames = [int]($seconds * 60)
 
@@ -15,8 +15,8 @@ Write-Host ""
 
 1..4 | ForEach-Object { Remove-Item "raveracer_cab$_.log" -ErrorAction SilentlyContinue }
 $procs = 1..4 | ForEach-Object {
-    Start-Process -FilePath ".\RaveRacer-Link.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
-        'roms', '--frames', $frames, '--replay', 'tools\rr_race.rep', '--link', $_, '--link-cabinets', '4', '--mute')
+    Start-Process -FilePath ".\RaveRacer-ArcadeLAN.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
+        'roms', '--frames', $frames, '--replay', '..\..\tools\rr_race.rep', '--link', $_, '--link-cabinets', '4', '--mute')
 }
 $start = Get-Date
 while ($procs | Where-Object { -not $_.HasExited }) {
@@ -52,4 +52,4 @@ foreach ($c in 1..4) {
 }
 Write-Host ""
 if ($pass) { Write-Host "RESULT: PASS - all four cabinets linked at start-up and stayed linked for the whole race." -ForegroundColor Green }
-else { Write-Host "RESULT: FAIL - send the four raveracer_cab*.log files from this folder." -ForegroundColor Red }
+else { Write-Host "RESULT: FAIL - send the four raveracer_cab*.log files from games\Rave Racer." -ForegroundColor Red }

@@ -126,3 +126,4 @@ __pycache__/
 /alpiner/*.rec
 /alpiner/sheet*.png
 /alpiner/cmp*.png
+/launcher/build/

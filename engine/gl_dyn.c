@@ -127,8 +127,9 @@ SDL_GLContext eng_gl_create_win(SDL_Window **win, const char **missing)
         usable = ren && !strstr(ren, "GDI Generic") && !getenv("NAMCO22_FORCE_MESA");
     }
     if (usable) return ctx;
-    const char *dll = "mesa\\opengl32.dll";
+    const char *dll = "mesa\\opengl32.dll", *mdir = "mesa";
     FILE *t = fopen(dll, "rb");
+    if (!t) { dll = "..\\..\\mesa\\opengl32.dll"; mdir = "..\\..\\mesa"; t = fopen(dll, "rb"); }   /* our fork: the package's one mesa\ (games\<Game>\ ..\..) */
     if (!t) return ctx;                                  /* nothing better: keep what there is */
     fclose(t);
     char title[256]; int w, h, x, y; Uint32 flags = SDL_GetWindowFlags(*win);
@@ -139,7 +140,8 @@ SDL_GLContext eng_gl_create_win(SDL_Window **win, const char **missing)
     SDL_DestroyWindow(*win); *win = NULL;
     SDL_GL_UnloadLibrary();
     wchar_t wdir[32768];
-    DWORD wn = GetFullPathNameW(L"mesa", 32768, wdir, NULL);
+    wchar_t wm[32]; MultiByteToWideChar(CP_UTF8, 0, mdir, -1, wm, 32);
+    DWORD wn = GetFullPathNameW(wm, 32768, wdir, NULL);
     if (wn > 0 && wn < 32768) SetDllDirectoryW(wdir);   /* its libgallium_wgl.dll sits beside it */
     if (SDL_GL_LoadLibrary(dll) != 0) { fprintf(stderr, "[GL] cannot load %s: %s\n", dll, SDL_GetError()); return NULL; }
     *win = SDL_CreateWindow(title, x, y, w, h, flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
