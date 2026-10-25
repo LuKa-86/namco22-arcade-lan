@@ -11,7 +11,8 @@
  *                          0x02000006 R   "test done": 0, leaves test mode ;  W: point-ROM address = 0, enters test mode
  *                          0x0200000E W   acknowledges the C435 interrupt (IP4)
  *                          0x0200000A/C   point-ROM reads: not modelled yet (the point-ROM chips' word layout) -- still replayed
- *   C422                   0x06400000-0x0640000F  sixteen-bit registers; a write to +2 of 0xFFFB raises its interrupt (IP5), 0x000F acks it
+ *   C422                   0x06400000-0x0640000F  the RS-422 twin-cabinet link: src/tc2_link.c (plain registers + MAME's POST interrupt
+ *                                                 raise / ack unless a link is up)
  *   C412 (frame buffers)   0x0C000004 W flags   0x0C000006 R 0x0002 ("the game uploads")   0x0C000010 / 12 RW the word address (low / high)
  *                          0x0C000014 RW the word at it -- SDRAM A 0x000000, SDRAM B 0x100000 (1M words each), SRAM 0x200000 (128K: the alpha-
  *                          cutout tiles), PCZ RAM 0x220000 (512); a write steps the address, a read does not; 0x0C000018 R toggles bit 0

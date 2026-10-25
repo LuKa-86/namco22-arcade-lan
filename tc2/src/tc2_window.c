@@ -20,6 +20,7 @@
 #include "eng/eng_gl.h"
 #include "eng/eng_display.h"
 #include "eng/eng_ui.h"
+#include "eng/eng_net_ui.h"
 #include "eng/eng_vsync.h"
 #include "eng/eng_cfg.h"
 #include "eng/eng_crosshair.h"
@@ -152,6 +153,8 @@ int tc2_window_open(int scale, int fullscreen)
     if (!eng_ui_init(win, "Time Crisis II")) fprintf(stderr, "[HOST] no menu\n");
     ss22_input_init(&tc2_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
     eng_ui_add_page(ss22_input_page());
+    /* (the author's 0.9.1 online link, src/tc2_link.c + its pages, is not built in our fork: the twin-cabinet LAN link is ours,
+     * src/tc2_c422.c, set up in tc2_link.cfg) */
     (void)picture_rect(0);
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -294,6 +297,7 @@ static void present_draw(void *ctx, double frac)
     eng_vsync_extra_tag = smooth_tag;
     draw_picture();
     draw_crosshair();
+    eng_ui_draw(NULL);                                           /* closed: the hint line and the online chat overlay */
 }
 /* from the CPU's slice loop (src/tc2_cpu.c rr_tick): serve a picture tick that came due while the game runs; the clock is read every 8th slice */
 void (*tc2_present_hook)(void);

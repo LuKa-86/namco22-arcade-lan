@@ -21,6 +21,8 @@ typedef struct {
     const char *const *zips; int nzips;           /* the MAME zips searched (a split set keeps a device ROM in its own zip) */
     const eng_rom_t *chips; int nchips;           /* every ROM file: name, size, CRC (src/eng/romzip.c) */
 
+    int twin;                                     /* 1 = a TWIN-CABINET game (Time Crisis 2: Left/Red + Right/Blue on the C422 RS-422 link): the menu's
+                                                   * Cabinet choice (the I/O board's Link ID) and online play (src/tc2_link.c) */
     int evo2;                                     /* 1 = System 23 EVOLUTION 2: the chips at +0x10000000, 29-bit decode, C450 DMA, IRQ status regs */
     uint32_t clock;                               /* the main CPU, Hz (cycles as MAME charges them) */
     uint32_t px_num, px_den;                      /* pixel clocks (25.6 MHz) per main cycle, exactly */
