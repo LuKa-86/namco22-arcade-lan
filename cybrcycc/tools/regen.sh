@@ -4,16 +4,19 @@
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-WORK=/path/to/n22tools/work
-GH=/path/to/n22tools/ghidra_12.1.4_PUBLIC
-export JAVA_HOME='C:\path\to\n22tools\jdk-21.0.12.1+1'
-export PATH="/path/to/n22tools/jdk-21.0.12.1+1/bin:$PATH"
+# the tools folder: ghidra_12.1.4_PUBLIC, jdk-21.0.12.1+1 and the Ghidra project folder work/ (e.g. N22TOOLS=/c/n22tools)
+T="${N22TOOLS:?set N22TOOLS to the tools folder (ghidra_12.1.4_PUBLIC, jdk-21.0.12.1+1, work/)}"
+TW="$(cygpath -w "$T")"
+WORK=$T/work
+GH=$T/ghidra_12.1.4_PUBLIC
+export JAVA_HOME="$TW\jdk-21.0.12.1+1"
+export PATH="$T/jdk-21.0.12.1+1/bin:$PATH"
 cp "$ROOT/tools/gen/ghidra/"*.java "$WORK/scripts/"
 touch "$HERE/seeds.txt"; cp "$HERE/seeds.txt" "$WORK/cc_seeds.txt"
-( cd "$WORK" && "$GH/support/analyzeHeadless.bat" 'C:\path\to\n22tools\work' cybrcycc -process cybrcycc_main.bin -noanalysis \
-    -scriptPath 'C:\path\to\n22tools\work\scripts' \
-    -postScript SeedTables.java 'C:\path\to\n22tools\work\cc_seeds.txt' \
-    -postScript DumpPcode.java 'C:\path\to\n22tools\work\cybrcycc.pcode' > cc_regen.log 2>&1 )
+( cd "$WORK" && "$GH/support/analyzeHeadless.bat" "$TW\work" cybrcycc -process cybrcycc_main.bin -noanalysis \
+    -scriptPath "$TW\work\scripts" \
+    -postScript SeedTables.java "$TW\work\cc_seeds.txt" \
+    -postScript DumpPcode.java "$TW\work\cybrcycc.pcode" > cc_regen.log 2>&1 )
 grep -E "SeedTables:|DumpPcode:" "$WORK/cc_regen.log" | sed 's/^INFO *//; s/(GhidraScript).*//'
 cp "$WORK/cybrcycc.pcode" "$HERE/cybrcycc.pcode"
 ( cd "$ROOT" && python -I tools/gen/lift68k.py cybrcycc/cybrcycc.pcode cybrcycc/gen cc 8 cybrcycc/cybrcycc_main.bin | grep -v "untranslated\|CALLOTHER" )
