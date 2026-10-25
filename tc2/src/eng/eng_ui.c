@@ -270,6 +270,10 @@ void eng_ui_input_end(void)   { if (ctx) nk_input_end(ctx); }
 void eng_ui_capture_key(void (*cb)(SDL_Scancode, void *), void *u) { input_cap_cb = NULL; cap_cb = cb; cap_u = u; }
 void eng_ui_capture_input(bool (*cb)(const SDL_Event *, void *), void *u) { cap_cb = NULL; input_cap_cb = cb; cap_u = u; }
 bool eng_ui_capturing(void) { return cap_cb != NULL || input_cap_cb != NULL; }
+#define MAXLAYERS 4
+static const eng_ui_layer *layers[MAXLAYERS]; static int nlayers;
+void eng_ui_add_layer(const eng_ui_layer *l) { if (nlayers < MAXLAYERS) layers[nlayers++] = l; }
+static bool layer_modal(void) { for (int i = 0; i < nlayers; i++) if (layers[i]->modal && layers[i]->modal()) return true; return false; }
 void eng_ui_goto(int p, int r) { if (p >= 0 && p < npages) { tab = p; row = r; } }
 
 /* one navigation step from the keyboard, a pad or a hat */
@@ -300,7 +304,10 @@ void eng_ui_nav(char c)
 
 bool eng_ui_event(SDL_Event *e)
 {
-    if (!ctx || !open_) return false;
+    if (!ctx) return false;
+    for (int i = 0; i < nlayers; i++)                    /* a layer first (the chat box, the lobby window's keys) */
+        if (layers[i]->event && layers[i]->event(e, open_)) return true;
+    if (!open_) return false;
     if (input_cap_cb) {
         if (input_cap_cb(e, cap_u)) input_cap_cb = NULL;
         return true;
@@ -313,6 +320,10 @@ bool eng_ui_event(SDL_Event *e)
             void (*cb)(SDL_Scancode, void *) = cap_cb; cap_cb = NULL;
             cb(SDL_SCANCODE_UNKNOWN, cap_u);
         }
+        return true;
+    }
+    if (layer_modal()) {                                 /* a layer's window has the keyboard: only the mouse goes on to Nuklear */
+        if (e->type != SDL_KEYDOWN && e->type != SDL_KEYUP && e->type != SDL_TEXTINPUT && e->type != SDL_CONTROLLERBUTTONDOWN) nk_sdl_handle_event(e);
         return true;
     }
     int k = -1;
@@ -420,8 +431,10 @@ void eng_ui_draw(bool *quit)
 {
     if (quit_req && quit) *quit = true;
     if (!ctx) return;
-    if (!open_) {
-        bool any = draw_link_lights();                                    /* the menu-button hint (a pad has no Esc), for a few seconds after the start */
+    if (!open_) {                                    /* the menu-button hint (a pad has no Esc), for a few seconds after the start */
+        int lw, lh; SDL_GetWindowSize(uwin, &lw, &lh);
+        bool any = draw_link_lights() || (hint_left > 0 && hint_text[0]);   /* (our fork: the link lights) */
+        for (int i = 0; i < nlayers; i++) if (layers[i]->draw) { layers[i]->draw(ctx, lw, lh, false); any = true; }
         if (hint_left > 0 && hint_text[0]) {
             hint_left--;
             int hw, hh; SDL_GetWindowSize(uwin, &hw, &hh);
@@ -431,7 +444,6 @@ void eng_ui_draw(bool *quit)
                 nk_label(ctx, hint_text, NK_TEXT_CENTERED);
             }
             nk_end(ctx);
-            any = true;
         }
         if (any) nk_sdl_render(NK_ANTI_ALIASING_ON);
         return;
@@ -509,6 +521,7 @@ void eng_ui_draw(bool *quit)
         if (pg->notes) { nk_layout_row_dynamic(ctx, 18, 1); pg->notes(note_line); }
     }
     nk_end(ctx);
+    for (int i = 0; i < nlayers; i++) if (layers[i]->draw) layers[i]->draw(ctx, ww, wh, true);   /* on top of the menu */
 
     nk_sdl_render(NK_ANTI_ALIASING_ON);        /* scales window units to the drawable itself */
 }
