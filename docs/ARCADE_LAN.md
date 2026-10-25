@@ -5,12 +5,13 @@ wired LAN the way the original boards were linked by their cable.**
 
 For playing at home or over the internet, use the original project,
 [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile). All the work of rebuilding the games is
-the original author's; this fork only adds the cabinet link described here, and follows their releases (currently 0.9.0).
+the original author's; this fork only adds the cabinet link described here, and follows their releases (currently 0.9.2).
 
 | Game | Arcade LAN | Cabinets |
 |---|---|---|
 | Tokyo Wars | yes | up to 4 |
 | Rave Racer | yes | tested with 4 |
+| Time Crisis II | yes (C422, the twin cabinet) | 2 |
 
 ## What it does
 
@@ -28,7 +29,7 @@ the original author's; this fork only adds the cabinet link described here, and 
    That fills in the address list -- the same on every PC -- with *This cabinet* on *Auto*. (Or type the addresses by hand.)
 3. Close the game on every PC and start them all again, full screen.
 
-The settings are in `link.cfg` beside the program.
+The settings are in `link.cfg` beside the program (also `record=on|off`: keep the last session's inputs, `<game>_last.rec`).
 
 ## The Network page
 
