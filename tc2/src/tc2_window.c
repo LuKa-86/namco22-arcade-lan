@@ -20,6 +20,7 @@
 #include "eng/eng_gl.h"
 #include "eng/eng_display.h"
 #include "eng/eng_ui.h"
+#include "eng/eng_net_ui.h"
 #include "eng/eng_vsync.h"
 #include "eng/eng_cfg.h"
 #include "eng/eng_crosshair.h"
@@ -112,6 +113,12 @@ int tc2_window_open(int scale, int fullscreen)
     if (!eng_ui_init(win, "Time Crisis II")) fprintf(stderr, "[HOST] no menu\n");
     ss22_input_init(&tc2_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
     eng_ui_add_page(ss22_input_page());
+    if (tc2_game.twin) {                                 /* the twin cabinet: which side this is, and online play (src/tc2_link.c) */
+        void tc2_link_init(void); const eng_ui_page *tc2_link_page(void);
+        tc2_link_init();
+        eng_ui_add_page(tc2_link_page());
+        eng_ui_add_page(eng_net_ui_page());
+    }
     (void)picture_rect(0);
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -253,6 +260,7 @@ static void present_draw(void *ctx, double frac)
     eng_vsync_extra_tag = smooth_tag;
     draw_picture();
     draw_crosshair();
+    eng_ui_draw(NULL);                                           /* closed: the hint line and the online chat overlay */
 }
 /* from the CPU's slice loop (src/tc2_cpu.c rr_tick): serve a picture tick that came due while the game runs; the clock is read every 8th slice */
 void (*tc2_present_hook)(void);
@@ -315,7 +323,7 @@ static int pass(int new_frame)
     if (eng_vsync_show(&vs)) {
         draw_picture();
         draw_crosshair();
-        if (eng_ui_is_open()) eng_ui_draw(&quit);
+        eng_ui_draw(&quit);                                      /* the menu, or (closed) the hint line and the online chat overlay */
         { /* tests: TC2_WINSHOT=path:pass reads the whole window back (menu included) to a PPM */
           static long at = -2; static char path[512]; static long n;
           if (at == -2) { at = -1; const char *e = getenv("TC2_WINSHOT"); if (e) { snprintf(path, sizeof path, "%s", e); char *c = strrchr(path, ':'); if (c) { *c = 0; at = atol(c + 1); } } }
@@ -344,6 +352,6 @@ void tc2_window_frame(void)
 {
     if (!win) return;
     int ok = pass(1);
-    while (ok && (eng_ui_is_open() || paused)) { ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
+    while (ok && (eng_ui_is_open() || paused)) { { void tc2_link_paused(void); tc2_link_paused(); } ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
     if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }
