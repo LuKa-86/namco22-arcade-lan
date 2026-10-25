@@ -122,6 +122,9 @@ static void dump_state(void)
     snprintf(p, sizeof p, "%s/mixer_f%u.bin", dump_dir, frame);     /* mixer 0x90020000 */
     f = fopen(p, "wb");
     if (f) { fwrite(g_rr.mixer, 1, RR_MIXER_SIZE, f); fclose(f); }
+    snprintf(p, sizeof p, "%s/eeprom_f%u.bin", dump_dir, frame);    /* our fork: the EEPROM 0x58000000 (finding a game's settings blocks) */
+    f = fopen(p, "wb");
+    if (f) { fwrite(g_rr.eeprom, 1, RR_EEPROM_SIZE, f); fclose(f); }
     snprintf(p, sizeof p, "%s/shared_f%u.bin", dump_dir, frame);    /* 68K byte order */
     f = fopen(p, "wb");
     if (f) { fwrite(g_rr.shared, 1, RR_SHARED_SIZE, f); fclose(f); }
@@ -253,6 +256,7 @@ void rr_tick(void)
     if (++slice % SLICES) return;
     frame++;
     link_host_frame(frame, !windowed);
+    rr_hw_link_frame(frame);                          /* our fork: a game whose cabinet number is set after its own start-up (Ace Driver) */
     sweep_tick();
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
@@ -391,16 +395,29 @@ static void link_report(char *buf, int n)
     snprintf(buf, (size_t)n, "game: cabinet %u, hears %02X (%u in the ring), link %s, frames since own came back %u",
              rr_read(0x100091A0u, 2) + 1, rr_read(0x10009104u, 2), rr_read(0x10009102u, 2), link_good() ? "GOOD" : "down", rr_read(0x10009108u, 2));
 }
+/* another game on this board (rr_game_t link_*: Ace Driver): its own cabinet number; its link status is not decoded yet, so the
+ * safety net goes by the network alone (good = NULL) */
+static int  link_game_id_own(void) { return (int)(rr_read(g_rr_game->link_cab_addr, 2) & 7); }
+static void link_report_own(char *buf, int n) { snprintf(buf, (size_t)n, "game: cabinet %u", rr_read(g_rr_game->link_cab_addr, 2) + 1); }
 static void link_before_restart(void) { rr_hw_eeprom_save(); rr_audio_close(); rr_host_close(); }   /* the safety net's restart */
-static const link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id, rr_ui_set_hint, link_before_restart };
+static link_host_game link_game = { "RR", link_raise, link_deliver, link_report, link_good, link_game_id, rr_ui_set_hint, link_before_restart };
 
 int main(int argc, char **argv)
 {
     int frames_given = 0;
-    const int cab = link_host_prescan(argc, argv);    /* a linked copy: its own log (raveracer_cabN.log) */
+    const int cab = link_host_prescan(argc, argv);    /* a linked copy: its own log (raveracer_cabN.log, acedriver_cabN.log) */
     char logname[64], title[64];
-    if (cab > 0) { snprintf(logname, sizeof logname, "raveracer_cab%d.log", cab); snprintf(title, sizeof title, "Rave Racer - Cabinet %d", cab); }
-    else { snprintf(logname, sizeof logname, "raveracer.log"); snprintf(title, sizeof title, "Rave Racer"); }
+    {   /* the game's own names (rr_game_t title / log_file; Rave Racer's when it has none) */
+        const char *lf = g_rr_game->log_file ? g_rr_game->log_file : "raveracer.log", *dot = strrchr(lf, '.');
+        const int ln = dot ? (int)(dot - lf) : (int)strlen(lf);
+        const char *t = g_rr_game->title ? g_rr_game->title : "Rave Racer";
+        if (cab > 0) { snprintf(logname, sizeof logname, "%.*s_cab%d.log", ln, lf, cab); snprintf(title, sizeof title, "%s - Cabinet %d", t, cab); }
+        else { snprintf(logname, sizeof logname, "%s", lf); snprintf(title, sizeof title, "%s", t); }
+    }
+    if (g_rr_game->link_cab_addr) {                   /* not Rave Racer: its own cabinet number, its own name on the network */
+        link_game.tag = !strcmp(g_rr_game->name, "acedrive") ? "AD" : g_rr_game->name;
+        link_game.report = link_report_own; link_game.good = NULL; link_game.game_id = link_game_id_own;
+    }
 #ifdef _WIN32
     rr_win_startup(logname);        /* the program's folder, the log, DPI */
 #endif
@@ -544,11 +561,13 @@ int main(int argc, char **argv)
     /* the test menu's settings and the records survive a restart (a window or a linked copy; headless test runs and replays start from
      * the set's defaults / the recording's own EEPROM, and never save) */
     char nvname[64];
-    if (cab > 0) snprintf(nvname, sizeof nvname, "rr_eeprom_cab%d.nv", cab); else snprintf(nvname, sizeof nvname, "%s", g_rr_game->nv_file);   /* (never shared between games: rr_eeprom.nv, ad_eeprom.nv) */
+    if (cab > 0) { const char *dot = strrchr(g_rr_game->nv_file, '.');   /* (never shared between games: rr_eeprom_cab1.nv, ad_eeprom_cab1.nv) */
+                   snprintf(nvname, sizeof nvname, "%.*s_cab%d.nv", dot ? (int)(dot - g_rr_game->nv_file) : (int)strlen(g_rr_game->nv_file), g_rr_game->nv_file, cab); }
+    else snprintf(nvname, sizeof nvname, "%s", g_rr_game->nv_file);
     const bool nv_loaded = windowed && !rep_path ? rr_hw_eeprom_persist(nvname) : false;
     if (cab > 0) {
         if (!link_host_open(&link_game)) {
-            if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Rave Racer", "The link could not start.\n\nUsually another copy of the game is still running as the same cabinet (it may be hidden, e.g. the automatic check): close it, or restart the PC, and try again.\n\nDetails are in the log file beside the program.", NULL);
+            if (windowed) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g_rr_game->title, "The link could not start.\n\nUsually another copy of the game is still running as the same cabinet (it may be hidden, e.g. the automatic check): close it, or restart the PC, and try again.\n\nDetails are in the log file beside the program.", NULL);
             return 2;
         }
         rr_hw_link_on(link_host_id(), link_host_take_id_reset() || !nv_loaded);   /* the ID: first run, or a new number on the Network page */

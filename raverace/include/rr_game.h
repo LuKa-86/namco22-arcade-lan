@@ -65,6 +65,14 @@ typedef struct {
      * where it is left; a real wheel stays absolute. select_addr 0 = never (the old behaviour). Found by diffing work-RAM dumps of
      * the select screens against attract and the race. */
     uint32_t select_addr; uint16_t select_vals[4];
+    /* LINK PLAY (our fork, engine/link_host.h): where this game keeps its own cabinet number, so the link can seed it on a cabinet's
+     * first run and compare it across the set. link_cab_addr 0 = Rave Racer's (work RAM 0x100091A0, EEPROM settings group 3 byte 0 at
+     * 0x2C0 / 0x2E0, 16-bit checksums, and its link status at A6 + 0x1102..0x1108). Otherwise: the 16-bit work-RAM word holding the
+     * cabinet number (0-based) and a second work-RAM copy of it (the parsed settings; 0 = none), the EEPROM blocks (32 bytes each;
+     * -1 = none) and the byte in them, and their checksum (0 = a 16-bit ~sum of bytes 0..29 in 30..31, Rave Racer's; 1 = an 8-bit ~sum
+     * of bytes 0..30 in 31, Ace Driver's). Set a few seconds into the run (rr_hw_link_frame), once the game has written its settings. */
+    uint32_t link_cab_addr, link_cab_ram2;
+    int link_ee_block[2], link_ee_byte, link_ee_sum8;
 } rr_game_t;
 
 extern const rr_game_t *g_rr_game;

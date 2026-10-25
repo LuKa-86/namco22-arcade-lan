@@ -70,5 +70,8 @@ static const rr_game_t ace = {
     .zips = ace_zips, .nzips = 2, .roms = ace_roms, .nroms = (int)(sizeof ace_roms / sizeof ace_roms[0]),
     .select_addr = 0x10001D24, .select_vals = { 1 },   /* 1 from the transmission select through the class select, 0 in attract and the race */
     .log_file = "acedriver.log",                         /* A6-0x7FC8: the mode task's resume slot (0x4C36 / 0x4C48) */                       /* the master's busy-wait poll is not measured for this game yet */
+    /* LINK PLAY (our fork): the cabinet number is A6-0x73FC = 0x10000C04 (0x2D222 copies it from the settings' 0x1000C18A); the
+     * settings are EEPROM block 0x100 (magic 0x0141, read at 0x2C900; parsed at 0x2D14A: byte 0x11 -> 0x1000C18B), 8-bit checksum */
+    .link_cab_addr = 0x10000C04, .link_cab_ram2 = 0x1000C18A, .link_ee_block = { 0x100, -1 }, .link_ee_byte = 0x11, .link_ee_sum8 = 1,
 };
 const rr_game_t *g_rr_game = &ace;
