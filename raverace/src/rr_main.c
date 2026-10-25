@@ -470,7 +470,9 @@ int main(int argc, char **argv)
         }
     static char last_rec[64];                     /* a played session always keeps its latest recording (and the one before): a bug a player
                                                    * meets can be replayed exactly -- <nv prefix>_last.rec, e.g. rr_last.rec (GitHub #62) */
-    if (windowed && !rec_path && !rep_path) {
+    const bool rec_on = windowed && !rec_path && !rep_path && link_host_record_sessions();   /* our fork: link.cfg record=off turns it off */
+    if (windowed && !rec_path && !rep_path && !rec_on) fprintf(stderr, "[RR] session recording off (link.cfg record=off)\n");
+    if (rec_on) {
         const char *u = strchr(g_rr_game->nv_file, '_'); const int k = u ? (int)(u - g_rr_game->nv_file) : 2;
         char pre[24]; if (cab > 0) snprintf(pre, sizeof pre, "%.*s_cab%d", k, g_rr_game->nv_file, cab); else snprintf(pre, sizeof pre, "%.*s", k, g_rr_game->nv_file);
         char prev[64]; snprintf(last_rec, sizeof last_rec, "%s_last.rec", pre); snprintf(prev, sizeof prev, "%s_prev.rec", pre);   /* our fork: a linked copy its own (rr_cab2_last.rec) */

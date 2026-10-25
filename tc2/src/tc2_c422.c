@@ -143,7 +143,8 @@ static void cfg_read(char *side, char *host, size_t hn, unsigned *lport, unsigne
                        "# address: auto finds the other cabinet on the network by itself; or the other PC's address, e.g. 192.168.1.20\n"
                        "# port: the same number on both PCs. wait: seconds to wait at power-on for the other cabinet (then it plays alone).\n"
                        "# lights: the link lights (off, bottom-left, bottom-centre, bottom-right, top-left, top-centre, top-right)\n"
-                       "link=off\nside=left\naddress=auto\nport=23000\nwait=60\nlights=bottom-left\n");
+                       "# record: on keeps the last played session's inputs as tc2_last.rec (to replay a problem), off keeps none\n"
+                       "link=off\nside=left\naddress=auto\nport=23000\nwait=60\nlights=bottom-left\nrecord=on\n");
             fclose(f);
         }
         return;
@@ -179,6 +180,19 @@ static void lights_read(void)
         for (int i = 1; i < 7; i++) if (!strcmp(v, key[i])) lights_pos = i;
     }
     fclose(f);
+}
+/* SESSION RECORDINGS (as the other games' link.cfg record=): record= in tc2_link.cfg -- on (the default) keeps tc2_last.rec, off none */
+int tc2_c422_record(void)
+{
+    FILE *f = fopen(getenv("TC2_CABINET_DIR") ? "../tc2_link.cfg" : "tc2_link.cfg", "r");
+    if (!f) return 1;
+    char line[256]; int on = 1;
+    while (fgets(line, sizeof line, f)) {
+        char k[64], v[64];
+        if (line[0] != '#' && sscanf(line, " %63[^= ] = %63s", k, v) == 2 && !strcmp(k, "record")) on = strcmp(v, "off") != 0;
+    }
+    fclose(f);
+    return on;
 }
 /* where (0 = not shown) and the two lights: [0] this cabinet (blue, flickers as it sends), [1] the other one -- 1 green (messages arriving,
  * flickers with them), 3 red (nothing for a second, or the link broke), 4 grey (not linked: playing alone). lit = bright this frame. */

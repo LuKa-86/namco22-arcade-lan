@@ -567,7 +567,9 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
                                                          * replays never do: a replay plays from the recording's EEPROM and must not save it over the player's */
     if (rep_path && !rep_open(rep_path)) return 2;       /* the recording's EEPROM replaces whatever was loaded */
     static char last_rec[80];                            /* a played session always keeps its latest recording: a crash can be replayed afterwards */
-    if (win_scale && !rec_path && !rep_path) {           /* (one per cabinet: copies on one PC must not share it) */
+    const bool rec_on = win_scale && !rec_path && !rep_path && link_host_record_sessions();   /* link.cfg record=off: none */
+    if (win_scale && !rec_path && !rep_path && !rec_on) fprintf(stderr, "[%s] session recording off (link.cfg record=off)\n", g->tag);
+    if (rec_on) {                                        /* (one per cabinet: copies on one PC must not share it) */
         if (cab > 0) snprintf(last_rec, sizeof last_rec, "%s_cab%d_last.rec", g->lname, cab);
         else snprintf(last_rec, sizeof last_rec, "%s_last.rec", g->lname);
         rec_path = last_rec;

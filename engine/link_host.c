@@ -584,8 +584,8 @@ void link_host_frame(uint32_t frame, bool headless)
 #define CFG_FILE "link.cfg"
 /* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
  * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
-static struct { bool on, set_id, carry_on, cab_auto, classic, author, arcade; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
-    F = { false, false, false, true, false, false, true, 1, 2, 60, 22220, 0, 0, { "" } };
+static struct { bool on, set_id, carry_on, cab_auto, classic, author, arcade, record; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, true, false, false, true, true, 1, 2, 60, 22220, 0, 0, { "" } };
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
@@ -612,6 +612,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "if_lost")) F.carry_on = !strcmp(v, "carry_on");
         else if (!strcmp(k, "timing")) F.classic = !strcmp(v, "classic");
         else if (!strcmp(k, "arcade_mode")) F.arcade = strcmp(v, "off") != 0;
+        else if (!strcmp(k, "record")) F.record = strcmp(v, "off") != 0;
         else if (!strcmp(k, "method")) F.author = !strcmp(v, "modern") || !strcmp(v, "author");   /* ("author" / "ours": the first names) */
         else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
     }
@@ -636,6 +637,7 @@ bool link_host_author_method(int argc, char **argv)
     return method_at_start = modern();
 }
 bool link_host_arcade_mode(void) { return F.arcade; }
+bool link_host_record_sessions(void) { cfg_load(); return F.record; }   /* record= in link.cfg (on unless it says off) */
 
 static void cfg_save(void)
 {
@@ -657,6 +659,8 @@ static void cfg_save(void)
     fprintf(f, "# link method: arcade = Arcade LAN, for real cabinets (this page: the cabinets link when they are switched on, coins as normal);\n"
                "# modern = Modern multiplayer, the original author's online play (the Online page: host / find a game, a lobby) -- Arcade LAN is then off\n"
                "method=%s\n", F.author ? "modern" : "arcade");
+    fprintf(f, "# session recordings (<game>_last.rec beside the program: a played session's inputs, so a problem can be replayed): on | off\n"
+               "record=%s\n", F.record ? "on" : "off");
     fclose(f);
 #ifdef _WIN32
     remove(CFG_FILE);
