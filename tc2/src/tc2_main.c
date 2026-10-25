@@ -199,8 +199,9 @@ static void session_rec(uint32_t frame)
         init = 1;
         const char *r = getenv("TC2_REPLAY");
         if (r) { rep = fopen(r, "r"); fprintf(stderr, rep ? "[REC] replaying %s\n" : "[REC] cannot read %s\n", r); }
-        else { int tc2_window_active(void);
-               if (tc2_window_active()) {                  /* <tag>_last.rec / <tag>_prev.rec: tc2_..., crszone_... (the game table's tag) */
+        else { int tc2_window_active(void), tc2_c422_record(void);
+               if (tc2_window_active() && !tc2_c422_record()) fprintf(stderr, "[REC] session recording off (tc2_link.cfg record=off)\n");
+               else if (tc2_window_active()) {               /* <tag>_last.rec / <tag>_prev.rec: tc2_..., crszone_... (the game table's tag) */
                    char last[64], prev[64]; snprintf(last, sizeof last, "%s_last.rec", tc2_game.tag); snprintf(prev, sizeof prev, "%s_prev.rec", tc2_game.tag);
                    rename(last, prev); rec = fopen(last, "w");
                    if (rec) { fprintf(rec, "# TC2 session: F frame inputs gunx guny off\n"); fprintf(stderr, "[REC] recording the inputs to %s\n", last); } } }

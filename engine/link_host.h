@@ -69,4 +69,5 @@ int  link_lights(link_light *out);                             /* how many (0 = 
 bool link_host_author_method(int argc, char **argv);
 /* ARCADE MODE (link.cfg arcade_mode, on unless it says off): the menus show only the Arcade LAN -- no Online page, no "Link method" row */
 bool link_host_arcade_mode(void);
+bool link_host_record_sessions(void);                           /* link.cfg record=on|off: keep <game>_last.rec for a played session (on unless off) */
 #endif
