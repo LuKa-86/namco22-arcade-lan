@@ -25,6 +25,13 @@
 static void (APIENTRY *p_active_texture)(GLenum);
 static int mt_state = -1;                           /* -1 untried, 0 unavailable, 1 usable */
 static GLuint mt_dummy_tex;                         /* unit 1's binding (its combiner never samples it) */
+/* our fork: the prio-mode single-pass fog (mode 3, qs_fog) carries the fog factor in unit 1's texture coordinate and reads it
+ * from a 256x1 alpha ramp from unit 0's combiner (GL 1.4 texture_env_crossbar): the vertex alpha stays the prio bit */
+static void (APIENTRY *p_client_active_texture)(GLenum);
+static GLuint mt_ramp_tex;
+static int mt_xbar;                                 /* mode 3 usable */
+static float bb_st1[60000 * 4], qa_st1[32 * 4];    /* unit 1's coordinates (BB_MAXV below) */
+static int qa_st1_set;                              /* this quad filled qa_st1 (a prio-mode textured quad, mode 3 available) */
 static void mt_resolve(void)
 {
     if (mt_state >= 0) return;
@@ -32,6 +39,28 @@ static void mt_resolve(void)
     const char *e = getenv("ENG_FOG2PASS");
     mt_state = (p_active_texture && !(e && *e == '1')) ? 1 : 0;
     if (!mt_state) return;
+    {   /* mode 3: GL 1.4 (or the crossbar extension) and glClientActiveTexture; ENG_PRIOFOG=0 keeps the two-pass fog */
+        p_client_active_texture = (void (APIENTRY *)(GLenum))SDL_GL_GetProcAddress("glClientActiveTexture");
+        const char *v = (const char *)glGetString(GL_VERSION), *x = (const char *)glGetString(GL_EXTENSIONS);
+        int maj = 0, min = 0;
+        if (v) sscanf(v, "%d.%d", &maj, &min);
+        const char *pe = getenv("ENG_PRIOFOG");
+        mt_xbar = p_client_active_texture && (maj > 1 || (maj == 1 && min >= 4) || (x && strstr(x, "GL_ARB_texture_env_crossbar")))
+                  && !(pe && *pe == '0');
+    }
+    if (mt_xbar) {
+        uint8_t ramp[256 * 4];
+        for (int i = 0; i < 256; i++) { ramp[i*4+0] = ramp[i*4+1] = ramp[i*4+2] = 255; ramp[i*4+3] = (uint8_t)i; }
+        p_active_texture(GL_TEXTURE1);
+        glGenTextures(1, &mt_ramp_tex);
+        glBindTexture(GL_TEXTURE_2D, mt_ramp_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, ramp);
+        p_active_texture(GL_TEXTURE0);
+    }
     p_active_texture(GL_TEXTURE1);
     glGenTextures(1, &mt_dummy_tex);
     glBindTexture(GL_TEXTURE_2D, mt_dummy_tex);
@@ -106,7 +135,7 @@ static void qs_fog(int mode, const float *frgb, int scale)
             glDisable(GL_TEXTURE_2D);
             glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
             p_active_texture(GL_TEXTURE0);
-            if (qs.fog == 1) {  /* unit 0 was INTERPOLATE with a CONSTANT source: restore MODULATE's */
+            if (qs.fog == 1 || qs.fog == 3) {  /* unit 0 was INTERPOLATE with a CONSTANT source: restore MODULATE's */
                 glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE);
                 glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PRIMARY_COLOR);
                 glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR);
@@ -131,7 +160,37 @@ static void qs_fog(int mode, const float *frgb, int scale)
         qs_fog(0, frgb, scale);
         qs.valid = save;
     }
-    if (mode == 2) {            /* Super 22: shade on unit 0, fog interpolate on unit 1 */
+    if (mode == 3) {            /* our fork -- System 22 order with the prio bit in the vertex alpha (Rave Racer, Ace Driver, ...):
+                                 * unit 0 = INTERPOLATE(texel, F, ramp alpha at unit 1's coordinate), alpha = texel * vertex (the prio bit,
+                                 * as the unfogged pass); unit 1 = the shade, MODULATE by the vertex colour with the RGB_SCALE headroom */
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_INTERPOLATE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_CONSTANT);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE2_RGB, GL_TEXTURE1);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND2_RGB, GL_SRC_ALPHA);
+        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_TEXTURE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_PRIMARY_COLOR);
+        glTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0f);
+        glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, frgb);
+        p_active_texture(GL_TEXTURE1);
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, mt_ramp_tex);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PRIMARY_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS);
+        glTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE, (float)scale);
+        p_active_texture(GL_TEXTURE0);
+        qs.env_scale = -1;
+    } else if (mode == 2) {     /* Super 22: shade on unit 0, fog interpolate on unit 1 */
         qs_env(scale);
         /* vertex alpha now carries the fog FACTOR, not transparency: unit 0's
          * alpha must come from the texture alone or the alpha test would
@@ -412,6 +471,12 @@ static void bb_emit(int n, const struct bbstate *st_)
         st_buf.fog = bb_run.fog;
         memcpy(st_buf.frgb, bb_run.frgb, sizeof st_buf.frgb);
     }
+    /* the same in prio mode (mode 3): a textured quad whose unit-1 coordinates were filled (qa_st1_set, at 255 = unfogged when
+     * it has no fog) rides a mode-3 run on its page -- INTERPOLATE at ramp alpha 1.0 is the texel itself */
+    if (qa_st1_set && st_buf.tex_on && !st_buf.fog && bb_valid && bb_run.tex_on && bb_run.fog == 3 && st_buf.tex == bb_run.tex) {
+        st_buf.fog = 3;
+        memcpy(st_buf.frgb, bb_run.frgb, sizeof st_buf.frgb);
+    }
     const struct bbstate *st = &st_buf;
     if (nobatch < 0) { const char *e = getenv("ENG_NOBATCH"); nobatch = (e && *e == '1') || !tex_bake_atlas_active(); }
     if (bb_valid && memcmp(st, &bb_run, sizeof bb_run) != 0) {
@@ -437,6 +502,7 @@ static void bb_emit(int n, const struct bbstate *st_)
             }
             memcpy(&bb_rgba[bb_n*4], &qa_rgba[s*4], 4 * sizeof(float));
             memcpy(&bb_st[bb_n*4], &qa_st[s*4], 4 * sizeof(float));
+            if (st->fog == 3) memcpy(&bb_st1[bb_n*4], &qa_st1[s*4], 4 * sizeof(float));
             bb_n++;
         }
     if (nobatch) { bb_flush(); bb_valid = 0; }
@@ -480,6 +546,12 @@ void eng_draw_resume(void)
     glVertexPointer(2, GL_FLOAT, 0, bb_xy);
     glColorPointer(4, GL_FLOAT, 0, bb_rgba);
     glTexCoordPointer(4, GL_FLOAT, 0, bb_st);
+    if (mt_xbar) {                          /* unit 1's coordinates: the mode-3 fog factor (ignored while unit 1 is off) */
+        p_client_active_texture(GL_TEXTURE1);
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+        glTexCoordPointer(4, GL_FLOAT, 0, bb_st1);
+        p_client_active_texture(GL_TEXTURE0);
+    }
 }
 void eng_draw_end(void)
 {
@@ -488,6 +560,13 @@ void eng_draw_end(void)
     glDisableClientState(GL_VERTEX_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    if (mt_xbar) { p_client_active_texture(GL_TEXTURE1); glDisableClientState(GL_TEXTURE_COORD_ARRAY); p_client_active_texture(GL_TEXTURE0); }
+    if (qs.fog == 1 || qs.fog == 3) {       /* unit 0's INTERPOLATE sources: back to MODULATE's (the next frame's COMBINE reuses them) */
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PRIMARY_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR);
+    }
     /* restore the state the per-quad code used to leave behind: the sprite, text and
      * post passes (and Rave Racer's 2D) were written against it (a leftover
      * COMBINE/RGB_SCALE texenv visibly brightened Rave Racer's HUD) */
@@ -758,6 +837,29 @@ static void draw_quad_one(const geo_quad *q, const eng_draw_cfg *cfg)
             if (any) { fogm = cfg->fog_before_shade ? 1 : 2; g_fogged_quads++; }
         }
     }
+    /* our fork: prio mode (Rave Racer, Ace Driver, Cyber Commando) -- the fog in the same call too (mode 3, the factor in unit 1's
+     * coordinate). The two-pass fog drew every fogged quad twice with different state, so EVERY quad was its own draw call:
+     * ~4,800 a frame on Ace Driver's starting grid, 12-13 ms of a laptop GPU's driver (Intel Iris Xe), the slowdown at the start */
+    int fogi[32];
+    const int prio_fog = !solid && !base_alpha && mt_state == 1 && mt_xbar && cfg->fog_before_shade;
+    if (prio_fog && cfg->fog && cfg->fog_quad && !(q->cz_adjust & 0x800000)) {
+        memset(&f1, 0, sizeof f1);
+        f1.alpha_const = -1;
+        if (cfg->fog_quad(q, &f1)) {
+            fogrgb[0] = f1.rgb[0] / 255.0f; fogrgb[1] = f1.rgb[1] / 255.0f; fogrgb[2] = f1.rgb[2] / 255.0f;
+            if (cfg->fade_rgb) cfg->fade_rgb(&fogrgb[0], &fogrgb[1], &fogrgb[2]);   /* fade applies after fog */
+            int any = 0;
+            for (int i = 0; i < ncv && i < 32; i++) {
+                int32_t zz = (cv[i].w > 0.0f) ? (int32_t)(1.0f / cv[i].w) : 1;
+                int a = eng_fog_alpha(&f1, zz);
+                if (a < g_fogA_min) g_fogA_min = a;
+                if (a > g_fogA_max) g_fogA_max = a;
+                fogi[i] = a;
+                if (a < 255) any = 1;
+            }
+            if (any) { fogm = 3; g_fogged_quads++; }
+        }
+    }
 
     if (solid) {
         /* SOLID through the batch's CURRENT page: with the white texel at
@@ -833,10 +935,18 @@ static void draw_quad_one(const geo_quad *q, const eng_draw_cfg *cfg)
             qa_st[i*4+0] = cv[i].s + bou * cv[i].w; qa_st[i*4+1] = cv[i].t + bov * cv[i].w;
             qa_st[i*4+2] = 0.0f;   qa_st[i*4+3] = cv[i].w;
             qa_xy[i*2+0] = cv[i].x; qa_xy[i*2+1] = cv[i].y;
+            if (prio_fog) {                /* mode 3: the fog factor at the ramp texel's centre, perspective-correct like the colour */
+                const float fa = ((fogm == 3 ? fogi[i] : 255) + 0.5f) / 256.0f;
+                qa_st1[i*4+0] = fa * cv[i].w; qa_st1[i*4+1] = 0.5f * cv[i].w;
+                qa_st1[i*4+2] = 0.0f;         qa_st1[i*4+3] = cv[i].w;
+            }
+            if (fogm == 3) qa_rgba[i*4+3] = prio_a;    /* the vertex alpha stays the prio bit */
         }
+        qa_st1_set = prio_fog;
         bb_emit(n, &(struct bbstate){ .tex = tex, .env = rgb_scale, .alpha = base_alpha, .blend = 0, .prio = 0,
                                       .tex_on = 1, .sc_on = scissored, .sc = { scbox[0], scbox[1], scbox[2], scbox[3] },
                                       .fog = fogm, .frgb = { fogrgb[0], fogrgb[1], fogrgb[2] } });
+        qa_st1_set = 0;
     }
     }
     g_perf_gl += eng_now() - _tg;

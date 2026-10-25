@@ -842,7 +842,11 @@ bool rr_host_frame(void)
     { static int slow = -1, every = 1, n;           /* RR_SLOWDRAW=<ms>[:<every>]: TEST, a slow graphics chip (every n-th frame takes ms longer) */
       if (slow < 0) { slow = 0; const char *e = getenv("RR_SLOWDRAW"); if (e) sscanf(e, "%d:%d", &slow, &every); if (every < 1) every = 1; }
       if (slow && ++n % every == 0) SDL_Delay((Uint32)slow); }
+    static int phlog = -1; if (phlog < 0) phlog = getenv("RR_PHASELOG") != NULL;   /* RR_PHASELOG=1: per frame, the draw and the swap in ms (timing tests) */
+    const uint64_t ph0 = phlog ? eng_pace_ns() : 0;
     present_picture();
+    if (phlog) glFinish();
+    const uint64_t ph1 = phlog ? eng_pace_ns() : 0;
     if (rr_ui_is_open() || rr_ui_hint_active() || rr_ui_chat_active() || link_lights_on()) {   /* the menu over the game (or just the hint / chat, the link lights) */
         int ow, oh; out_size(&ow, &oh);
         glViewport(0, 0, ow, oh);
@@ -905,6 +909,7 @@ bool rr_host_frame(void)
     eng_pace_before_swap(&pace_log);
     eng_vsync_want(&vs, g_cfg_fps);                  /* Display > Frame rate: a lock shows only some frames, or each one again */
     if (eng_vsync_show(&vs)) { eng_vsync_capture(&vs, win); SDL_GL_SwapWindow(win); }
+    if (phlog) { const uint64_t ph2 = eng_pace_ns(); fprintf(stderr, "[PHASE] draw %.2f swap %.2f quads %d\n", (ph1 - ph0) / 1e6, (ph2 - ph1) / 1e6, rr_gl_quads()); }
 
     /* pacing (engine/eng_vsync.h): vsync only while it BLOCKS -- re-measured every 50 frames, not only the first 60 (a window
      * minimised later, or the driver's vsync turned off, swaps at once: GitHub #26) -- otherwise sleep to the board's 59.906 Hz */

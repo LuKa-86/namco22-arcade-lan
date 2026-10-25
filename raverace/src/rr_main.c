@@ -256,6 +256,9 @@ void rr_tick(void)
     if (++slice % SLICES) return;
     frame++;
     link_host_frame(frame, !windowed);
+    { extern uint32_t rr_idle_addr, rr_idle_reads; static int on = -1;   /* RR_IDLE=<addr>: the vblank-flag reads of each frame (how much spare time) */
+      if (on < 0) { const char *e = getenv("RR_IDLE"); on = e != NULL; if (e) rr_idle_addr = (uint32_t)strtoul(e, NULL, 0); }
+      if (on) { fprintf(stderr, "[IDLE] f%u %u\n", frame, rr_idle_reads); rr_idle_reads = 0; } }
     sweep_tick();
     double tv0 = perf_on ? now_ms() : 0;
     if (g_rr_gl && gl_ok) {                        /* screen update at the end of the frame */
