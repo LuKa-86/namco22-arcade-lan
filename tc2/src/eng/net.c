@@ -57,7 +57,7 @@ static void hint(const char *t, int frames) { if (G->hint) G->hint(t, frames); }
 /* ---- chat: the last lines, oldest first; CHAT is relayed by the server to every member, the sender included ---- */
 #define CHAT_LINES 64
 #define CHAT_TEXT 96
-static char chat_buf[CHAT_LINES][8 + 24 + 2 + CHAT_TEXT + 1];      /* "[HH:MM] " + "Name: text" */
+static char chat_buf[CHAT_LINES][8 + 24 + 24 + 2 + CHAT_TEXT + 1];      /* "[HH:MM] " + "Name [side]: text" */
 static int chat_n, chat_head;
 static uint32_t chat_serial;
 /* a line stamped with its time: [HH:MM], or [Mon DD] for a history line from before the last 20 hours. history = 1: CHATLOG,
@@ -111,6 +111,7 @@ static int pend_ready, ready_val; static uint16_t ready_seq; static uint32_t rea
 static int pend_start; static uint16_t start_seq; static uint32_t start_tx;
 static int ping_ms = -1;
 static int autostart = -1, debug = -1; static uint32_t autostart_t0;
+void eng_net_set_autostart(int n) { autostart = n; autostart_t0 = 0; }   /* the game: as <P>_AUTOSTART, from code (the one-click local two-player start) */
 static uint32_t n_ftx, n_frx, n_roster, n_poll;
 static uint8_t last_frame[9 + ENG_NET_MAX_FRAME]; static int have_last_frame;   /* our newest FRAME payload (stall-and-wait resends it) */
 
@@ -298,6 +299,10 @@ bool eng_net_connect(void)
     ping_ms = -1;
     proto = 2; my_room = 0;
     hello_room_sel = 0; hello_room_name[0] = 0; switching = 0; rooms_n = 0;
+    { const char *r = envs("HELLO_ROOM");             /* headless tests on a public server: <P>_HELLO_ROOM=new[:name]|<id> picks the room IN the
+                                                   * first HELLO, so a test never passes through the room the server would pick (a player's) */
+      if (r && !strncmp(r, "new", 3)) { hello_room_sel = -1; snprintf(hello_room_name, sizeof hello_room_name, "%s", r[3] == ':' ? r + 4 : ""); }
+      else if (r && atoi(r) > 0) hello_room_sel = atoi(r); }
     sock_open();
     if (sock == ENG_SOCK_BAD) { snprintf(note, sizeof note, "socket failed"); return false; }
     set_state(ST_CONNECTING);
@@ -365,6 +370,7 @@ bool eng_net_roster(int i, char *name, size_t n, int *ready, int *self)
     return true;
 }
 int eng_net_roster_slot(int i) { return i >= 0 && i < roster_n ? roster[i].slot : -1; }
+const char *eng_net_slot_label(int slot) { const char *l = G && G->slot_label && slot >= 0 ? G->slot_label(slot) : NULL; return l ? l : ""; }
 int eng_net_roster_count(void) { return roster_n; }
 bool eng_net_self_ready(void)
 {
@@ -575,7 +581,7 @@ static void on_message(int p_, int type, uint16_t seq, uint16_t room, const uint
         switching = 0;
         my_slot = p[0];
         roster_update(p, len, ro);
-        fprintf(stderr, "[NET] joined %s as slot %d ('%s')%s\n", srv_text, my_slot, my_name, proto == 1 ? " [RRN1]" : "");
+        fprintf(stderr, "[NET] joined %s as slot %d ('%s') in room %u%s\n", srv_text, my_slot, my_name, (unsigned)my_room, proto == 1 ? " [RRN1]" : "");
         set_state(ST_LOBBY);
         break; }
     case T_ROSTER:
@@ -591,14 +597,15 @@ static void on_message(int p_, int type, uint16_t seq, uint16_t room, const uint
         break;
     case T_CHAT:
         if (len >= 2 && p_ == proto && (st == ST_LOBBY || st == ST_SESSION)) {
-            char line[24 + 2 + CHAT_TEXT + 1], who[24] = "";
+            char line[24 + 24 + 2 + CHAT_TEXT + 1], who[24] = "";
             for (int i = 0; i < roster_n; i++) if (roster[i].slot == p[0]) snprintf(who, sizeof who, "%s", roster[i].name);
             if (!who[0]) snprintf(who, sizeof who, "P%d", p[0]);
             int n = len - 1; if (n > CHAT_TEXT) n = CHAT_TEXT;
             char tx[CHAT_TEXT + 1]; int k = 0;
             for (int i = 0; i < n; i++) if (p[1 + i] >= ' ' && p[1 + i] != 0x7F) tx[k++] = (char)p[1 + i];
             tx[k] = 0;
-            snprintf(line, sizeof line, "%s: %s", who, tx);
+            { const char *lb = eng_net_slot_label(p[0]);      /* the sender's side, so players can agree who takes which (TC2: Left/Red, Right/Blue) */
+              if (*lb) snprintf(line, sizeof line, "%s [%s]: %s", who, lb, tx); else snprintf(line, sizeof line, "%s: %s", who, tx); }
             chat_push(line);
             if (debug == 1) fprintf(stderr, "[NET] chat: %s\n", line);
         }
