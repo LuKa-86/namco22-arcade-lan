@@ -480,6 +480,12 @@ static void quad_fixed(int32_t color, uint32_t addr, int32_t polyshift,
             }
         }
     }
+    /* THE DRAWN POLYGON is dv where there is one (the guard-band comment above): it was computed and never used, so a near-cut
+     * polygon was drawn from rv's independently clamped corners -- Aqua Jet's water under the camera burst into blue spikes.
+     * ENG_DRAWDV=0: rv, as before. */
+    { static int use_dv = -1; if (use_dv < 0) { const char *e = getenv("ENG_DRAWDV"); use_dv = !(e && *e == '0'); }
+      if (use_dv && q.ndv > 0) { memcpy(q.rv, q.dv, sizeof q.rv); q.nrv = q.ndv; }
+      else if (use_dv && q.ndv < 0) q.nrv = 0; }
     if (q.behind) g_geo_stats.part_clip++;
     g_geo_stats.emitted++;
     if (g_geo_stats.zmin_seen == 0 || zmin < g_geo_stats.zmin_seen)
