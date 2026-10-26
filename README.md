@@ -49,7 +49,7 @@ the arcade has and keeping them running.
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
 
-The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Cyber Commando, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
+The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
 those, use the original project's releases. The package below keeps to the linked games and the new ones.
 
 ## What the fork adds
