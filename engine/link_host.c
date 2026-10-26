@@ -7,6 +7,7 @@
 #include "lan139.h"
 #include "eng_timing.h"
 #include "eng_party.h"
+#include "eng_tile.h"
 #include <time.h>
 #include <sys/stat.h>
 #include <zlib.h>
@@ -171,7 +172,7 @@ static void party_sync(void)
 }
 static void place_window(SDL_Window *w)
 {
-    SDL_Rect b; int ww, wh, top = 0, l = 0, bo = 0, r = 0;
+    SDL_Rect b;
     if (cfg.peers || SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(w), &b) != 0) return;
     if (party) {                                                       /* no frames, side by side (2) or a 2 x 2 grid: together they fill the screen */
         if (!party_taskbar) {                                          /* the WHOLE screen, over the task bar (kept on top of it): --party-taskbar leaves it in view */
@@ -187,22 +188,7 @@ static void place_window(SDL_Window *w)
         if (eng_party_pad() == 0) SDL_RaiseWindow(w);                  /* the keyboard's copy: in front, so the keys reach it */
         return;
     }
-    SDL_GetWindowBordersSize(w, &top, &l, &bo, &r);
-    if (cfg.nodes > 4) {                                               /* 5-8 copies: 4 across, 2 down, each window shrunk to its cell (4:3) */
-        const int cw = b.w / 4 - l - r, ch = b.h / 2 - top - bo;
-        int nw = cw, nh = cw * 3 / 4;
-        if (nh > ch) { nh = ch; nw = ch * 4 / 3; }
-        SDL_SetWindowSize(w, nw, nh);
-        SDL_SetWindowPosition(w, b.x + l + (cfg.id % 4) * (b.w / 4), b.y + top + (cfg.id / 4) * (b.h / 2));
-        return;
-    }
-    SDL_GetWindowSize(w, &ww, &wh);
-    const int cols = cfg.nodes <= 1 ? 1 : 2, rows = (cfg.nodes + cols - 1) / cols;
-    const int fw = ww + l + r, fh = wh + top + bo;                        /* the window with its frame */
-    const int sx = cols > 1 ? (b.w - fw < fw ? (b.w - fw) / (cols - 1) : fw) : 0;       /* overlap them when the screen is too small */
-    const int sy = rows > 1 ? (b.h - fh < fh * (rows - 1) ? (b.h - fh) / (rows - 1) : fh) : 0;
-    const int c = cfg.id % cols, rw = cfg.id / cols;
-    SDL_SetWindowPosition(w, b.x + l + c * (sx > 0 ? sx : 0), b.y + top + rw * (sy > 0 ? sy : 0));
+    eng_tile_window(w, cfg.id, cfg.nodes);                             /* the copies of a test edge to edge in a grid (engine/eng_tile.h) */
 }
 
 /* "Hears 1 (192.168.1.163), 3 (192.168.1.164) | Can't hear 4 | Not heard by 3" -- who this one hears, from where, who hears it */
@@ -587,6 +573,8 @@ void link_host_frame(uint32_t frame, bool headless)
     if (headless) pace();
     if (party) party_sync();
     catch_up_frame(frame, headless);
+    if (frame == 180 && win && !cfg.peers) { int x, y, ww, wh, t = 0, l = 0, bo = 0, r = 0; SDL_GetWindowPosition(win, &x, &y); SDL_GetWindowSize(win, &ww, &wh);
+        SDL_GetWindowBordersSize(win, &t, &l, &bo, &r); fprintf(stderr, "[HOST] window now: picture %d,%d %d x %d, frame %d,%d - %d,%d\n", x, y, ww, wh, x - l, y - t, x + ww + r, y + wh + bo); }
     { static long st = -2; if (st == -2) { const char *e = getenv("LINK_STAMP"); st = e ? atol(e) : -1; }   /* LINK_STAMP=<frame> (test): when this cabinet ran it */
       if (st >= 0 && frame == (uint32_t)st) fprintf(stderr, "[STAMP] frame %u at %u ms\n", frame, (unsigned)sys_ms()); }
     if (G->good) {

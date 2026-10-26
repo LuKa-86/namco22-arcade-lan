@@ -25,6 +25,7 @@
 #include "eng/eng_cfg.h"
 #include "eng/eng_crosshair.h"
 #include "eng/eng_pace.h"
+#include "eng/eng_tile.h"
 #include "eng/ss22_input.h"
 #include "tc2_build.h"
 #include "tc2_game.h"
@@ -133,19 +134,9 @@ int tc2_window_open(int scale, int fullscreen)
     eng_disp_attach(win);
     { void tc2_guns_init(SDL_Window *); tc2_guns_init(win); }    /* one gun a screen ($TC2_OWN_GUN, src/tc2_guns.c, our fork) */
     { const char *wp = getenv("TC2_WINPOS");       /* our fork, the link's "try both on this PC": left / right = that half of the screen (no dragging:
-                                                    * a window being dragged stops its game, and the other cabinet loses it) */
-      SDL_Rect b;
-      if (wp && !g_eng_disp.winmode && SDL_GetDisplayUsableBounds(0, &b) == 0) {
-          int w0, h0; SDL_GetWindowSize(win, &w0, &h0);
-          int top = 0, lb = 0, bot = 0, rb = 0; SDL_GetWindowBordersSize(win, &top, &lb, &bot, &rb);   /* the title bar and frame, outside the size */
-          const int half = b.w / 2, right = wp[0] == 'r' || wp[0] == 'R';
-          const int aw = half - lb - rb, ah = b.h - top - bot;      /* the picture fills its half, frame and title bar on the screen */
-          int w = aw, h = aw * h0 / w0;
-          if (h > ah) { h = ah; w = ah * w0 / h0; }
-          SDL_SetWindowSize(win, w, h);
-          SDL_SetWindowPosition(win, b.x + (right ? half : 0) + lb + (aw - w) / 2, b.y + top + (ah - h) / 2);
-          fprintf(stderr, "[HOST] window %d x %d at the %s half of the screen (%d x %d)\n", w, h, right ? "right" : "left", b.w, b.h);
-      } }
+                                                    * a window being dragged stops its game, and the other cabinet loses it) -- the two windows
+                                                    * side by side, edge to edge, in the middle of the screen (eng/eng_tile.h) */
+      if (wp && !g_eng_disp.winmode) eng_tile_window(win, wp[0] == 'r' || wp[0] == 'R', 2); }
     eng_vsync_init(&vs, win, getenv("TC2_VSYNC"));
     tc2_smooth_set(eng_cfg_int("motion_smooth", 0));
     eng_pace_reset(&pace);
