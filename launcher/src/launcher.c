@@ -62,82 +62,88 @@ typedef struct {
     int nmodes; way_t m[12];
 } game_t;
 
-#define NET_MODES(roms) \
-    { "Cabinet on the network - FULL SCREEN", "This PC is one cabinet of a linked set (recommended)", true, 1, { { roms " --fullscreen", NULL } } }, \
-    { "Cabinet on the network - window", "The same in a window: fine for two cabinets", false, 1, { { roms " --window", NULL } } }, \
-    { "Try 2 linked cabinets on this PC", "Two windows; click one to play it", false, 2, { { roms " --window 1 --link 1 --link-cabinets 2", NULL }, \
-        { roms " --window 1 --link 2 --link-cabinets 2 --mute", NULL } } }, \
-    { "Try 4 linked cabinets on this PC", "Four windows; only cabinet 1 has sound", false, 4, { { roms " --window 1 --link 1", NULL }, \
-        { roms " --window 1 --link 2 --mute", NULL }, { roms " --window 1 --link 3 --mute", NULL }, { roms " --window 1 --link 4 --mute", NULL } } }, \
-    { "PARTY: 2 players - keyboard + 1 controller", "Split screen on this PC; plug the controller in first", false, 2, { \
-        { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } }, \
-    { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, { \
-        { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } }, \
-    { "PARTY: 4 players - keyboard + 3 controllers", "Split screen on this PC; plug the controllers in first", false, 4, { \
-        { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 2 --mute", NULL }, \
-        { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 3 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 0", NULL } } }, \
-    { "PARTY: 4 players - 4 controllers", "Split screen on this PC; plug the controllers in first", false, 4, { \
-        { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 3 --mute", NULL }, \
-        { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 4 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 1", NULL } } }
+/* THE WAYS TO PLAY. One wording for every game: a linked cabinet (full screen / window), the tests that run linked copies on this PC,
+ * and the split-screen Party modes. Index 0 (and Time Crisis II's first three) are the ones offered for the automatic start: the
+ * automatic start is saved as game id + way number, so a new way goes after the others or keeps the numbers of those before it. */
+#define M_NET_FULL(roms) { "Linked cabinet - full screen", "This PC is one cabinet in a linked set. The normal choice for a cabinet.", true, 1, \
+        { { roms " --fullscreen", NULL } } }
+#define M_NET_WIN(roms)  { "Linked cabinet - window", "The same, in a window. Useful while setting up or testing.", false, 1, \
+        { { roms " --window", NULL } } }
+#define M_TRY2(roms)     { "Test: 2 linked cabinets on this PC", "Opens 2 linked windows side by side. Click a window to play in it.", false, 2, \
+        { { roms " --window 1 --link 1 --link-cabinets 2", NULL }, { roms " --window 1 --link 2 --link-cabinets 2 --mute", NULL } } }
+#define M_TRY4(roms)     { "Test: 4 linked cabinets on this PC", "Opens 4 linked windows in a grid. Only cabinet 1 has sound.", false, 4, \
+        { { roms " --window 1 --link 1 --link-cabinets 4", NULL }, { roms " --window 1 --link 2 --link-cabinets 4 --mute", NULL }, \
+          { roms " --window 1 --link 3 --link-cabinets 4 --mute", NULL }, { roms " --window 1 --link 4 --link-cabinets 4 --mute", NULL } } }
+#define M_PARTY2K(roms)  { "Party: 2 players - keyboard and 1 controller", \
+        "Split screen on this PC: player 1 on the keyboard, player 2 on a controller. Connect the controller first.", false, 2, \
+        { { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } }
+#define M_PARTY2P(roms)  { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 2, \
+        { { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } }
+#define M_PARTY4K(roms)  { "Party: 4 players - keyboard and 3 controllers", \
+        "Split screen on this PC: player 1 on the keyboard, players 2 to 4 on controllers. Connect the controllers first.", false, 4, \
+        { { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 2 --mute", NULL }, \
+          { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 3 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 0", NULL } } }
+#define M_PARTY4P(roms)  { "Party: 4 players - 4 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 4, \
+        { { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 3 --mute", NULL }, \
+          { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 4 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 1", NULL } } }
+#define M_SOLO_FULL(roms) { "Full screen", "The normal choice for a cabinet.", true, 1, { { roms " --fullscreen", NULL } } }
+#define M_SOLO_WIN(roms, w) { "Window", "The same, in a window.", false, 1, { { roms " --window" w, NULL } } }
+#define NET_MODES(roms) M_NET_FULL(roms), M_NET_WIN(roms), M_TRY2(roms), M_TRY4(roms), M_PARTY2K(roms), M_PARTY2P(roms), M_PARTY4K(roms), M_PARTY4P(roms)
 
 static const game_t games[] = {
     { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
-      "Formula racing for up to eight linked cabinets.", "Keys: 5 coin (two a credit), arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
-      9, { NET_MODES("roms"),
-        { "Try 8 linked cabinets on this PC", "Eight small windows in a grid; only cabinet 1 has sound (needs a strong PC)", false, 8, {
+      "Formula racing for up to 8 linked cabinets. Linked play is new in this package.",
+      "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
+      9, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_TRY4("roms"),
+        { "Test: 8 linked cabinets on this PC", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
             { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
-            { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } } } },
+            { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } },
+        M_PARTY2K("roms"), M_PARTY2P("roms"), M_PARTY4K("roms"), M_PARTY4P("roms") } },
     { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
-      "Downhill skiing, one cabinet. New in this package.", "Keys: 5 coin, Enter decide / view, Z and X select, arrows ski.", NULL,
-      2, {
-        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
-        { "Window", "In a window", false, 1, { { "roms --window 2", NULL } } } } },
+      "Downhill skiing for a single cabinet. New in this package.",
+      "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ski  \xC2\xB7  Esc menu", NULL,
+      2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
     { "adillor", "Armadillo Racing", "1997", "Armadillo Racing", "ArmadilloRacing-ArcadeLAN.exe",
-      "Trackball racing for up to four linked cabinets (red, blue, yellow, green). New in this package.",
-      "Keys: 5 coin, 1 start; the mouse / a trackball rolls (or the arrows); Esc settings.", "link.cfg",
+      "Trackball racing for up to 4 linked cabinets: red, blue, yellow and green. New in this package.",
+      "Controls: mouse, trackball or arrows roll  \xC2\xB7  touchpad: two-finger scroll  \xC2\xB7  5 coin  \xC2\xB7  1 start  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
     { "cybrcomm", "Cyber Commando", "1994", "Cyber Commando", "CyberCommando-ArcadeLAN.exe",
-      "Robot battles: two linked cabinets fight each other (the challenge mode). New in this package.",
-      "Keys: 5 coin (two a credit), arrows move, Z fire, X missile, C view, Esc settings.", "link.cfg",
-      5, {
-        { "Cabinet on the network - FULL SCREEN", "This PC is one of the two linked cabinets (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
-        { "Cabinet on the network - window", "The same in a window", false, 1, { { "roms --window", NULL } } },
-        { "Try 2 linked cabinets on this PC", "Two windows; click one to play it", false, 2, { { "roms --window 1 --link 1 --link-cabinets 2", NULL },
-            { "roms --window 1 --link 2 --link-cabinets 2 --mute", NULL } } },
-        { "PARTY: 2 players - keyboard + 1 controller", "Split screen on this PC; plug the controller in first", false, 2, {
-            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } },
-        { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, {
-            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } } } },
+      "Robot battles: 2 linked cabinets fight each other. Linked play is new in this package.",
+      "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows move  \xC2\xB7  Z fire  \xC2\xB7  X missile  \xC2\xB7  C view  \xC2\xB7  Esc menu", "link.cfg",
+      5, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_PARTY2K("roms"), M_PARTY2P("roms") } },
     { "cybrcycc", "Cyber Cycles", "1995", "Cyber Cycles", "CyberCycles-ArcadeLAN.exe",
-      "Motorbike racing for up to four linked cabinets. New in this package.", "Keys: 5 coin, Enter start / view, arrows bank, Up throttle, Down brake.", "link.cfg",
+      "Motorbike racing for up to 4 linked cabinets. New in this package.",
+      "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows lean  \xC2\xB7  Up throttle  \xC2\xB7  Down brake  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
     { "cybsled", "Cyber Sled", "1993", "Cyber Sled", "CyberSled-ArcadeLAN.exe",
-      "Twin-stick tank battles. The original author's build: its two players play ONLINE (internet), not over the cabinet LAN.",
-      "Keys: 5 coin, 1 start, arrows drive (Shift strafe), Ctrl fire, Esc settings.", NULL,
-      2, {
-        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "extracted --fullscreen", NULL } } },
-        { "Window", "In a window", false, 1, { { "extracted --window", NULL } } } } },
+      "Twin-stick hover-tank battles. Its 2-player mode uses the original project's online play, not the cabinet link.",
+      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive (Shift strafes)  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", NULL,
+      2, { M_SOLO_FULL("extracted"), M_SOLO_WIN("extracted", "") } },
     { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
-      "Racing for up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
+      "Racing for up to 4 linked cabinets.",
+      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
     { "timecrs2", "Time Crisis II", "1997", "Time Crisis II", "TimeCrisis2-ArcadeLAN.exe",
-      "The twin light-gun cabinet: the left and right sides link for two players.", "Mouse or light gun to shoot, the pedal to take cover; Esc settings.",
-      "tc2_link.cfg",
+      "The twin light-gun cabinet: the left and right sides link for 2 players.",
+      "Controls: mouse or light gun aims and shoots  \xC2\xB7  the pedal takes cover  \xC2\xB7  Esc menu", "tc2_link.cfg",
       6, {
-        { "LEFT cabinet (red player) - FULL SCREEN", "This PC is the left side of the twin cabinet (recommended)", true, 1, { { "--window --fullscreen", "TC2_SIDE=left" } } },
-        { "RIGHT cabinet (blue player) - FULL SCREEN", "This PC is the right side of the twin cabinet (recommended)", true, 1, { { "--window --fullscreen", "TC2_SIDE=right" } } },
-        { "BOTH screens on ONE PC (2 monitors, 2 guns)", "One PC runs the whole twin cabinet; the first gun to fire is the left", true, 2, {
+        { "Left cabinet (red player) - full screen", "This PC is the left side of the twin cabinet. The normal choice for a cabinet.", true, 1,
+            { { "--window --fullscreen", "TC2_SIDE=left" } } },
+        { "Right cabinet (blue player) - full screen", "This PC is the right side of the twin cabinet. The normal choice for a cabinet.", true, 1,
+            { { "--window --fullscreen", "TC2_SIDE=right" } } },
+        { "Both sides on one PC - 2 monitors, 2 guns", "One PC runs the whole twin cabinet. The first gun to fire becomes the left player.", true, 2, {
             { "--window", "TC2_OWN_GUN=1;TC2_LINK=L:23021:127.0.0.1:23022;TC2_CABINET_DIR=screen-left;TC2_MONITOR=1" },
             { "--window", "TC2_OWN_GUN=1;TC2_LINK=R:23022:127.0.0.1:23021;TC2_CABINET_DIR=screen-right;TC2_MONITOR=2" } } },
-        { "LEFT cabinet (red player) - window", "The left side, in a window", false, 1, { { "--window", "TC2_SIDE=left" } } },
-        { "RIGHT cabinet (blue player) - window", "The right side, in a window", false, 1, { { "--window", "TC2_SIDE=right" } } },
-        { "Try both cabinets on this PC", "Two linked windows, left and right", false, 2, {
+        { "Left cabinet (red player) - window", "The left side, in a window.", false, 1, { { "--window", "TC2_SIDE=left" } } },
+        { "Right cabinet (blue player) - window", "The right side, in a window.", false, 1, { { "--window", "TC2_SIDE=right" } } },
+        { "Test: both sides on this PC", "Opens the left and right sides in 2 linked windows.", false, 2, {
             { "--window", "TC2_LINK=L:23011:127.0.0.1:23012;TC2_CABINET_DIR=try-left;TC2_WINPOS=left" },
             { "--window", "TC2_LINK=R:23012:127.0.0.1:23011;TC2_CABINET_DIR=try-right;TC2_WINPOS=right" } } } } },
     { "tokyowar", "Tokyo Wars", "1996", "Tokyo Wars", "TokyoWars-ArcadeLAN.exe",
-      "Tank battles, two teams, up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows drive, Ctrl fire, Esc settings.", "link.cfg",
+      "Team tank battles for up to 4 linked cabinets.",
+      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
 };
 #define NGAMES ((int)(sizeof games / sizeof *games))
@@ -340,17 +346,30 @@ static void write_advanced(const char *dir)
             lab[n] = 0;
             char p[MAX_PATH]; snprintf(p, sizeof p, "%s\\%s - %s.bat", dir, g->name, lab);
             FILE *f = fopen(p, "wb"); if (!f) continue;
-            fprintf(f, "@echo off\r\nrem %s - %s: %s.\r\nrem (written by \"" APP_NAME ".exe\" --write-advanced: the same as its menu's button)\r\n",
-                    g->name, m->label, m->hint);
+            static const char rule[] = "rem ==========================================================================\r\n";
+            fprintf(f, "@echo off\r\n%srem  %s - %s\r\nrem  %s\r\nrem\r\nrem  This does the same as the button in " APP_NAME ".exe.\r\n"
+                       "rem  (Written by \"" APP_NAME ".exe --write-advanced\".)\r\n%s", rule, g->name, m->label, m->hint, rule);
             fprintf(f, "setlocal\r\ncd /d \"%%~dp0..\\games\\%s\"\r\n", g->folder);
             for (int c = 0; c < m->n; c++) {
+                if (m->n > 1) fprintf(f, "\r\nrem Window %d of %d\r\n", c + 1, m->n); else fprintf(f, "\r\n");
                 if (m->c[c].env) { char e[512]; snprintf(e, sizeof e, "%s", m->c[c].env);
                     for (char *t = strtok(e, ";"); t; t = strtok(NULL, ";")) fprintf(f, "set \"%s\"\r\n", t); }
                 fprintf(f, "start \"\" \"%s\" %s\r\n", g->exe, m->c[c].args);
-                if (c + 1 < m->n) fprintf(f, "ping -n 1 -w 300 127.0.0.1 >nul\r\n");
+                if (c + 1 < m->n) fprintf(f, "rem A short pause, so the windows open in order\r\nping -n 1 -w 300 127.0.0.1 >nul\r\n");
             }
             fclose(f);
         }
+    }
+    char p[MAX_PATH]; snprintf(p, sizeof p, "%s\\About these files.txt", dir);
+    FILE *f = fopen(p, "wb");
+    if (f) {
+        fprintf(f, "ABOUT THESE FILES\r\n=================\r\n\r\n"
+                   "Each .bat file here starts one game in one way, exactly like the matching button in\r\n"
+                   APP_NAME ".exe. They are for desktop shortcuts, other front ends and scripts.\r\n\r\n"
+                   "They are named  <game> - <way to play>.bat  and only work from this folder inside the\r\n"
+                   "package (they find the games in ..\\games).\r\n\r\n"
+                   "The launcher writes them again with:  \"" APP_NAME ".exe\" --write-advanced <folder>\r\n");
+        fclose(f);
     }
 }
 static int my_addresses(char out[][48], int max)
@@ -446,7 +465,7 @@ static int auto_next(int dir)
 
 static void start_mode(int g, int m, bool from_auto)
 {
-    if (!launch(g, m)) { char b[160]; snprintf(b, sizeof b, "%s could not start: is games\\%s\\%s there?", games[g].name, games[g].folder, games[g].exe); say(b); screen = SC_MENU; return; }
+    if (!launch(g, m)) { char b[160]; snprintf(b, sizeof b, "%s could not start. Check that games\\%s\\%s is there.", games[g].name, games[g].folder, games[g].exe); say(b); screen = SC_MENU; return; }
     auto_session = from_auto;
     screen = SC_RUNNING;
 }
@@ -484,7 +503,7 @@ static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT
             case SET_RRCHECK: if (key == SDLK_RETURN) {
                 char cmd[MAX_PATH * 2]; snprintf(cmd, sizeof cmd, "powershell -NoProfile -ExecutionPolicy Bypass -File \"%stools\\rr-4-cabinet-check.ps1\"", base);
                 STARTUPINFOA si = { sizeof si }; PROCESS_INFORMATION pi;
-                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, base, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); say("The Rave Racer check runs in its own window (about 2 minutes)."); }
+                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, base, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); say("The Rave Racer link test is running in its own window (about 2 minutes)."); }
                 } break;
             case SET_BACK: if (key == SDLK_RETURN) screen = SC_MENU; break;
             }
@@ -503,7 +522,7 @@ static void draw(int W, int H, SDL_Window *win)
     /* the title bar */
     nk_fill_rect(cb, nk_rect(0, 0, (float)W, 120 * k), 0, C_DARK);
     text(cb, f_title, pad, 26 * k, "NAMCO 22  ARCADE LAN", C_TEXT);
-    text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "Real cabinets, a PC in each, linked over a wired network", C_AMBER);
+    text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "One PC in each cabinet, linked over a wired network", C_AMBER);
     {   /* the X: closes the launcher (in a full-screen menu there is no window frame to close it with) */
         const float s = 64 * k; const struct nk_rect r = nk_rect(W - pad - s, 28 * k, s, s);
         const bool h = nk_input_is_mouse_hovering_rect(in, r);
@@ -550,7 +569,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
             text(cb, f_big, r.x + 28 * k, r.y + 12 * k, games[i].name, s ? C_AMBER : C_TEXT);
-            char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "twin cabinet link" : !strcmp(games[i].id, "acedrive") ? "up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") ? "2 linked cabinets" : "up to 4 linked cabinets") : "one cabinet");
+            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "Twin cabinet, 2 players" : !strcmp(games[i].id, "acedrive") ? "Up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") ? "2 linked cabinets" : "Up to 4 linked cabinets") : "Single cabinet");
             text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
@@ -582,10 +601,20 @@ static void draw(int W, int H, SDL_Window *win)
         }
         if (focus == 1) text(cb, f_small, rx, bottom - 6 * k, g->m[sel_mode].hint, C_AMBER);
     } else if (screen == SC_SETTINGS) {
-        static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before it starts", "If the game closes",
-                                             "This menu's screen", "Link lights (all games)", "Session recordings (all games)",
-                                             "Rave Racer 4-cabinet check", "This PC's network address", "Back" };
-        text(cb, f_big, pad, top, "SETTINGS", C_AMBER);
+        static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
+                                             "Launcher display", "Link status lights (all games)", "Session recordings (all games)",
+                                             "Rave Racer 4-cabinet link test", "This PC's network address", "Back to the games" };
+        static const char *hints[SET_N] = {
+            "When Windows signs in, the launcher opens, counts down and starts this game. On a cabinet PC, set Windows to sign in automatically.",
+            "How long the countdown waits before the game starts. Any key or button during the countdown opens the menu instead.",
+            "After an automatic start: restart the game whenever it closes, so the cabinet always returns to attract mode.",
+            "Show this launcher full screen or in a window.",
+            "Small lights in a corner of each linked game that show which cabinets it can hear.",
+            "Each game keeps its last session's inputs (a few KB) so a problem can be replayed. Off keeps none.",
+            "Four hidden copies of Rave Racer race each other and report PASS or FAIL (about 2 minutes).",
+            "The address to type into the other cabinets' Network page when setting the addresses by hand.",
+            "" };
+        text(cb, f_big, pad, top, "Settings", C_AMBER);
         float y = top + 70 * k; const float rowh = 62 * k, w = W - 2 * pad;
         static char addrs[4][48]; static int na; static Uint64 addr_at;      /* this PC's addresses, read every 2 s */
         if (SDL_GetTicks64() >= addr_at) { na = my_addresses(addrs, 4); addr_at = SDL_GetTicks64() + 2000; }
@@ -600,34 +629,33 @@ static void draw(int W, int H, SDL_Window *win)
             switch (i) {
             case SET_AUTO: if (S.auto_game < 0) snprintf(v, sizeof v, "Off"); else snprintf(v, sizeof v, "%s: %s", games[S.auto_game].name, games[S.auto_game].m[S.auto_mode].label); break;
             case SET_DELAY: snprintf(v, sizeof v, "%d seconds", S.delay); break;
-            case SET_CLOSED: snprintf(v, sizeof v, "%s", S.restart ? "Start it again (automatic start)" : "Come back to this menu"); break;
+            case SET_CLOSED: snprintf(v, sizeof v, "%s", S.restart ? "Restart the game" : "Return to this menu"); break;
             case SET_SCREEN: snprintf(v, sizeof v, "%s", S.windowed ? "Window" : "Full screen"); break;
             case SET_LIGHTS: snprintf(v, sizeof v, "%s", all_on("lights", "bottom-left") ? "On" : "Off"); break;
             case SET_RECORD: snprintf(v, sizeof v, "%s", all_on("record", "on") ? "On" : "Off"); break;
-            case SET_RRCHECK: snprintf(v, sizeof v, "Run (Enter)"); break;
-            case SET_ADDR: if (na) snprintf(v, sizeof v, "%s%s%s", addrs[0], na > 1 ? "   " : "", na > 1 ? addrs[1] : ""); else snprintf(v, sizeof v, "(no network)"); break;
+            case SET_RRCHECK: snprintf(v, sizeof v, "Press Enter to run"); break;
+            case SET_ADDR: if (na) snprintf(v, sizeof v, "%s%s%s", addrs[0], na > 1 ? "   " : "", na > 1 ? addrs[1] : ""); else snprintf(v, sizeof v, "No network"); break;
             }
             text(cb, f_mid, r.x + w - tw(f_mid, v) - 28 * k, r.y + 14 * k, v, s ? C_TEXT : C_DIM);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_set = i; act(SDLK_RETURN, win); }
         }
-        if (sel_set == SET_AUTO) text(cb, f_small, pad, bottom - 6 * k,
-            "Windows then starts this menu when it signs in, counts down and starts the game; set Windows to sign in by itself for a cabinet.", C_AMBER);
+        if (hints[sel_set][0]) text(cb, f_small, pad, bottom - 6 * k, hints[sel_set], C_AMBER);
     } else if (screen == SC_COUNTDOWN || screen == SC_RESTART) {
         const game_t *g = &games[S.auto_game >= 0 ? S.auto_game : 0];
         const int left = (int)((count_until > SDL_GetTicks64() ? count_until - SDL_GetTicks64() : 0) + 999) / 1000;
-        char b[200]; snprintf(b, sizeof b, "%s %s in %d", screen == SC_RESTART ? "Starting again:" : "Starting", g->name, left);
+        char b[200]; snprintf(b, sizeof b, "%s %s in %d", screen == SC_RESTART ? "Restarting" : "Starting", g->name, left);
         text_c(cb, f_title, W / 2.0f, H * 0.38f, b, C_TEXT);
         text_c(cb, f_mid, W / 2.0f, H * 0.38f + 80 * k, g->m[S.auto_mode].label, C_AMBER);
-        text_c(cb, f_mid, W / 2.0f, H * 0.62f, "Press any key or button for the menu", C_DIM);
+        text_c(cb, f_mid, W / 2.0f, H * 0.62f, "Press any key or button to open the menu", C_DIM);
     } else if (screen == SC_QUIT) {
         text_c(cb, f_big, W / 2.0f, H * 0.40f, "Close the launcher?", C_TEXT);
-        text_c(cb, f_mid, W / 2.0f, H * 0.40f + 60 * k, "Enter: close      Esc: back", C_DIM);
+        text_c(cb, f_mid, W / 2.0f, H * 0.40f + 60 * k, "Enter / A: quit        Esc / B: cancel", C_DIM);
     }
     /* the bottom bar */
     nk_fill_rect(cb, nk_rect(0, H - 60 * k, (float)W, 60 * k), 0, C_DARK);
     if (screen == SC_MENU || screen == SC_SETTINGS) {
-        text(cb, f_small, pad, H - 44 * k, screen == SC_MENU ? "Arrows / D-pad: choose     Enter / A: start     Esc / B: back     S / Y: settings"
-                                                                : "Up / Down: choose     Left / Right / Enter: change     Esc / B: back", C_DIM);
+        text(cb, f_small, pad, H - 44 * k, screen == SC_MENU ? "Arrows / D-pad: choose        Enter / A: start        Esc / B: back        S / Y: settings"
+                                                                : "Up / Down: choose        Left / Right / Enter: change        Esc / B: back", C_DIM);
         const char *bt[2] = { screen == SC_MENU ? "Settings" : "Games", "Quit" };
         float bx = W - pad;
         for (int i = 1; i >= 0; i--) {

@@ -78,21 +78,21 @@ those, use the original project's releases. The package below keeps to the linke
 `Namco 22 Arcade LAN.exe` is a full-screen front end for the package, made for a cabinet screen. Pick a game and how to
 play it with the keyboard, a controller or the mouse:
 
-- **Cabinet on the network** (full screen or in a window), **Time Crisis II's left or right side**, both screens on one
-  PC, two or four linked copies on one PC to try the link, and **party mode** (two or four players on one PC, split
+- **Linked cabinet** (full screen or in a window), **Time Crisis II's left or right cabinet**, both sides on one PC,
+  **Test** modes that run 2, 4 or 8 linked copies on one PC, and **Party** modes (2 or 4 players on one PC, split
   screen, a controller each).
-- **Start a game when Windows starts**: the launcher counts down (a key or button gives the menu instead) and starts the
+- **Start a game when Windows starts**: the launcher counts down (a key or button opens the menu instead) and starts the
   chosen game. **If the game ever closes, it starts it again**, so the cabinet always comes back to its attract mode.
-- **Settings for every game at once**: the link lights, and the session recordings (each game keeps the last session's
+- **Settings for every game at once**: the link status lights, and the session recordings (each game keeps the last session's
   inputs so a problem can be replayed exactly; off keeps none).
-- The Rave Racer 4-cabinet check, and this PC's network address.
+- The Rave Racer 4-cabinet link test, and this PC's network address.
 
 ```
 Namco 22 Arcade LAN\
   Namco 22 Arcade LAN.exe       the launcher
   READ ME.txt
   games\<Game>\                 <Name>-ArcadeLAN.exe, its roms\ (your zips) and its own settings
-  tools\                        the Rave Racer 4-cabinet check
+  tools\                        the Rave Racer 4-cabinet link test
   advanced\                     a .bat for every button in the launcher
 ```
 
@@ -122,7 +122,7 @@ Namco 22 Arcade LAN\
    `tools/make_arcade_kit.sh <package folder> <folder with your MAME zips>`. Each game's zips go into its own `roms`
    folder, and each game unpacks them on its first start.
 2. Copy the package folder to every cabinet PC.
-3. On every PC, start the game as **Cabinet on the network - FULL SCREEN** in the launcher. On each one, press **Esc**,
+3. On every PC, start the game as **Linked cabinet - full screen** in the launcher. On each one, press **Esc**,
    open **Network**, choose **Find cabinets**, then **Use the N found**. That fills in the address list (the same on
    every PC) with *This cabinet* on *Auto*. Time Crisis II's two sides find each other by themselves.
 4. Close the game on every PC and start them all again. They wait up to a minute for each other, then link.

@@ -23,8 +23,8 @@ WHAT IS IN THIS FOLDER
      Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
      Cyber Sled\            one cabinet (the original project's build; its 2 players play online)
-  tools\                    the Rave Racer 4-cabinet check
-  advanced\                 a .bat file for every button in the launcher (for shortcuts and scripts)
+  tools\                    the Rave Racer 4-cabinet link test
+  advanced\                 a .bat file for every way to play in the launcher (for shortcuts and scripts)
 
 Each game's folder keeps everything of that game: link.cfg (its network settings), its test-menu
 settings and records (*_eeprom*.nv), its log (*.log) and its last session (*_last.rec).
@@ -56,25 +56,27 @@ back. In the games: Esc opens the game's own menu (display, sound, controls, Net
 File > Exit or Alt+F4 closes the game.
 
 The ways to play:
-   Cabinet on the network - FULL SCREEN   this PC is one cabinet of a linked set (the normal one)
-   Cabinet on the network - window        the same in a window (setting up, 2-PC tests)
-   Try 2 / 4 (/ 8) linked cabinets...     linked copies in windows, to see the link working (8: Ace Driver)
-   PARTY                                  2 or 4 players on one PC, split screen, a controller each
-   Time Crisis II: LEFT / RIGHT cabinet, try both on this PC, or BOTH screens on ONE PC
-   (2 monitors, 2 guns)
+   Linked cabinet - full screen          this PC is one cabinet in a linked set (the normal choice)
+   Linked cabinet - window               the same in a window, for setting up and testing
+   Test: 2 / 4 linked cabinets on this PC  linked copies in windows, to see the link working
+                                         (Ace Driver also has Test: 8)
+   Party: 2 or 4 players                 split screen on one PC, a controller for each player
+   Full screen / Window                  the single-cabinet games
+   Time Crisis II                        Left or Right cabinet, Both sides on one PC (2 monitors,
+                                         2 guns), or Test: both sides on this PC
 
 
 3. LINKING THE CABINETS (once per set)
 -------------------------------------
 1. Copy this whole folder to every cabinet PC, connect the PCs to one network switch with
    cables, and give each PC a fixed address (in Windows, or reserved in the router).
-2. On EVERY PC start the game with "Cabinet on the network - FULL SCREEN".
+2. On EVERY PC start the game with "Linked cabinet - full screen".
 3. On each PC press Esc, open the Network page and choose "Find cabinets". After a moment it
    lists the PCs running the game ("Found 3: 192.168.1.11 CABINET-1 (this PC), ..."). Choose
    "Use the N found": the address list is filled in, the same on every PC, with "This cabinet"
    on Auto (each PC's number is its place in the list).
-   (Time Crisis II finds the other side by itself: just start LEFT on one PC and RIGHT on the
-   other.)
+   (Time Crisis II finds the other side by itself: just start "Left cabinet" on one PC and
+   "Right cabinet" on the other.)
 4. Close the game on every PC and start them all again. The cabinets look for each other when
    they start, like the real boards, wait up to a minute for any that are missing, then begin
    together.
@@ -100,11 +102,11 @@ How the link behaves (the same rule as the real boards):
 ---------------------------------------
 For a cabinet, the PC should start the game by itself when it is switched on, with no keyboard:
 1. In the launcher: Settings > "Start a game when Windows starts" > choose the game and the way
-   to play (for a linked cabinet: "Cabinet on the network - FULL SCREEN"; for Time Crisis II:
-   the LEFT or RIGHT cabinet). "Countdown before it starts" sets the delay (10 s); a key or
-   button during the countdown gives the menu instead.
-2. "If the game closes": "Start it again" (the default) restarts the game a few seconds after it
-   closes for any reason, so the cabinet always comes back to its attract mode.
+   to play (for a linked cabinet: "Linked cabinet - full screen"; for Time Crisis II: the Left
+   or Right cabinet). "Countdown before the game starts" sets the delay (10 s); a key or
+   button during the countdown opens the menu instead.
+2. "When the game closes": "Restart the game" (the default) starts it again a few seconds after
+   it closes for any reason, so the cabinet always comes back to its attract mode.
 3. Windows must sign in by itself: set the cabinet PC's account to sign in automatically
    (Windows: run "netplwiz", untick "Users must enter a user name and password", or the
    equivalent on your Windows version), and switch off sleep and screen-saver in the power
@@ -131,13 +133,13 @@ To stop it starting by itself: launcher > Settings > "Start a game when Windows 
 6. SETTINGS (launcher > Settings)
 ---------------------------------
    Start a game when Windows starts   Off, or a game and way to play
-   Countdown before it starts         5 - 60 seconds
-   If the game closes                 start it again (automatic start) / back to the menu
-   This menu's screen                 full screen / window
-   Link lights (all games)            small lights showing the link's activity in a corner
+   Countdown before the game starts   5 - 60 seconds
+   When the game closes               restart the game (automatic start) / return to this menu
+   Launcher display                   full screen / window
+   Link status lights (all games)     small lights in a corner showing the link's activity
    Session recordings (all games)     each game keeps the last session's inputs so a problem
                                       can be replayed (a few KB each); Off keeps none
-   Rave Racer 4-cabinet check         four hidden copies race each other: PASS or FAIL
+   Rave Racer 4-cabinet link test     four hidden copies race each other: PASS or FAIL
    This PC's network address          for typing the addresses by hand
 
 The link lights: blue = this cabinet (flickers as it sends); green = that cabinet and this one
