@@ -42,7 +42,7 @@ the arcade has and keeping them running.
 |---|---|---|---|
 | **Tokyo Wars** | 1996 | up to 4, linked | Team tank battles |
 | **Rave Racer** | 1995 | up to 4, linked | Linked races |
-| **Ace Driver** | 1994 | up to 8, linked (tested with 4) | Linked races; **new link** in this fork (the original project's build plays solo) |
+| **Ace Driver** | 1994 | up to 8, linked (tested with 8 on one PC) | Linked races; **new link** in this fork (the original project's build plays solo) |
 | **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
 | **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
