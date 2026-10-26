@@ -81,12 +81,6 @@ typedef struct {
         { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 4 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 1", NULL } } }
 
 static const game_t games[] = {
-    { "tokyowar", "Tokyo Wars", "1996", "Tokyo Wars", "TokyoWars-ArcadeLAN.exe",
-      "Tank battles, two teams, up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows drive, Ctrl fire, Esc settings.", "link.cfg",
-      8, { NET_MODES("roms") } },
-    { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
-      "Racing for up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
-      8, { NET_MODES("roms") } },
     { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
       "Formula racing for up to eight linked cabinets.", "Keys: 5 coin (two a credit), arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
       9, { NET_MODES("roms"),
@@ -95,6 +89,39 @@ static const game_t games[] = {
             { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } } } },
+    { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
+      "Downhill skiing, one cabinet. New in this package.", "Keys: 5 coin, Enter decide / view, Z and X select, arrows ski.", NULL,
+      2, {
+        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
+        { "Window", "In a window", false, 1, { { "roms --window 2", NULL } } } } },
+    { "adillor", "Armadillo Racing", "1997", "Armadillo Racing", "ArmadilloRacing-ArcadeLAN.exe",
+      "Trackball racing for up to four linked cabinets (red, blue, yellow, green). New in this package.",
+      "Keys: 5 coin, 1 start; the mouse / a trackball rolls (or the arrows); Esc settings.", "link.cfg",
+      8, { NET_MODES("roms") } },
+    { "cybrcomm", "Cyber Commando", "1994", "Cyber Commando", "CyberCommando-ArcadeLAN.exe",
+      "Robot battles: two linked cabinets fight each other (the challenge mode). New in this package.",
+      "Keys: 5 coin (two a credit), arrows move, Z fire, X missile, C view, Esc settings.", "link.cfg",
+      5, {
+        { "Cabinet on the network - FULL SCREEN", "This PC is one of the two linked cabinets (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
+        { "Cabinet on the network - window", "The same in a window", false, 1, { { "roms --window", NULL } } },
+        { "Try 2 linked cabinets on this PC", "Two windows; click one to play it", false, 2, { { "roms --window 1 --link 1 --link-cabinets 2", NULL },
+            { "roms --window 1 --link 2 --link-cabinets 2 --mute", NULL } } },
+        { "PARTY: 2 players - keyboard + 1 controller", "Split screen on this PC; plug the controller in first", false, 2, {
+            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } },
+        { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, {
+            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } } } },
+    { "cybrcycc", "Cyber Cycles", "1995", "Cyber Cycles", "CyberCycles-ArcadeLAN.exe",
+      "Motorbike racing for up to four linked cabinets. New in this package.", "Keys: 5 coin, Enter start / view, arrows bank, Up throttle, Down brake.", "link.cfg",
+      8, { NET_MODES("roms") } },
+    { "cybsled", "Cyber Sled", "1993", "Cyber Sled", "CyberSled-ArcadeLAN.exe",
+      "Twin-stick tank battles. The original author's build: its two players play ONLINE (internet), not over the cabinet LAN.",
+      "Keys: 5 coin, 1 start, arrows drive (Shift strafe), Ctrl fire, Esc settings.", NULL,
+      2, {
+        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "extracted --fullscreen", NULL } } },
+        { "Window", "In a window", false, 1, { { "extracted --window", NULL } } } } },
+    { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
+      "Racing for up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
+      8, { NET_MODES("roms") } },
     { "timecrs2", "Time Crisis II", "1997", "Time Crisis II", "TimeCrisis2-ArcadeLAN.exe",
       "The twin light-gun cabinet: the left and right sides link for two players.", "Mouse or light gun to shoot, the pedal to take cover; Esc settings.",
       "tc2_link.cfg",
@@ -109,36 +136,9 @@ static const game_t games[] = {
         { "Try both cabinets on this PC", "Two linked windows, left and right", false, 2, {
             { "--window", "TC2_LINK=L:23011:127.0.0.1:23012;TC2_CABINET_DIR=try-left;TC2_WINPOS=left" },
             { "--window", "TC2_LINK=R:23012:127.0.0.1:23011;TC2_CABINET_DIR=try-right;TC2_WINPOS=right" } } } } },
-    { "cybrcycc", "Cyber Cycles", "1995", "Cyber Cycles", "CyberCycles-ArcadeLAN.exe",
-      "Motorbike racing for up to four linked cabinets. New in this package.", "Keys: 5 coin, Enter start / view, arrows bank, Up throttle, Down brake.", "link.cfg",
+    { "tokyowar", "Tokyo Wars", "1996", "Tokyo Wars", "TokyoWars-ArcadeLAN.exe",
+      "Tank battles, two teams, up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows drive, Ctrl fire, Esc settings.", "link.cfg",
       8, { NET_MODES("roms") } },
-    { "cybrcomm", "Cyber Commando", "1994", "Cyber Commando", "CyberCommando-ArcadeLAN.exe",
-      "Robot battles: two linked cabinets fight each other (the challenge mode). New in this package.",
-      "Keys: 5 coin (two a credit), arrows move, Z fire, X missile, C view, Esc settings.", "link.cfg",
-      5, {
-        { "Cabinet on the network - FULL SCREEN", "This PC is one of the two linked cabinets (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
-        { "Cabinet on the network - window", "The same in a window", false, 1, { { "roms --window", NULL } } },
-        { "Try 2 linked cabinets on this PC", "Two windows; click one to play it", false, 2, { { "roms --window 1 --link 1 --link-cabinets 2", NULL },
-            { "roms --window 1 --link 2 --link-cabinets 2 --mute", NULL } } },
-        { "PARTY: 2 players - keyboard + 1 controller", "Split screen on this PC; plug the controller in first", false, 2, {
-            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } },
-        { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, {
-            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } } } },
-    { "adillor", "Armadillo Racing", "1997", "Armadillo Racing", "ArmadilloRacing-ArcadeLAN.exe",
-      "Trackball racing for up to four linked cabinets (red, blue, yellow, green). New in this package.",
-      "Keys: 5 coin, 1 start; the mouse / a trackball rolls (or the arrows); Esc settings.", "link.cfg",
-      8, { NET_MODES("roms") } },
-    { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
-      "Downhill skiing, one cabinet. New in this package.", "Keys: 5 coin, Enter decide / view, Z and X select, arrows ski.", NULL,
-      2, {
-        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
-        { "Window", "In a window", false, 1, { { "roms --window 2", NULL } } } } },
-    { "cybsled", "Cyber Sled", "1993", "Cyber Sled", "CyberSled-ArcadeLAN.exe",
-      "Twin-stick tank battles. The original author's build: its two players play ONLINE (internet), not over the cabinet LAN.",
-      "Keys: 5 coin, 1 start, arrows drive (Shift strafe), Ctrl fire, Esc settings.", NULL,
-      2, {
-        { "FULL SCREEN", "The cabinet's normal way to run (recommended)", true, 1, { { "extracted --fullscreen", NULL } } },
-        { "Window", "In a window", false, 1, { { "extracted --window", NULL } } } } },
 };
 #define NGAMES ((int)(sizeof games / sizeof *games))
 
