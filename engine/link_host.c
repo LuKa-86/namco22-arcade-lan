@@ -187,8 +187,16 @@ static void place_window(SDL_Window *w)
         if (eng_party_pad() == 0) SDL_RaiseWindow(w);                  /* the keyboard's copy: in front, so the keys reach it */
         return;
     }
-    SDL_GetWindowSize(w, &ww, &wh);
     SDL_GetWindowBordersSize(w, &top, &l, &bo, &r);
+    if (cfg.nodes > 4) {                                               /* 5-8 copies: 4 across, 2 down, each window shrunk to its cell (4:3) */
+        const int cw = b.w / 4 - l - r, ch = b.h / 2 - top - bo;
+        int nw = cw, nh = cw * 3 / 4;
+        if (nh > ch) { nh = ch; nw = ch * 4 / 3; }
+        SDL_SetWindowSize(w, nw, nh);
+        SDL_SetWindowPosition(w, b.x + l + (cfg.id % 4) * (b.w / 4), b.y + top + (cfg.id / 4) * (b.h / 2));
+        return;
+    }
+    SDL_GetWindowSize(w, &ww, &wh);
     const int cols = cfg.nodes <= 1 ? 1 : 2, rows = (cfg.nodes + cols - 1) / cols;
     const int fw = ww + l + r, fh = wh + top + bo;                        /* the window with its frame */
     const int sx = cols > 1 ? (b.w - fw < fw ? (b.w - fw) / (cols - 1) : fw) : 0;       /* overlap them when the screen is too small */

@@ -16,7 +16,7 @@ WHAT IS IN THIS FOLDER
   games\                    one folder per game: its program, its roms\ and its settings
      Tokyo Wars\            up to 4 linked cabinets
      Rave Racer\            up to 4 linked cabinets
-     Ace Driver\            up to 8 linked cabinets (tested with 4; linked play new in this package)
+     Ace Driver\            up to 8 linked cabinets (linked play new in this package)
      Time Crisis II\        the twin cabinet: left and right sides linked
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Alpine Racer\          one cabinet (new in this package)
@@ -54,7 +54,7 @@ File > Exit or Alt+F4 closes the game.
 The ways to play:
    Cabinet on the network - FULL SCREEN   this PC is one cabinet of a linked set (the normal one)
    Cabinet on the network - window        the same in a window (setting up, 2-PC tests)
-   Try 2 / 4 linked cabinets on this PC   linked copies in windows, to see the link working
+   Try 2 / 4 (/ 8) linked cabinets...     linked copies in windows, to see the link working (8: Ace Driver)
    PARTY                                  2 or 4 players on one PC, split screen, a controller each
    Time Crisis II: LEFT / RIGHT cabinet, try both on this PC, or BOTH screens on ONE PC
    (2 monitors, 2 guns)

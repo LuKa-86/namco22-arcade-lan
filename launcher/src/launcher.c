@@ -50,7 +50,7 @@
 /* ---- THE GAMES AND THE WAYS TO PLAY THEM ------------------------------------------------------------------------------
  * A way to play starts one or more copies of the game (copies on one PC: "try" and party modes), in the game's folder.
  * Per copy: the command line after the program, and environment settings ("NAME=value;NAME=value"). */
-#define MAXCOPY 4
+#define MAXCOPY 8
 typedef struct { const char *args, *env; } copy_t;
 typedef struct {
     const char *label, *hint;
@@ -88,8 +88,13 @@ static const game_t games[] = {
       "Racing for up to four linked cabinets.", "Keys: 5 coin, 1 start, arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
       8, { NET_MODES("roms") } },
     { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
-      "Formula racing for up to eight linked cabinets (tested with four).", "Keys: 5 coin (two a credit), arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
-      8, { NET_MODES("roms") } },
+      "Formula racing for up to eight linked cabinets.", "Keys: 5 coin (two a credit), arrows steer, A / Z gas and brake, Esc settings.", "link.cfg",
+      9, { NET_MODES("roms"),
+        { "Try 8 linked cabinets on this PC", "Eight small windows in a grid; only cabinet 1 has sound (needs a strong PC)", false, 8, {
+            { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
+            { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
+            { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
+            { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } } } },
     { "timecrs2", "Time Crisis II", "1997", "Time Crisis II", "TimeCrisis2-ArcadeLAN.exe",
       "The twin light-gun cabinet: the left and right sides link for two players.", "Mouse or light gun to shoot, the pedal to take cover; Esc settings.",
       "tc2_link.cfg",
