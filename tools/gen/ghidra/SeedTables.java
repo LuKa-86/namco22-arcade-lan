@@ -86,8 +86,12 @@ public class SeedTables extends GhidraScript {
     private int carved;
     private ghidra.app.util.PseudoDisassembler pseudo;
 
+    // the SWITCH tables found (16-bit offsets after a jmp): data, never code -- the sweep, the repair and the seeds keep out of them
+    private final java.util.TreeMap<Long, Long> switchTables = new java.util.TreeMap<>();
+    private boolean inTable(long t) { java.util.Map.Entry<Long, Long> e = switchTables.floorEntry(t); return e != null && t <= e.getValue(); }
     private boolean seed(long t) throws Exception { return seed(t, false); }
     private boolean seed(long t, boolean always) throws Exception {
+        if (inTable(t)) return false;
         Address a = toAddr(t);
         boolean added = false;
         if (currentProgram.getListing().getInstructionAt(a) == null) {
@@ -118,7 +122,7 @@ public class SeedTables extends GhidraScript {
             }
             int n = 0;
             for (long t : todo) {
-                if (t < 0x400 || t >= size || (t & 1) != 0) continue;
+                if (t < 0x400 || t >= size || (t & 1) != 0 || inTable(t)) continue;
                 Address a = toAddr(t);
                 if (currentProgram.getListing().getInstructionAt(a) != null) continue;
                 if (currentProgram.getListing().getInstructionContaining(a) != null) { if (carve(a, false)) n++; continue; }
@@ -150,7 +154,7 @@ public class SeedTables extends GhidraScript {
             Instruction in = ii.next();
             if (in.getFallThrough() != null) continue;
             long g = in.getMaxAddress().getOffset() + 1;
-            if (!plausible(g)) continue;
+            if (!plausible(g) || inTable(g)) continue;
             Address a = toAddr(g);
             if (currentProgram.getListing().getInstructionContaining(a) != null) continue;
             if (currentProgram.getListing().getDefinedDataContaining(a) != null) continue;
@@ -245,7 +249,8 @@ public class SeedTables extends GhidraScript {
         for (int round = 1; round <= 20; round++) {
             int added = 0, tables = 0;
             InstructionIterator ii = currentProgram.getListing().getInstructions(true);
-            java.util.ArrayList<Long> targets = new java.util.ArrayList<>();
+            java.util.ArrayList<Long> targets = new java.util.ArrayList<>(), forced = new java.util.ArrayList<>();
+            java.util.ArrayList<long[]> clears = new java.util.ArrayList<>();
             while (ii.hasNext()) {
                 Instruction in = ii.next();
                 if (in.getLength() < 4) continue;
@@ -254,6 +259,47 @@ public class SeedTables extends GhidraScript {
                 boolean viaReg = (op & 0xFFB8) == 0x4EB0;                    // jsr / jmp (d8,An,Xn): the table's address is in An
                 if (op != 0x4EBB && op != 0x4EFB && !viaReg) continue;       // jsr / jmp (d8,PC,Xn) and its full-format forms
                 int ext = mem.getShort(toAddr(a + 2)) & 0xFFFF;
+                if (op == 0x4EFB && (ext & 0x100) == 0) {                    // a SWITCH (Alpine Racer 2's compiler):  move.w (d8,PC,Dn.w*2),Dn
+                    boolean sw = false;                                      //  [nop]  jmp (d8,PC,Dn.w) -- a table of 16-bit offsets from its own start
+                    Instruction b = in.getPrevious();
+                    for (int k = 0; k < 3 && b != null; k++, b = b.getPrevious())
+                        if (((mem.getShort(b.getAddress()) & 0xF1BF) == 0x303B)) { sw = true; break; }
+                    if (!sw) continue;
+                    long table = a + 2 + (byte) (ext & 0xFF);
+                    if (table < 0 || table + 2 > size) continue;
+                    tables++;
+                    // the case count, from the bound test before it:  subq.l #n,Dn / cmpi.l #n,Dn / cmpi.w #n,Dn, then bhi -> n + 1 cases
+                    int count = -1;
+                    b = in.getPrevious();
+                    for (int k = 0; k < 6 && b != null && count < 0; k++, b = b.getPrevious()) {
+                        long ba = b.getAddress().getOffset();
+                        int bop = mem.getShort(toAddr(ba)) & 0xFFFF;
+                        if ((bop & 0xF1F0) == 0x5180) { int q = (bop >> 9) & 7; count = (q == 0 ? 8 : q) + 1; }
+                        else if ((bop & 0xFFF8) == 0x0C80) count = mem.getInt(toAddr(ba + 2)) + 1;
+                        else if ((bop & 0xFFF8) == 0x0C40) count = (mem.getShort(toAddr(ba + 2)) & 0xFFFF) + 1;
+                        else if ((bop & 0xF1FF) == 0xB1FC || (bop & 0xF1FF) == 0xB0BC) count = mem.getInt(toAddr(ba + 2)) + 1;      // cmpa.l / cmp.l #n
+                        else if ((bop & 0xF1FF) == 0xB07C) count = (mem.getShort(toAddr(ba + 2)) & 0xFFFF) + 1;                    // cmp.w #n
+                    }
+                    if (count > 0 && count <= 256) {                         // known size: the table is DATA -- clear any code Ghidra made of it
+                        clears.add(new long[] { table, table + 2L * count - 1, a });   // (cleared after the scan: not under its iterator)
+                        for (int k = 0; k < count; k++) {
+                            long t = table + (short) mem.getShort(toAddr(table + 2L * k));
+                            if (plausible(t)) forced.add(t);
+                        }
+                        continue;
+                    }
+                    long stop = size;
+                    for (int k = 0; k < 256; k++) {
+                        long ea = table + 2L * k;
+                        if (ea + 2 > size || ea + 2 > stop) break;
+                        if (k > 0 && currentProgram.getListing().getInstructionAt(toAddr(ea)) != null) break;
+                        long t = table + (short) mem.getShort(toAddr(ea));
+                        if (!plausible(t) || t <= a) break;
+                        if (t < stop) stop = t;
+                        targets.add(t);
+                    }
+                    continue;
+                }
                 if ((ext & 0x100) == 0 || (ext & 0x40) != 0) continue;       // brief format, or no index
                 int iis = ext & 7;
                 if (iis < 1 || iis > 3) continue;                            // not memory indirect pre-indexed
@@ -285,7 +331,21 @@ public class SeedTables extends GhidraScript {
                     targets.add(t);
                 }
             }
+            for (long[] c : clears) {
+                switchTables.put(c[0], c[1]);
+                Address t0 = toAddr(c[0]), t1 = toAddr(c[1]);
+                for (ghidra.program.model.symbol.Reference r : getReferencesFrom(toAddr(c[2])))   // Ghidra's guess at the jmp's target: the table
+                    if (r.getToAddress().compareTo(t0) >= 0 && r.getToAddress().compareTo(t1) <= 0) removeReference(r);
+                for (Instruction v = currentProgram.getListing().getInstructionContaining(t0); v != null && v.getMinAddress().compareTo(t1) <= 0;
+                     v = currentProgram.getListing().getInstructionAfter(v.getMaxAddress())) {
+                    ghidra.program.model.listing.Function f = currentProgram.getFunctionManager().getFunctionAt(v.getAddress());
+                    if (f != null) removeFunction(f);
+                    currentProgram.getListing().clearCodeUnits(v.getMinAddress(), v.getMaxAddress(), false);
+                    carved++;
+                }
+            }
             for (long t : targets) if (seed(t)) added++;
+            for (long t : forced) if (currentProgram.getListing().getInstructionAt(toAddr(t)) == null && seed(t, true)) added++;
             added += repair();
             for (int k = sweep(); k > 0; k = sweep()) added += k;
             added += pointers();

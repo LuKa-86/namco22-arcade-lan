@@ -11,7 +11,7 @@
 #     mesa\                           optional: Mesa's opengl32.dll + libgallium_wgl.dll for a PC without an OpenGL driver
 #
 # Builds used (a missing one is left out): tokyowar/build/tw.exe, raverace/build/rr.exe, tc2/build/tc2.exe,
-# cybrcycc/build/cc.exe, alpiner/build/al.exe, cybsled/build/cs21.exe, launcher/build/"Namco 22 Arcade LAN.exe".
+# cybrcycc/build/cc.exe, alpiner/build/al.exe, alpinr2/build/a2.exe, cybsled/build/cs21.exe, launcher/build/"Namco 22 Arcade LAN.exe".
 # The zips are never part of this repository: with a zips folder each game's are copied into its roms\ (every game unpacks
 # its own zips on its first start).
 set -e
@@ -31,6 +31,7 @@ GAMES=(
   "Cyber Commando|CyberCommando-ArcadeLAN.exe|cybrcomm/build/cc.exe|cybrcomm.zip namcoc74.zip|cybrcomm"
   "Armadillo Racing|ArmadilloRacing-ArcadeLAN.exe|adillor/build/am.exe|adillor.zip|adillor"
   "Alpine Racer|AlpineRacer-ArcadeLAN.exe|alpiner/build/al.exe|alpinerjc.zip|alpiner"
+  "Alpine Racer 2|AlpineRacer2-ArcadeLAN.exe|alpinr2/build/a2.exe|alpinr2a.zip|alpinr2"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|@CrisisZone.exe|crszone.zip|crszone"

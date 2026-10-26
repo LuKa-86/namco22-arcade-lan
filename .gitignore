@@ -131,3 +131,18 @@ __pycache__/
 /acedriver/acedriver.pcode
 /acedriver/gen_supp/known.txt
 /acedriver/build/
+
+# Alpine Racer 2 (alpinr2/): game files, the translation's working files, test output
+/alpinr2/extracted/
+/alpinr2/gen/
+/alpinr2/build/
+/alpinr2/shots*/
+/alpinr2/sh_*/
+/alpinr2/*.bin
+/alpinr2/*.pcode
+/alpinr2/*.log
+/alpinr2/*.out
+/alpinr2/*.nv
+/alpinr2/*.cfg
+/alpinr2/*.rec
+/alpinr2/*.wav

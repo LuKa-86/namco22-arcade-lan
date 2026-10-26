@@ -16,6 +16,7 @@ WHAT IS IN THIS FOLDER
   games\                    one folder per game: its program, its roms\ and its settings
      Ace Driver\            up to 8 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
+     Alpine Racer 2\        one cabinet (new in this package)
      Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Crisis Zone\           one cabinet (the original project's own program)
      Cyber Commando\        2 linked cabinets battle each other (linked play new in this package)
@@ -39,6 +40,7 @@ Put your MAME ROM zips in each game's roms folder. Do not unzip them; the game u
 itself the first time it starts.
    games\Ace Driver\roms        acedrive.zip  and  namcoc74.zip
    games\Alpine Racer\roms      alpinerjc.zip
+   games\Alpine Racer 2\roms    alpinr2a.zip  (and alpinr2b.zip, if your set keeps the shared files there)
    games\Armadillo Racing\roms  adillor.zip
    games\Crisis Zone\roms       crszone.zip
    games\Cyber Commando\roms    cybrcomm.zip  and  namcoc74.zip
