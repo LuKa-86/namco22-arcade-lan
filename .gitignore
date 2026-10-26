@@ -146,3 +146,17 @@ __pycache__/
 /alpinr2/*.cfg
 /alpinr2/*.rec
 /alpinr2/*.wav
+
+# Alpine Surfer (alpines/): game files, the translation's working files, test output
+/alpines/extracted/
+/alpines/gen/
+/alpines/build/
+/alpines/shots*/
+/alpines/*.bin
+/alpines/*.pcode
+/alpines/*.log
+/alpines/*.out
+/alpines/*.nv
+/alpines/*.cfg
+/alpines/*.rec
+/alpines/*.wav

@@ -315,7 +315,7 @@ void rr_write(uint32_t a, int size, uint32_t v)
 #ifdef RR_TRACE
     watch(a, size, v);
 #endif
-    if (a < SS22_ROM_SIZE) { g_ss22.n_romwrite++; complain("ROM write", a, size); return; }
+    if (a < SS22_ROM_SIZE) { if (cfg && cfg->rom_write) { cfg->rom_write(a, size, v); return; } g_ss22.n_romwrite++; complain("ROM write", a, size); return; }
     if (a >= 0xE00000u) {
         if (a - 0xE00000u == g_ss22_wram_watch_off && g_ss22_wram_watch) g_ss22_wram_watch(v, size);
         if (a - 0xE00000u + (uint32_t)size <= SS22_WRAM_SIZE) { be_wr(g_ss22.wram, a - 0xE00000u, size, v); return; }
