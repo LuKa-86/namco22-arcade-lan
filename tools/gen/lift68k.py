@@ -180,6 +180,38 @@ class Lifter:
         self.note('p-code op %s' % name)
         return '{ rr_trap(0x%XU, 0x%XU, "p-code op %s is not translated"); return; }' % (A, A, name)
 
+    def bitfield(self, ins):
+        """68020 BFEXTU / BFEXTS / BFINS on a MEMORY operand, (d16,An) or (An), with an immediate offset and width (the 68020
+        manual: bit 0 of the field is the most significant bit of the byte at the address, the offset counts from there, a width
+        of 0 means 32). N = the field's top bit, Z = the field is 0, V = C = 0. Other forms: None (left untranslated)."""
+        num = r'(-?0x[0-9a-fA-F]+|\d+)'
+        ea = r'(?:\(' + num + r',A(\d)\)|\(A(\d)\))'
+        fld = r'\{' + num + ':' + num + r'\}'
+        m = re.match(r'(bfextu|bfexts) ' + ea + fld + r',D(\d)$', ins.text)
+        if m:
+            op, d, an1, an0, off, w, dn = m.groups()
+        else:
+            m = re.match(r'bfins D(\d),' + ea + fld + r'$', ins.text)
+            if not m: return None
+            dn, d, an1, an0, off, w = m.groups(); op = 'bfins'
+        an = int(an1 if an1 is not None else an0)
+        disp = int(d, 0) if d is not None else 0
+        off, w = int(off, 0), int(w, 0) or 32
+        if not (0 <= off < 32 and 1 <= w <= 32): return None
+        nb = ((off & 7) + w + 7) // 8                                  # the bytes the field touches (1..5)
+        sh = nb * 8 - (off & 7) - w                                    # the field's lowest bit within them
+        mask = (1 << w) - 1
+        dreg = int(dn) * 4
+        addr = '(uint32_t)(RG4(0x%X) + 0x%XU)' % (0x20 + an * 4, (disp + (off >> 3)) & 0xFFFFFFFF)
+        rd = 'uint32_t a_ = %s; uint64_t v_ = 0; for (int i_ = 0; i_ < %d; i_++) v_ = v_ << 8 | MRD1(a_ + (uint32_t)i_);' % (addr, nb)
+        flags = 'RS1(0x44, (f_ >> %d) & 1); RS1(0x45, (f_ & 0x%XU) == 0); RS1(0x46, 0); RS1(0x47, 0);' % (w - 1, mask)
+        if op == 'bfins':
+            return ['{ %s uint32_t f_ = (uint32_t)RG4(0x%X) & 0x%XU; const uint64_t mk_ = (uint64_t)0x%XULL << %d; '
+                    'v_ = (v_ & ~mk_) | ((uint64_t)f_ << %d); for (int i_ = 0; i_ < %d; i_++) MWR1(a_ + (uint32_t)i_, (v_ >> (8 * (%d - 1 - i_))) & 0xFF); %s }'
+                    % (rd, dreg, mask, mask, sh, sh, nb, nb, flags)]
+        sx = (' if (f_ & 0x%XU) f_ |= 0x%XU;' % (1 << (w - 1), (~mask) & 0xFFFFFFFF)) if op == 'bfexts' and w < 32 else ''
+        return ['{ %s uint32_t f_ = (uint32_t)((v_ >> %d) & 0x%XULL); %s%s RS4(0x%X, f_); }' % (rd, sh, mask, flags, sx, dreg)]
+
     def special(self, ins):
         """instructions emitted whole instead of from their p-code; None = use the p-code"""
         mn = ins.text.split()[0] if ins.text else ''
@@ -197,6 +229,9 @@ class Lifter:
         if mn.startswith('f') and mn not in ('ffo',) or mn in ('callm', 'rtm', 'cas', 'cas2', 'pack', 'unpk'):
             self.note('untranslated %s' % mn)
             return ['{ rr_trap(0x%XU, 0x%XU, "%s: not a 68EC020 instruction this program runs (data read as code?)"); return; }' % (A, A, mn)]
+        if mn in ('bfextu', 'bfexts', 'bfins'):                          # (Aqua Jet) a memory field at a fixed offset and width
+            c = self.bitfield(ins)
+            if c: self.note('bit-field %s' % mn); return c
         if mn.startswith('bf'):
             self.note('bit-field %s (untranslated)' % mn)
             return ['{ rr_trap(0x%XU, 0x%XU, "bit-field instruction not translated yet"); return; }' % (A, A)]
@@ -218,38 +253,71 @@ class Lifter:
         at = 2
         if mn.split('.')[0] in ('ori', 'andi', 'subi', 'addi', 'eori', 'cmpi') and '#' in ins.text.split(None, 1)[1].split(',')[0]:
             at = 6 if mn.endswith('.l') else 4
-        if ins.text.count('([') != 1 or ins.len < at + 2: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
-        ext = int.from_bytes(self.rom[ins.addr + at:ins.addr + at + 2], 'big')
-        if not (ext & 0x100) or (ext & 0x40): return                  # brief format / index suppressed: no difference
-        iis = ext & 7
-        if iis not in (1, 2, 3, 5, 6, 7): return
+        nmi = ins.text.count('([')
+        if nmi not in (1, 2) or ins.len < at + 2: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
+        exts = [int.from_bytes(self.rom[ins.addr + at:ins.addr + at + 2], 'big')]
+        if nmi == 2:                                                   # move ([..]),([..]) (Aqua Jet): the source's extension block, then the destination's
+            e = exts[0]
+            if not (e & 0x100): self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
+            ln = 2 + {0: 0, 1: 0, 2: 2, 3: 4}[(e >> 4) & 3] + {0: 0, 1: 0, 2: 2, 3: 4}[e & 3]
+            exts.append(int.from_bytes(self.rom[ins.addr + at + ln:ins.addr + at + ln + 2], 'big'))
         ops = ins.ops
+        indexed = [i for i, e in enumerate(exts) if (e & 0x100) and not (e & 0x40) and (e & 7) in (1, 2, 3, 5, 6, 7)]
+        if not indexed: return                                         # brief format / index suppressed / no memory indirection: no difference
+        muls = [n for n, o in enumerate(ops) if o[0] == 'INT_MULT']
+        # which INT_MULT is which operand's index: the operands' p-code comes in order (source, then destination), and another
+        # operand can carry an index of its own ((d8,An,Xn): move.b ([..]),(1,A0,D2)). One memory-indirect operand: the first
+        # multiply when it is the source, the last when it is the destination.
+        if nmi == 2: picks = [muls[k] for k in range(len(indexed))] if len(muls) == len(indexed) else None
+        else:
+            body = ins.text.split(None, 1)[1] if ' ' in ins.text else ''
+            depth = 0; comma = len(body)
+            for ci, ch in enumerate(body):
+                if ch in '([': depth += 1
+                elif ch in ')]': depth -= 1
+                elif ch == ',' and depth == 0: comma = ci; break
+            is_src = body.find('([') < comma
+            picks = ([muls[0]] if is_src else [muls[-1]]) if muls else None
+        if not picks: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
+        out = ops[:picks[0]]
+        for j, i in enumerate(indexed):
+            end = picks[j + 1] if j + 1 < len(picks) else next((m for m in muls if m > picks[j]), len(ops))
+            seg = ops[picks[j]:end]
+            fixed = self.fix_mi_seg(seg, exts[i], j, mn, ins.addr)
+            out += fixed if fixed is not None else seg
+            if j + 1 == len(picks): out += ops[end:]
+        ins.ops = out
+
+    def fix_mi_seg(self, ops, ext, i, mn, addr):
+        """one memory-indirect operand's p-code (from its index's INT_MULT on): the form Ghidra built, put right; None = unchanged"""
+        if not (ext & 0x100) or (ext & 0x40): return None              # brief format / index suppressed: no difference
+        iis = ext & 7
+        if iis not in (1, 2, 3, 5, 6, 7): return None
         k = next((n for n, o in enumerate(ops) if o[0] == 'LOAD'), None)
-        mul = next((n for n, o in enumerate(ops) if o[0] == 'INT_MULT'), None)
-        if k is None or mul is None or mul > k: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
-        idx = ops[mul][1]
-        pcode_pre = any(idx in ops[n][2] for n in range(mul + 1, k))
+        if k is None or ops[0][0] != 'INT_MULT': self.note('memory indirect: not checked (%s at %X)' % (mn, addr)); return None
+        idx = ops[0][1]
+        pcode_pre = any(idx in ops[n][2] for n in range(1, k))
         o = ops[k]
         if iis <= 3 and not pcode_pre:                                 # wanted pre-indexed, p-code post-indexed
             for m in range(k + 1, len(ops)):
                 if ops[m][0] == 'INT_ADD' and o[1] in ops[m][2]:
                     other = [v for v in ops[m][2] if v != o[1]]
-                    if len(other) != 1: return
-                    tmp = 'unique:fffff0:4'
-                    ins.ops = (ops[:k] + [('INT_ADD', tmp, [o[2][1], other[0]]), ('LOAD', o[1], [o[2][0], tmp])] + ops[k + 1:m]
-                               + [('COPY', ops[m][1], [o[1]])] + ops[m + 1:])
+                    if len(other) != 1: return None
+                    tmp = 'unique:fffff%d:4' % (0 + 8 * i)
                     self.note('pre-indexed memory indirect corrected')
-                    return
-            return
+                    return (ops[:k] + [('INT_ADD', tmp, [o[2][1], other[0]]), ('LOAD', o[1], [o[2][0], tmp])] + ops[k + 1:m]
+                            + [('COPY', ops[m][1], [o[1]])] + ops[m + 1:])
+            return None
         if iis >= 5 and pcode_pre:                                     # wanted post-indexed, p-code pre-indexed
-            j = next((n for n in range(mul + 1, k) if ops[n][0] == 'INT_ADD' and idx in ops[n][2]), None)
-            if j is None: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
+            j = next((n for n in range(1, k) if ops[n][0] == 'INT_ADD' and idx in ops[n][2]), None)
+            if j is None: self.note('memory indirect: not checked (%s at %X)' % (mn, addr)); return None
             other = [v for v in ops[j][2] if v != idx]
-            if len(other) != 1: return
-            tmp = 'unique:fffff4:4'
-            ins.ops = (ops[:j] + [('COPY', ops[j][1], [other[0]])] + ops[j + 1:k]
-                       + [('LOAD', tmp, o[2]), ('INT_ADD', o[1], [tmp, idx])] + ops[k + 1:])
+            if len(other) != 1: return None
+            tmp = 'unique:fffff%d:4' % (4 + 8 * i)
             self.note('post-indexed memory indirect corrected')
+            return (ops[:j] + [('COPY', ops[j][1], [other[0]])] + ops[j + 1:k]
+                    + [('LOAD', tmp, o[2]), ('INT_ADD', o[1], [tmp, idx])] + ops[k + 1:])
+        return None
 
     def fix_divide(self, ins):
         """GHIDRA'S 68020 DIVIDES ARE WRONG IN TWO WAYS. (1) divs.l <ea>,Dr:Dq with the 64-bit dividend builds it as

@@ -160,3 +160,17 @@ __pycache__/
 /alpines/*.cfg
 /alpines/*.rec
 /alpines/*.wav
+
+# Aqua Jet (aquajet/): game files, the translation's working files, test output
+/aquajet/extracted/
+/aquajet/gen/
+/aquajet/build/
+/aquajet/shots*/
+/aquajet/*.bin
+/aquajet/*.pcode
+/aquajet/*.log
+/aquajet/*.out
+/aquajet/*.nv
+/aquajet/*.cfg
+/aquajet/*.rec
+/aquajet/*.wav

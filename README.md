@@ -50,6 +50,7 @@ the arcade has and keeping them running.
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Alpine Racer 2** | 1996 | 1 | **New**: a port made for this fork, not in the original project (its 2-cabinet link is to come) |
 | **Alpine Surfer** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
+| **Aqua Jet** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
 
 The original project's single-cabinet games (**Crisis Zone, Dirt Dash, Prop Cycle, Time Crisis**) are in the package and the

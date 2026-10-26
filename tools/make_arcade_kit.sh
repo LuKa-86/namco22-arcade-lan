@@ -33,6 +33,7 @@ GAMES=(
   "Alpine Racer|AlpineRacer-ArcadeLAN.exe|alpiner/build/al.exe|alpinerjc.zip|alpiner"
   "Alpine Racer 2|AlpineRacer2-ArcadeLAN.exe|alpinr2/build/a2.exe|alpinr2a.zip|alpinr2"
   "Alpine Surfer|AlpineSurfer-ArcadeLAN.exe|alpines/build/af.exe|alpines.zip|alpines"
+  "Aqua Jet|AquaJet-ArcadeLAN.exe|aquajet/build/aj.exe|aquajet.zip|aquajet"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|@CrisisZone.exe|crszone.zip|crszone"
