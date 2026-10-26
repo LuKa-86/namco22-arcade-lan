@@ -32,12 +32,21 @@ GAMES=(
   "Armadillo Racing|ArmadilloRacing-ArcadeLAN.exe|adillor/build/am.exe|adillor.zip|adillor"
   "Alpine Racer|AlpineRacer-ArcadeLAN.exe|alpiner/build/al.exe|alpinerjc.zip|alpiner"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
+  # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
+  "Crisis Zone|CrisisZone.exe|@CrisisZone.exe|crszone.zip|crszone"
+  "Dirt Dash|DirtDash.exe|@DirtDash.exe|dirtdash.zip|dirtdash"
+  "Prop Cycle|PropCycle.exe|@PropCycle.exe|propcycl.zip|propcycl"
+  "Time Crisis|TimeCrisis.exe|@TimeCrisis.exe|timecris.zip|timecris"
 )
+AUTHOR_RELEASE="${AUTHOR_RELEASE:-$ROOT/../download-0.9.3/windows-release}"   # windows-release-<ver>.zip from github.com/spacestate1/namco22-decompile
 for g in "${GAMES[@]}"; do
     IFS='|' read -r folder exe build zips pic <<< "$g"
-    if [ ! -f "$ROOT/$build" ]; then echo "  $folder: no $build (left out)"; continue; fi
+    src="$ROOT/$build"; [ "${build#@}" != "$build" ] && src="$AUTHOR_RELEASE/${build#@}"   # @: the author's release
+    if [ ! -f "$src" ]; then echo "  $folder: no $src (left out)"; continue; fi
     d="$KIT/games/$folder"; mkdir -p "$d"
-    cp "$ROOT/$build" "$d/$exe"; [ -n "$STRIP" ] && "$STRIP" "$d/$exe"      # (the debug symbols are 5-8x the program)
+    cp "$src" "$d/$exe"; [ -n "$STRIP" ] && [ "$src" = "$ROOT/$build" ] && "$STRIP" "$d/$exe"   # (ours: the debug symbols are 5-8x the program)
+    [ "$folder" = "Prop Cycle" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
+    [ "$folder" = "Crisis Zone" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
     cp "$ROOT/launcher/pictures/$pic.bmp" "$d/picture.bmp"
     if [ -n "$zips" ]; then mkdir -p "$d/roms"; fi
     have=""

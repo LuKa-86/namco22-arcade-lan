@@ -14,15 +14,19 @@ WHAT IS IN THIS FOLDER
   Namco 22 Arcade LAN.exe   THE LAUNCHER: start everything from here
   READ ME.txt               this file
   games\                    one folder per game: its program, its roms\ and its settings
-     Tokyo Wars\            up to 4 linked cabinets
-     Rave Racer\            up to 4 linked cabinets
      Ace Driver\            up to 8 linked cabinets (linked play new in this package)
-     Time Crisis II\        the twin cabinet: left and right sides linked
-     Cyber Cycles\          up to 4 linked cabinets (new in this package)
-     Cyber Commando\        2 linked cabinets battle each other (linked play new in this package)
-     Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
+     Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
+     Crisis Zone\           one cabinet (the original project's own program)
+     Cyber Commando\        2 linked cabinets battle each other (linked play new in this package)
+     Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
+     Dirt Dash\             one cabinet (the original project's own program)
+     Prop Cycle\            one cabinet (the original project's own program)
+     Rave Racer\            up to 4 linked cabinets
+     Time Crisis\           one cabinet (the original project's own program)
+     Time Crisis II\        the twin cabinet: left and right sides linked
+     Tokyo Wars\            up to 4 linked cabinets
   advanced\                 a .bat file for every way to play in the launcher (for shortcuts and scripts)
 
 Each game's folder keeps everything of that game: link.cfg (its network settings), its test-menu
@@ -33,15 +37,19 @@ settings and records (*_eeprom*.nv), its log (*.log) and its last session (*_las
 ------------------------
 Put your MAME ROM zips in each game's roms folder. Do not unzip them; the game unpacks them
 itself the first time it starts.
-   games\Tokyo Wars\roms        tokyowar.zip
-   games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
    games\Ace Driver\roms        acedrive.zip  and  namcoc74.zip
-   games\Cyber Cycles\roms      cybrcycc.zip
-   games\Cyber Commando\roms    cybrcomm.zip  and  namcoc74.zip
-   games\Armadillo Racing\roms  adillor.zip
    games\Alpine Racer\roms      alpinerjc.zip
+   games\Armadillo Racing\roms  adillor.zip
+   games\Crisis Zone\roms       crszone.zip
+   games\Cyber Commando\roms    cybrcomm.zip  and  namcoc74.zip
+   games\Cyber Cycles\roms      cybrcycc.zip
    games\Cyber Sled\roms        cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
+   games\Dirt Dash\roms         dirtdash.zip
+   games\Prop Cycle\roms        propcycl.zip
+   games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
+   games\Time Crisis\roms       timecris.zip
    games\Time Crisis II\roms    timecrs2.zip
+   games\Tokyo Wars\roms        tokyowar.zip
 
 
 2. THE LAUNCHER

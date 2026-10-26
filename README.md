@@ -50,8 +50,8 @@ the arcade has and keeping them running.
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
 
-The original project's other games (Prop Cycle, Dirt Dash, Time Crisis, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
-those, use the original project's releases. The package below keeps to the linked games and the new ones.
+The original project's single-cabinet games (**Crisis Zone, Dirt Dash, Prop Cycle, Time Crisis**) are in the package and the
+launcher too, as the original author's own programs, unchanged, from their Windows release (0.9.3); this fork does not build them.
 
 ## What the fork adds
 
