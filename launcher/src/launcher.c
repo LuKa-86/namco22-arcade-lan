@@ -120,7 +120,7 @@ static const game_t games[] = {
     { "cybsled", "Cyber Sled", "1993", "Cyber Sled", "CyberSled-ArcadeLAN.exe",
       "Twin-stick hover-tank battles: 2 linked cabinets, left and right, fight each other. Linked play is new in this package.",
       "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive (Shift strafes)  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", "link.cfg",
-      3, { M_NET_FULL("extracted"), M_NET_WIN("extracted"), M_TRY2("extracted") } },
+      5, { M_NET_FULL("extracted"), M_NET_WIN("extracted"), M_TRY2("extracted"), M_PARTY2K("extracted"), M_PARTY2P("extracted") } },
     { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
       "Racing for up to 4 linked cabinets.",
       "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
@@ -537,9 +537,9 @@ static void draw(int W, int H, SDL_Window *win)
     if (screen == SC_MENU) {
         /* the games: a list that scrolls (the mouse wheel / two fingers on a touchpad, the bar on its right, or the chosen game kept
          * in view when the arrows or a pad move it) */
-        const float lw = W * 0.30f, rowh = 92 * k, step = rowh + 10 * k, lh = bottom - top;
+        const float lw = W * 0.30f, rowh = 76 * k, step = rowh + 8 * k, lh = bottom - top;
         const struct nk_rect list = nk_rect(pad, top, lw - pad, lh);
-        const float maxs = NGAMES * step - 10 * k > lh ? NGAMES * step - 10 * k - lh : 0;
+        const float maxs = NGAMES * step - 8 * k > lh ? NGAMES * step - 8 * k - lh : 0;
         static float scroll; static int shown_sel = -1, dragging;
         if (nk_input_is_mouse_hovering_rect(in, list) && in->mouse.scroll_delta.y != 0) scroll -= in->mouse.scroll_delta.y * step * 0.6f;
         if (sel_game != shown_sel) {                                         /* moved by the keys / a pad (or a hover): into view */
@@ -568,16 +568,17 @@ static void draw(int W, int H, SDL_Window *win)
             const bool s = i == sel_game;
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
-            text(cb, f_big, r.x + 28 * k, r.y + 12 * k, games[i].name, s ? C_AMBER : C_TEXT);
+            text(cb, f_big, r.x + 28 * k, r.y + 6 * k, games[i].name, s ? C_AMBER : C_TEXT);
             char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "Twin cabinet, 2 players" : !strcmp(games[i].id, "acedrive") ? "Up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") || !strcmp(games[i].id, "cybsled") ? "2 linked cabinets" : "Up to 4 linked cabinets") : "Single cabinet");
-            text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
+            text(cb, f_small, r.x + 28 * k, r.y + 46 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
         /* the chosen game: picture, lines, the ways to play */
         const game_t *g = &games[sel_game];
         const float rx = lw + pad, rw = W - rx - pad;
-        float ph = rw * 9 / 16; if (ph > (bottom - top) * 0.48f) ph = (bottom - top) * 0.48f;
+        float ph = rw * 9 / 16; if (ph > (bottom - top) * 0.42f) ph = (bottom - top) * 0.42f;
         const float pw = ph * 16 / 9, px = rx + (rw - pw) / 2;
+        nk_fill_rect(cb, nk_rect(px - 3 * k, top - 3 * k, pw + 6 * k, ph + 6 * k), 8 * k, C_PANEL);   /* a thin frame round the picture */
         nk_fill_rect(cb, nk_rect(px, top, pw, ph), 6 * k, C_DARK);
         if (pics[sel_game]) {
             float iw = pw, ih = pw * pic_h[sel_game] / pic_w[sel_game];
@@ -588,18 +589,44 @@ static void draw(int W, int H, SDL_Window *win)
         float y = top + ph + 18 * k;
         text(cb, f_mid, rx, y, g->line1, C_TEXT); y += 34 * k;
         text(cb, f_small, rx, y, g->line2, C_DIM); y += 44 * k;
-        const float mh = 46 * k; int cols = g->nmodes > 4 ? 2 : 1; const float mw = cols == 2 ? (rw - 16 * k) / 2 : rw;
+        /* the ways to play, in groups under a heading each: PLAY (a cabinet), TEST ON THIS PC, PARTY. The left column has PLAY (and the
+         * tests when there are Party ways), the right one the Party ways (or the tests); a button shows its label without the group's
+         * prefix ("Test: ", "Party: "). The arrows go through them in their own order: down the left column, then the right. */
+        int kind[12], has_party = 0, has_test = 0;
         for (int i = 0; i < g->nmodes; i++) {
-            const int col = cols == 2 ? i / ((g->nmodes + 1) / 2) : 0, row = cols == 2 ? i % ((g->nmodes + 1) / 2) : i;
-            struct nk_rect r = nk_rect(rx + col * (mw + 16 * k), y + row * (mh + 8 * k), mw, mh);
-            if (r.y + r.h > bottom) break;
+            kind[i] = !strncmp(g->m[i].label, "Party: ", 7) ? 2 : !strncmp(g->m[i].label, "Test: ", 6) ? 1 : 0;
+            has_party |= kind[i] == 2; has_test |= kind[i] == 1;
+        }
+        const int two = has_party || has_test;
+        const float mh = 44 * k, gap = 8 * k, headh = 30 * k, cgap = 20 * k, mw = (rw - cgap) / 2;      /* (one column too: the same width as everywhere) */
+        static const char *heads[3] = { "PLAY", "TEST ON THIS PC", "PARTY  \xC2\xB7  SPLIT SCREEN ON THIS PC" };
+        float cy[2] = { y, y }; int last_kind[2] = { -1, -1 }; float lowest = y;
+        for (int i = 0; i < g->nmodes; i++) {
+            const int col = !two ? 0 : kind[i] == 2 ? 1 : kind[i] == 1 ? (has_party ? 0 : 1) : 0;
+            if (kind[i] != last_kind[col]) {                                 /* a new group: its heading */
+                if (last_kind[col] >= 0) cy[col] += 10 * k;
+                text(cb, f_small, rx + col * (mw + cgap), cy[col] + 2 * k, heads[kind[i]], C_DIM);
+                cy[col] += headh; last_kind[col] = kind[i];
+            }
+            struct nk_rect r = nk_rect(rx + col * (mw + cgap), cy[col], mw, mh);
+            cy[col] += mh + gap;
+            if (r.y + r.h > bottom) continue;
+            if (r.y + r.h > lowest) lowest = r.y + r.h;
             if (nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) { focus = 1; sel_mode = i; }
             const bool s = focus == 1 && i == sel_mode;
             nk_fill_rect(cb, r, 6 * k, s ? C_AMBER : C_PANEL);
-            text(cb, f_mid, r.x + 18 * k, r.y + 8 * k, g->m[i].label, s ? C_DARK : C_TEXT);
+            char lab[96];                                                    /* the label under its heading: no "Test: " / "Party: ", no
+                                                                              * " on this PC" (the heading says it), a capital first */
+            snprintf(lab, sizeof lab, "%s", g->m[i].label + (kind[i] == 2 ? 7 : kind[i] == 1 ? 6 : 0));
+            { char *t = strstr(lab, " on this PC"); if (t && kind[i] == 1 && !t[11]) *t = 0; }
+            if (lab[0] >= 'a' && lab[0] <= 'z') lab[0] = (char)(lab[0] - 32);
+            text(cb, f_mid, r.x + 18 * k, r.y + 7 * k, lab, s ? C_DARK : C_TEXT);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_mode = i; focus = 1; start_mode(sel_game, i, false); }
         }
-        if (focus == 1) text(cb, f_small, rx, bottom - 6 * k, g->m[sel_mode].hint, C_AMBER);
+        if (focus == 1) {                                                    /* what the chosen way does, under the buttons */
+            const float hy = lowest + 16 * k < bottom - 24 * k ? lowest + 16 * k : bottom - 24 * k;
+            text(cb, f_small, rx, hy, g->m[sel_mode].hint, C_AMBER);
+        }
     } else if (screen == SC_SETTINGS) {
         static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
                                              "Launcher display", "Link status lights (all games)", "Session recordings (all games)",

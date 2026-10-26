@@ -13,6 +13,7 @@
 #include "eng_cfg.h"
 #include "eng_ui.h"
 #include "twin_stick.h"
+#include "eng_party.h"
 #include "s21_host.h"
 #include "s21_board.h"
 #include "s21_io.h"
@@ -106,6 +107,7 @@ static void bind_load(const char *key, rawbind *b)
 static void joy_open(int idx)
 {
     if (SDL_IsGameController(idx)) return;
+    if (!eng_party_allows(idx)) return;                       /* --pad K (a Party window): no wheel / raw joystick (engine/eng_party.h) */
     SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(idx);
     int free_slot = -1;
     for (int i = 0; i < MAXJOY; i++) { if (joys[i] && SDL_JoystickInstanceID(joys[i]) == id) return; if (!joys[i] && free_slot < 0) free_slot = i; }
