@@ -85,14 +85,13 @@ play it with the keyboard, a controller or the mouse:
   chosen game. **If the game ever closes, it starts it again**, so the cabinet always comes back to its attract mode.
 - **Settings for every game at once**: the link status lights, and the session recordings (each game keeps the last session's
   inputs so a problem can be replayed exactly; off keeps none).
-- The Rave Racer 4-cabinet link test, and this PC's network address.
+- This PC's network address, for typing the cabinets' addresses by hand.
 
 ```
 Namco 22 Arcade LAN\
   Namco 22 Arcade LAN.exe       the launcher
   READ ME.txt
   games\<Game>\                 <Name>-ArcadeLAN.exe, its roms\ (your zips) and its own settings
-  tools\                        the Rave Racer 4-cabinet link test
   advanced\                     a .bat for every button in the launcher
 ```
 

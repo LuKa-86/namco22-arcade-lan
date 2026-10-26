@@ -7,7 +7,6 @@
 #     Namco 22 Arcade LAN.exe        the launcher (launcher/): pick a game and how to play it; auto start
 #     READ ME.txt
 #     games\<Game>\                   <Name>-ArcadeLAN.exe, picture.bmp, roms\ (that game's zips), its settings
-#     tools\                          the Rave Racer 4-cabinet check
 #     advanced\                       a .bat for every way to play (the launcher's buttons, for scripts and shortcuts)
 #     mesa\                           optional: Mesa's opengl32.dll + libgallium_wgl.dll for a PC without an OpenGL driver
 #
@@ -20,7 +19,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KIT="${1:?usage: tools/make_arcade_kit.sh <package folder> [<folder with your MAME zips>]}"
 ZIPS="$2"
 STRIP="$(command -v strip || true)"
-mkdir -p "$KIT/games" "$KIT/tools"
+mkdir -p "$KIT/games"
 
 # game folder | program in the package | build | zips it needs (space separated)
 GAMES=(
@@ -62,7 +61,5 @@ else
     echo "  (no launcher build: launcher/build/Namco 22 Arcade LAN.exe)"
 fi
 cp "$ROOT/packaging/arcade-lan-kit/READ ME.txt" "$KIT/"
-cp "$ROOT/packaging/arcade-lan-kit/tools/rr-4-cabinet-check.ps1" "$KIT/tools/"
-cp "$ROOT/raverace/tools/link_race.rep" "$KIT/tools/rr_race.rep"     # the race the 4-cabinet check plays
 echo "Package ready: $KIT"
 [ -n "$ZIPS" ] || echo "Put each game's MAME zips in games\\<Game>\\roms (see READ ME.txt)."

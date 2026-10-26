@@ -6,7 +6,6 @@
  *
  *   Namco 22 Arcade LAN.exe       this program, and its settings: launcher.cfg
  *   games\<Game>\                  each game's program (<Name>-ArcadeLAN.exe), its own roms\ folder and settings (link.cfg)
- *   tools\                         the helpers (the Rave Racer 4-cabinet check)
  *   advanced\                      one .bat per way to play (written by --write-advanced): the same as this menu's buttons
  *
  * SET UP AND FORGET: Settings > "Start a game when Windows starts" picks a game and a way to play it. Windows then starts this
@@ -446,7 +445,7 @@ static int screen = SC_MENU, sel_game, sel_mode, focus;     /* focus 0: the game
 static int sel_set; static Uint64 count_until; static char message[160]; static Uint64 message_until;
 static bool auto_session;                                   /* started by Windows (--auto): the watchdog's restart applies */
 static bool want_quit;
-enum { SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_LIGHTS, SET_RECORD, SET_RRCHECK, SET_ADDR, SET_BACK, SET_N };
+enum { SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_LIGHTS, SET_RECORD, SET_ADDR, SET_N };
 
 static void say(const char *m) { snprintf(message, sizeof message, "%s", m); message_until = SDL_GetTicks64() + 4000; }
 
@@ -500,12 +499,6 @@ static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT
                 SDL_SetWindowFullscreen(win, S.windowed ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP); break;
             case SET_LIGHTS: all_set("lights", !all_on("lights", "bottom-left")); break;
             case SET_RECORD: all_set("record", !all_on("record", "on")); break;
-            case SET_RRCHECK: if (key == SDLK_RETURN) {
-                char cmd[MAX_PATH * 2]; snprintf(cmd, sizeof cmd, "powershell -NoProfile -ExecutionPolicy Bypass -File \"%stools\\rr-4-cabinet-check.ps1\"", base);
-                STARTUPINFOA si = { sizeof si }; PROCESS_INFORMATION pi;
-                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, base, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); say("The Rave Racer link test is running in its own window (about 2 minutes)."); }
-                } break;
-            case SET_BACK: if (key == SDLK_RETURN) screen = SC_MENU; break;
             }
         }
     }
@@ -630,7 +623,7 @@ static void draw(int W, int H, SDL_Window *win)
     } else if (screen == SC_SETTINGS) {
         static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
                                              "Launcher display", "Link status lights (all games)", "Session recordings (all games)",
-                                             "Rave Racer 4-cabinet link test", "This PC's network address", "Back to the games" };
+                                             "This PC's network address" };
         static const char *hints[SET_N] = {
             "When Windows signs in, the launcher opens, counts down and starts this game. On a cabinet PC, set Windows to sign in automatically.",
             "How long the countdown waits before the game starts. Any key or button during the countdown opens the menu instead.",
@@ -638,9 +631,7 @@ static void draw(int W, int H, SDL_Window *win)
             "Show this launcher full screen or in a window.",
             "Small lights in a corner of each linked game that show which cabinets it can hear.",
             "Each game keeps its last session's inputs (a few KB) so a problem can be replayed. Off keeps none.",
-            "Four hidden copies of Rave Racer race each other and report PASS or FAIL (about 2 minutes).",
-            "The address to type into the other cabinets' Network page when setting the addresses by hand.",
-            "" };
+            "The address to type into the other cabinets' Network page when setting the addresses by hand." };
         text(cb, f_big, pad, top, "Settings", C_AMBER);
         float y = top + 70 * k; const float rowh = 62 * k, w = W - 2 * pad;
         static char addrs[4][48]; static int na; static Uint64 addr_at;      /* this PC's addresses, read every 2 s */
@@ -660,13 +651,12 @@ static void draw(int W, int H, SDL_Window *win)
             case SET_SCREEN: snprintf(v, sizeof v, "%s", S.windowed ? "Window" : "Full screen"); break;
             case SET_LIGHTS: snprintf(v, sizeof v, "%s", all_on("lights", "bottom-left") ? "On" : "Off"); break;
             case SET_RECORD: snprintf(v, sizeof v, "%s", all_on("record", "on") ? "On" : "Off"); break;
-            case SET_RRCHECK: snprintf(v, sizeof v, "Press Enter to run"); break;
             case SET_ADDR: if (na) snprintf(v, sizeof v, "%s%s%s", addrs[0], na > 1 ? "   " : "", na > 1 ? addrs[1] : ""); else snprintf(v, sizeof v, "No network"); break;
             }
             text(cb, f_mid, r.x + w - tw(f_mid, v) - 28 * k, r.y + 14 * k, v, s ? C_TEXT : C_DIM);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_set = i; act(SDLK_RETURN, win); }
         }
-        if (hints[sel_set][0]) text(cb, f_small, pad, bottom - 6 * k, hints[sel_set], C_AMBER);
+        if (hints[sel_set][0]) text(cb, f_small, pad, y + SET_N * (rowh + 8 * k) + 10 * k, hints[sel_set], C_AMBER);   /* under the rows */
     } else if (screen == SC_COUNTDOWN || screen == SC_RESTART) {
         const game_t *g = &games[S.auto_game >= 0 ? S.auto_game : 0];
         const int left = (int)((count_until > SDL_GetTicks64() ? count_until - SDL_GetTicks64() : 0) + 999) / 1000;

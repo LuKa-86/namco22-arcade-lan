@@ -23,7 +23,6 @@ WHAT IS IN THIS FOLDER
      Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
-  tools\                    the Rave Racer 4-cabinet link test
   advanced\                 a .bat file for every way to play in the launcher (for shortcuts and scripts)
 
 Each game's folder keeps everything of that game: link.cfg (its network settings), its test-menu
@@ -140,7 +139,6 @@ To stop it starting by itself: launcher > Settings > "Start a game when Windows 
    Link status lights (all games)     small lights in a corner showing the link's activity
    Session recordings (all games)     each game keeps the last session's inputs so a problem
                                       can be replayed (a few KB each); Off keeps none
-   Rave Racer 4-cabinet link test     four hidden copies race each other: PASS or FAIL
    This PC's network address          for typing the addresses by hand
 
 The link lights: blue = this cabinet (flickers as it sends); green = that cabinet and this one
