@@ -307,6 +307,7 @@ bool ss22_host_frame(void)
            if (SDL_ShowCursor(SDL_QUERY) != want) SDL_ShowCursor(want); }
     if (!paused && !eng_ui_is_open()) game->input_update();
     else if (link_host_on()) game->input_neutral();  /* linked, the menu open: the game plays on, hands off */
+    if (link_host_catch_up()) return true;           /* linked and behind the set: this frame is not drawn and not waited for (engine/link_host.c) */
     if (ftm) clock_gettime(CLOCK_MONOTONIC, &a1);
     eng_vsync_want(&vs, g_eng_disp.fps);            /* Display > Frame rate */
     if (eng_vsync_show(&vs)) present_with(&pl);     /* a lock below 60 shows only some frames */

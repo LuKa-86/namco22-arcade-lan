@@ -587,6 +587,8 @@ void link_host_frame(uint32_t frame, bool headless)
     if (headless) pace();
     if (party) party_sync();
     catch_up_frame(frame, headless);
+    { static long st = -2; if (st == -2) { const char *e = getenv("LINK_STAMP"); st = e ? atol(e) : -1; }   /* LINK_STAMP=<frame> (test): when this cabinet ran it */
+      if (st >= 0 && frame == (uint32_t)st) fprintf(stderr, "[STAMP] frame %u at %u ms\n", frame, (unsigned)sys_ms()); }
     if (G->good) {
         if (G->good()) { if (++up_run >= 120) was_up = true; down_now = 0; }
         else if ((up_run = 0), was_up) { down_frames++; if (++down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", frame); }
