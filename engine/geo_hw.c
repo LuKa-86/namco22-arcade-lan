@@ -496,7 +496,7 @@ static void quad_fixed(int32_t color, uint32_t addr, int32_t polyshift,
           int x0 = 1 << 30, x1 = -(1 << 30), y0 = 1 << 30, y1 = -(1 << 30);
           for (int k = 0; k < q.nrv; k++) { const int x = q.rv[k].sx16 / 16, y = q.rv[k].sy16 / 16;
               if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-          fprintf(stderr, "[OBJ]   quad zsort %06X color %06X nrv %d  x %d..%d y %d..%d\n", (unsigned)q.zsort, (unsigned)q.color, q.nrv, x0, x1, y0, y1);
+          fprintf(stderr, "[OBJ]   quad zsort %06X color %06X cmode %X nrv %d  x %d..%d y %d..%d\n", (unsigned)q.zsort, (unsigned)q.color, (unsigned)q.cmode, q.nrv, x0, x1, y0, y1);
       } }
     cb(&q, user);
 }

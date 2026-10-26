@@ -465,6 +465,32 @@ void ss22_draw(int vw, int vh)
     if (!gl_ready) { renderer_texture_init(); gl_ready = true; }
     g_tex_opaque = 1;                       /* the polygon path has no transparent pen */
     if (prio_any) { memset(prio_mask, 0, sizeof prio_mask); prio_any = false; }
+    /* POLYGONS OVER THE TEXT LAYER: a Super 22 polygon whose colour mode is 1 has priority over the text layer (MAME: prioverchar
+     * = (cmode & 7) == 1), as a sprite with its bit does -- Aqua Jet's map markers sit on the course map, which is text. The text
+     * shows nothing under such a polygon: its screen shape goes into the same mask as the sprites' (the polygon path is opaque). */
+    static int polyprio = -1; if (polyprio < 0) { const char *e = getenv("ENG_POLYPRIO"); polyprio = !(e && *e == '0'); }   /* ENG_POLYPRIO=0: as before */
+    for (int i = 0; polyprio && i < qn; i++) {
+        const geo_quad *q = &qbuf[i];
+        if ((q->cmode & 7) != 1 || q->nrv < 3) continue;
+        float xs[10], ys[10]; const int n = q->nrv > 10 ? 10 : q->nrv;
+        float ymin = 1e9f, ymax = -1e9f;
+        for (int k = 0; k < n; k++) { xs[k] = q->rv[k].sx16 / 16.0f; ys[k] = q->rv[k].sy16 / 16.0f; if (ys[k] < ymin) ymin = ys[k]; if (ys[k] > ymax) ymax = ys[k]; }
+        int y0 = (int)ymin, y1 = (int)ymax + 1; if (y0 < 0) y0 = 0; if (y1 > SPR_H) y1 = SPR_H;
+        for (int y = y0; y < y1; y++) {                /* a convex polygon: each scanline (at its centre) is one span */
+            const float yc = (float)y + 0.5f; float xl = 1e9f, xr = -1e9f;
+            for (int k = 0; k < n; k++) {
+                const int j = (k + 1) % n; const float ya = ys[k], yb = ys[j];
+                if ((ya <= yc && yb > yc) || (yb <= yc && ya > yc)) {
+                    const float x = xs[k] + (yc - ya) * (xs[j] - xs[k]) / (yb - ya);
+                    if (x < xl) xl = x;
+                    if (x > xr) xr = x;
+                }
+            }
+            int a = (int)(xl + 0.5f), b = (int)(xr + 0.5f); if (a < 0) a = 0; if (b > SPR_W) b = SPR_W;
+            for (int x = a; x < b; x++) prio_mask[(size_t)y * SPR_W + x] = 1;
+            if (a < b) prio_any = true;
+        }
+    }
 
     /* the scene's width: wider than 4:3 widens full-frame viewports (Hor+) */
     const double aspect = (double)vw / vh;
