@@ -218,7 +218,7 @@ class Lifter:
         at = 2
         if mn.split('.')[0] in ('ori', 'andi', 'subi', 'addi', 'eori', 'cmpi') and '#' in ins.text.split(None, 1)[1].split(',')[0]:
             at = 6 if mn.endswith('.l') else 4
-        if ins.text.count('([') != 1 or ins.len < at + 2: self.note('memory indirect: not checked (' + mn + ')'); return
+        if ins.text.count('([') != 1 or ins.len < at + 2: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
         ext = int.from_bytes(self.rom[ins.addr + at:ins.addr + at + 2], 'big')
         if not (ext & 0x100) or (ext & 0x40): return                  # brief format / index suppressed: no difference
         iis = ext & 7
@@ -226,7 +226,7 @@ class Lifter:
         ops = ins.ops
         k = next((n for n, o in enumerate(ops) if o[0] == 'LOAD'), None)
         mul = next((n for n, o in enumerate(ops) if o[0] == 'INT_MULT'), None)
-        if k is None or mul is None or mul > k: self.note('memory indirect: not checked (' + mn + ')'); return
+        if k is None or mul is None or mul > k: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
         idx = ops[mul][1]
         pcode_pre = any(idx in ops[n][2] for n in range(mul + 1, k))
         o = ops[k]
@@ -243,7 +243,7 @@ class Lifter:
             return
         if iis >= 5 and pcode_pre:                                     # wanted post-indexed, p-code pre-indexed
             j = next((n for n in range(mul + 1, k) if ops[n][0] == 'INT_ADD' and idx in ops[n][2]), None)
-            if j is None: self.note('memory indirect: not checked (' + mn + ')'); return
+            if j is None: self.note('memory indirect: not checked (%s at %X)' % (mn, ins.addr)); return
             other = [v for v in ops[j][2] if v != idx]
             if len(other) != 1: return
             tmp = 'unique:fffff4:4'

@@ -394,7 +394,10 @@ void rr_tick(void)
         double t1 = ftime_on ? ft_now() : 0;
         ss22_video_prepare();                              /* the master's finished list, before this vblank starts the next */
         double t2 = ftime_on ? ft_now() : 0;
-        if (shot_dir && rr_frame % shot_every == 0) {
+        { extern int g_objlog_gate; static long o0 = -2, o1; if (o0 == -2) { o0 = -1; const char *e = getenv("SS22_OBJLOG_FRAMES"); if (e) sscanf(e, "%ld:%ld", &o0, &o1); }
+          if (o0 >= 0) g_objlog_gate = (long)rr_frame >= o0 && (long)rr_frame < o1; }   /* SS22_OBJLOG_FRAMES=a:b: ENG_OBJLOG only in those frames */
+        static long shot_from = -1; if (shot_from < 0) { const char *e = getenv("SS22_SHOT_FROM"); shot_from = e ? atol(e) : 0; }   /* SS22_SHOT_FROM=n: --shots only from frame n */
+        if (shot_dir && rr_frame % shot_every == 0 && (long)rr_frame >= shot_from) {
             char p[1024]; snprintf(p, sizeof p, "%s/%s_f%u.ppm", shot_dir, g_ss22_game->lname, rr_frame);
             ss22_host_shot(p);
         }

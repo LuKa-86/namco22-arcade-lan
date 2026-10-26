@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include "eng.h"
 #include "geo_hw.h"
+int g_objlog_gate = 1;                             /* ENG_OBJLOG only while this is set (a host may limit it to some frames) */
 int g_objlog_on;                                   /* ENG_OBJLOG: set by slave_list.c while it logs an object; here because every game links geo_hw.c (a weak extern fails to link on Windows) */
 
 /* ---- point data ----------------------------------------------------------
