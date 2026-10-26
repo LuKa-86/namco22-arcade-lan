@@ -291,6 +291,14 @@ uint32_t tc2_until_event(void) { return tc2_screen_until_event(); }
 /* $TC2_CABINET_DIR=<name> (our fork: two cabinets on one PC, the link's "try both" launcher): this copy keeps its log, settings, backup
  * RAM and tc2_link.cfg in that sub-folder of the program's folder, and reads the ROMs from the program's extracted/ */
 static const char *tc2_xdir = "extracted";
+/* a second copy of the game ($TC2_INSTANCE=2: the author's local two-player online start, 0.9.3) keeps "_2" on its file names;
+ * our fork's twin-cabinet test runs each side in its own folder instead ($TC2_CABINET_DIR), so this is "" there */
+const char *tc2_instance(void)
+{
+    static char suf[16]; static int init;
+    if (!init) { init = 1; const char *e = getenv("TC2_INSTANCE"); const int n = e ? atoi(e) : 0; if (n >= 2 && n <= 99) snprintf(suf, sizeof suf, "_%d", n); }
+    return suf;
+}
 int main(int argc, char **argv)
 {
 #ifdef _WIN32
