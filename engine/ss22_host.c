@@ -298,6 +298,15 @@ bool ss22_host_frame(void)
           me.type = SDL_MOUSEBUTTONUP; me.button.state = SDL_RELEASED; SDL_PushEvent(&me);
           fprintf(stderr, "[HOST] test: quick click at %d,%d\n", cx, cy);
       } }
+    { static int wf = -2, n; static float wy, wx;                       /* <tag>_WHEEL_TEST=<frame>:<y>:<x>: TEST, a touchpad scroll (y, x a frame)
+                                                                         * from that frame on, as SDL sends it -- the trackball's scrolling */
+      if (wf == -2) { wf = -1; const char *e = genv("WHEEL_TEST"); if (e) sscanf(e, "%d:%f:%f", &wf, &wy, &wx); }
+      if (wf >= 0 && ++n >= wf) {
+          SDL_Event we; memset(&we, 0, sizeof we);
+          we.type = SDL_MOUSEWHEEL; we.wheel.windowID = SDL_GetWindowID(win); we.wheel.preciseY = wy; we.wheel.preciseX = wx;
+          we.wheel.y = (Sint32)wy; we.wheel.x = (Sint32)wx; we.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
+          SDL_PushEvent(&we);
+      } }
     static eng_pace pl;
     static int ftm = -1; if (ftm < 0) ftm = getenv("ENG_FTIME") != NULL;
     struct timespec a0, a1, a2, a3; if (ftm) clock_gettime(CLOCK_MONOTONIC, &a0);

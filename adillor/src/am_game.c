@@ -76,7 +76,7 @@ static const ss22_input_game input = {
     actions, (int)(sizeof actions / sizeof *actions),
     0x001, 0x3FF, 0x1FF, 12,
     { 0, 0 }, 0,
-    { "Enter, then press the new key (Esc cancels)", "Trackball / mouse: roll to run and steer (captured while playing, Esc releases it); click = Start. Arrows roll too", "Pad: left stick / D-pad roll, Start or A start, Back coin" },
+    { "Enter, then press the new key (Esc cancels)", "Trackball / mouse: roll to run and steer (captured while playing, Esc releases it); click = Start. Touchpad: two-finger scroll. Arrows roll too", "Pad: left stick / D-pad roll, Start or A start, Back coin" },
     ss22_snd_inputs,
     IN_TEST, IN_SERVICE,
     false,                                  /* no steering motor */

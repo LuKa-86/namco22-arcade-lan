@@ -504,15 +504,48 @@ static void draw(int W, int H, SDL_Window *win)
     nk_fill_rect(cb, nk_rect(0, 0, (float)W, 120 * k), 0, C_DARK);
     text(cb, f_title, pad, 26 * k, "NAMCO 22  ARCADE LAN", C_TEXT);
     text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "Real cabinets, a PC in each, linked over a wired network", C_AMBER);
+    {   /* the X: closes the launcher (in a full-screen menu there is no window frame to close it with) */
+        const float s = 64 * k; const struct nk_rect r = nk_rect(W - pad - s, 28 * k, s, s);
+        const bool h = nk_input_is_mouse_hovering_rect(in, r);
+        nk_fill_rect(cb, r, 8 * k, h ? nk_rgb(200, 40, 40) : C_PANEL);
+        const float c = 20 * k, cx = r.x + s / 2, cy = r.y + s / 2;
+        nk_stroke_line(cb, cx - c, cy - c, cx + c, cy + c, 5 * k, C_TEXT);
+        nk_stroke_line(cb, cx - c, cy + c, cx + c, cy - c, 5 * k, C_TEXT);
+        if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r) && screen != SC_RUNNING) want_quit = true;
+    }
     const float top = 150 * k, bottom = H - 90 * k;
 
     if (screen == SC_MENU) {
-        /* the games */
-        const float lw = W * 0.30f, rowh = 92 * k;
+        /* the games: a list that scrolls (the mouse wheel / two fingers on a touchpad, the bar on its right, or the chosen game kept
+         * in view when the arrows or a pad move it) */
+        const float lw = W * 0.30f, rowh = 92 * k, step = rowh + 10 * k, lh = bottom - top;
+        const struct nk_rect list = nk_rect(pad, top, lw - pad, lh);
+        const float maxs = NGAMES * step - 10 * k > lh ? NGAMES * step - 10 * k - lh : 0;
+        static float scroll; static int shown_sel = -1, dragging;
+        if (nk_input_is_mouse_hovering_rect(in, list) && in->mouse.scroll_delta.y != 0) scroll -= in->mouse.scroll_delta.y * step * 0.6f;
+        if (sel_game != shown_sel) {                                         /* moved by the keys / a pad (or a hover): into view */
+            if (top + sel_game * step - scroll < top) scroll = sel_game * step;
+            if (top + sel_game * step + rowh - scroll > bottom) scroll = sel_game * step + rowh - lh;
+            shown_sel = sel_game;
+        }
+        const struct nk_rect bar = nk_rect(list.x + list.w + 6 * k, top, 10 * k, lh);
+        if (maxs > 0) {
+            if (nk_input_has_mouse_click_down_in_rect(in, NK_BUTTON_LEFT, nk_rect(bar.x - 8 * k, bar.y, bar.w + 16 * k, bar.h), nk_true)) dragging = 1;
+            if (!in->mouse.buttons[NK_BUTTON_LEFT].down) dragging = 0;
+            const float th = lh * lh / (lh + maxs);                          /* the thumb */
+            if (dragging) scroll = (in->mouse.pos.y - top - th / 2) / (lh - th) * maxs;
+            if (scroll < 0) scroll = 0;
+            if (scroll > maxs) scroll = maxs;
+            nk_fill_rect(cb, bar, 5 * k, C_PANEL);
+            nk_fill_rect(cb, nk_rect(bar.x, top + scroll / maxs * (lh - th), bar.w, th), 5 * k, dragging ? C_AMBER : C_DIM);
+        } else scroll = 0;
+        nk_push_scissor(cb, list);
         for (int i = 0; i < NGAMES; i++) {
-            struct nk_rect r = nk_rect(pad, top + i * (rowh + 10 * k), lw - pad, rowh);
-            if (nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) { if (sel_game != i) sel_mode = 0; sel_game = i; focus = 0; }
-            if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_game = i; focus = 1; sel_mode = 0; }
+            struct nk_rect r = nk_rect(pad, top + i * step - scroll, lw - pad, rowh);
+            if (r.y + r.h < top || r.y > bottom) continue;                   /* scrolled out of the list */
+            const bool in_list = nk_input_is_mouse_hovering_rect(in, list) && !dragging;
+            if (in_list && nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) { if (sel_game != i) sel_mode = 0; sel_game = i; shown_sel = i; focus = 0; }
+            if (in_list && nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_game = i; shown_sel = i; focus = 1; sel_mode = 0; }
             const bool s = i == sel_game;
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
@@ -520,6 +553,7 @@ static void draw(int W, int H, SDL_Window *win)
             char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "twin cabinet link" : !strcmp(games[i].id, "acedrive") ? "up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") ? "2 linked cabinets" : "up to 4 linked cabinets") : "one cabinet");
             text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
         }
+        nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
         /* the chosen game: picture, lines, the ways to play */
         const game_t *g = &games[sel_game];
         const float rx = lw + pad, rw = W - rx - pad;

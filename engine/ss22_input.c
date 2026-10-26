@@ -464,7 +464,7 @@ static void axis_label(int kind, char *v, size_t vn)
 static int nsw(void) { return (game->test_bit ? 1 : 0) + (game->service_bit ? 1 : 0); }
 static int nffb(void) { return game->wheel_motor ? (game->torque.addr ? 4 : 2) : game->kick_wheel ? 1 : 0; }   /* motor: Force feedback, FFB direction[, FFB centering, FFB road effects]; kick only: Force feedback */
 static int gun_flash_on = 1;                                     /* light-gun games: draw the shot flash (gun_flash in the cfg; ss22_gl.c hides it when 0) */
-static int ngun(void) { return game->trackball ? 7 : game->light_gun ? 5 : game->kick_wheel ? 1 : 0; }   /* Gun shot flash, Gun border, Pad aim speed, Pad aim deadzone, Pad rumble on recoil -- or (kick_wheel: Pad rumble on recoil) -- or Trackball sensitivity, orientation, keys/pad steering, keys/pad smoothing, invert left/right, invert forward/back, swap stick axes */
+static int ngun(void) { return game->trackball ? 8 : game->light_gun ? 5 : game->kick_wheel ? 1 : 0; }   /* Gun shot flash, Gun border, Pad aim speed, Pad aim deadzone, Pad rumble on recoil -- or (kick_wheel: Pad rumble on recoil) -- or Trackball sensitivity, orientation, keys/pad steering, keys/pad smoothing, invert left/right, invert forward/back, swap stick axes, touchpad scrolling */
 static int aim_speed = 100;                                     /* light gun: % of the default crosshair speed for the sticks / D-pad / arrow keys (aim_speed in the cfg) */
 static int aim_dz = 12;                                         /* light gun: the sticks' deadzone, % of full deflection (aim_deadzone in the cfg; 12% = the old PAD_DEADZONE) */
 static int tb_sens = 100;                                       /* trackball: % of the default counts per mouse pixel / stick deflection (tb_sens in the cfg) */
@@ -473,6 +473,7 @@ static int tb_steer = 40;                                       /* trackball, ke
 static int tb_smooth = 2;                                       /* trackball, keys / D-pad: how a press spins the ball up and down (tb_smooth: 0 off .. 3 heavy) */
 static bool tb_inv_x, tb_inv_y;                                 /* trackball: invert left/right, forward/back -- every input: mouse, stick, keys (tb_invert_x / tb_invert_y in the cfg) */
 static bool tb_swap;                                            /* trackball: the left stick's X and Y swapped (tb_swap_stick in the cfg) */
+static bool tb_wheel_up;                                        /* trackball: touchpad two-finger scrolling / a mouse wheel -- false: scrolling DOWN rolls forward; true: UP (tb_wheel_up) */
 static const struct { const char *name; int frames; } tb_smooth_levels[] = { {"off (instant)", 1}, {"light", 6}, {"normal", 12}, {"heavy", 24} };
 void ss22_snd_trackball_direct(bool on);
 void ss22_snd_trackball(int dx, int dy);                         /* engine/ss22_snd.c */
@@ -502,6 +503,7 @@ static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
     if (r == 4 && game->trackball) { snprintf(l, ln, "Invert left / right"); snprintf(v, vn, "%s", tb_inv_x ? "ON" : "OFF"); return; }
     if (r == 5 && game->trackball) { snprintf(l, ln, "Invert forward / back"); snprintf(v, vn, "%s", tb_inv_y ? "ON" : "OFF"); return; }
     if (r == 6 && game->trackball) { snprintf(l, ln, "Swap stick axes (X <-> Y)"); snprintf(v, vn, "%s", tb_swap ? "ON" : "OFF"); return; }
+    if (r == 7 && game->trackball) { snprintf(l, ln, "Touchpad / wheel: forward is"); snprintf(v, vn, "%s", tb_wheel_up ? "scrolling UP" : "scrolling DOWN"); return; }
     if (r == 4 && game->light_gun) { snprintf(l, ln, "Pad rumble on recoil"); snprintf(v, vn, "%s", pad_rumble ? "ON" : "OFF"); return; }
     if (r == 0 && !game->light_gun && game->kick_wheel) { snprintf(l, ln, "Pad rumble on recoil"); snprintf(v, vn, "%s", pad_rumble ? "ON" : "OFF"); return; }
     if (r == 0 && game->light_gun) { snprintf(l, ln, "Gun shot flash"); snprintf(v, vn, "%s", gun_flash_on ? "ON (as the arcade)" : "OFF (no white flash)"); return; }
@@ -586,6 +588,7 @@ static void pg_change(int r, int dir)
     if (r == 4 && game->trackball) { tb_inv_x = !tb_inv_x; eng_cfg_set_int("tb_invert_x", tb_inv_x); return; }
     if (r == 5 && game->trackball) { tb_inv_y = !tb_inv_y; eng_cfg_set_int("tb_invert_y", tb_inv_y); return; }
     if (r == 6 && game->trackball) { tb_swap = !tb_swap; eng_cfg_set_int("tb_swap_stick", tb_swap); return; }
+    if (r == 7 && game->trackball) { tb_wheel_up = !tb_wheel_up; eng_cfg_set_int("tb_wheel_up", tb_wheel_up); return; }
     if (r == 2 && game->light_gun) {                               /* 25..300 %: Left/Right 25% steps, Enter cycles */
         aim_speed = dir ? aim_speed + 25 * dir : (aim_speed >= 300 ? 25 : aim_speed + 25);
         if (aim_speed < 25) aim_speed = 25;
@@ -639,7 +642,7 @@ static void pg_notes(void (*line)(const char *fmt, ...))
     line("Pedal direction is learned automatically and saved.");
     if (game->wheel_motor) line("Force feedback: the cabinet's wheel motor, on the bound steering wheel.");
     if (game->kick_wheel) line("Force feedback: the cannon's kick in the handle, on the bound wheel (and pad rumble).");
-    if (game->trackball) line("Trackball: the mouse (a USB trackball is a mouse) is captured while playing. Keys: arrows / WASD. Pad: left stick (or D-pad), RT rolls forward, LT back.");
+    if (game->trackball) line("Trackball: the mouse (a USB trackball is a mouse) is captured while playing. Touchpad: scroll with two fingers (down = forward, left / right = steer). Keys: arrows / WASD. Pad: left stick (or D-pad), RT rolls forward, LT back.");
     for (int i = 1; i < 3; i++) if (game->notes[i]) line("%s", game->notes[i]);
 }
 
@@ -666,6 +669,7 @@ void ss22_input_init(const ss22_input_game *g)
         tb_inv_x = eng_cfg_int("tb_invert_x", 0) != 0;
         tb_inv_y = eng_cfg_int("tb_invert_y", 0) != 0;
         tb_swap = eng_cfg_int("tb_swap_stick", 0) != 0;
+        tb_wheel_up = eng_cfg_int("tb_wheel_up", 0) != 0;
     }
     bindings_load();
     raw_bindings_load();
@@ -705,9 +709,22 @@ void ss22_input_init(const ss22_input_game *g)
 }
 
 static int tb_mx, tb_my;                                         /* trackball: mouse motion since the last frame (relative mode) */
+/* a scroll step (one wheel notch; a touchpad sends fractions of one) in ball counts at 100 % sensitivity: a quick two-finger stroke is a good
+ * roll. Scrolling arrives in bursts, and the board takes at most ~TB_FULL counts a frame, so it waits here and goes in at up to that (tb_update) */
+#define TB_WHEEL 150.0
+static double tb_wf, tb_ws;                                      /* scrolling still to roll: forward (+ = away from you), sideways (+ = right) */
 void ss22_input_event(const SDL_Event *e)
 {
     if (e->type == SDL_MOUSEMOTION && game && game->trackball && SDL_GetRelativeMouseMode()) { tb_mx += e->motion.xrel; tb_my += e->motion.yrel; }
+    if (e->type == SDL_MOUSEWHEEL && game && game->trackball && SDL_GetRelativeMouseMode()) {   /* a touchpad's two-finger scroll / a mouse wheel */
+        double x = e->wheel.preciseX, y = e->wheel.preciseY;    /* (SDL: y > 0 = scrolling up, x > 0 = right; FLIPPED = the system's "natural" scrolling) */
+        if (e->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) { x = -x; y = -y; }
+        tb_wf += (tb_wheel_up ? y : -y) * TB_WHEEL;              /* forward, in ball counts */
+        tb_ws += x * TB_WHEEL;
+        const double cap = 152.0 * 12;                          /* a long fling: at most ~a fifth of a second of full speed waiting */
+        if (tb_wf > cap) tb_wf = cap; if (tb_wf < -cap) tb_wf = -cap;
+        if (tb_ws > cap) tb_ws = cap; if (tb_ws < -cap) tb_ws = -cap;
+    }
     if (e->type == SDL_JOYDEVICEADDED || e->type == SDL_CONTROLLERDEVICEADDED) {
         pad_scan(); raw_scan();
     } else if (e->type == SDL_JOYDEVICEREMOVED || e->type == SDL_CONTROLLERDEVICEREMOVED) {
@@ -937,6 +954,14 @@ static void tb_update(const uint8_t *k)
     double dx = 0, dy = 0;
     if (SDL_GetRelativeMouseMode()) { dx += tb_mx * 2.0 * tb_sens / 100.0; dy += tb_my * 2.0 * tb_sens / 100.0; }
     tb_mx = tb_my = 0;
+    if (!SDL_GetRelativeMouseMode()) tb_wf = tb_ws = 0;
+    {   /* the touchpad / wheel scrolling, at most a full roll a frame */
+        const double f = tb_wf > TB_FULL ? TB_FULL : tb_wf < -TB_FULL ? -TB_FULL : tb_wf;
+        const double s = tb_ws > TB_FULL ? TB_FULL : tb_ws < -TB_FULL ? -TB_FULL : tb_ws;
+        tb_wf -= f; tb_ws -= s;
+        dy -= f * tb_sens / 100.0;                               /* (dy: + = towards you, as the mouse's y) */
+        dx += s * tb_sens / 100.0;
+    }
     /* keys / pad: FORWARD (+ = rolled away from you) and SIDEWAYS (+ = right), each -1..1. Digital inputs (keys, D-pad) ramp like a spinning ball
      * (Keys / pad smoothing), so a tap is a small correction; the stick is analog, its sideways axis on a curve for fine steering near the centre.
      * The sideways roll is scaled by Keys / pad steering: at full trackball speed a sideways press spun the ball as hard as running forward. */
