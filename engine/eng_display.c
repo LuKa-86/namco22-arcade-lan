@@ -158,6 +158,8 @@ void eng_disp_load(const char *cfg_path, int scale, bool fullscreen)
     d->gun_border = eng_cfg_int("gun_border", 0);
     if (d->gun_border < 0 || d->gun_border > 6) d->gun_border = 0;
     d->crosshair = eng_cfg_int("crosshair", 1) != 0;
+    { extern int g_eng_tex_smooth, g_eng_tex_smooth_default;
+      d->tex_smooth = eng_cfg_int("texture_smoothing", g_eng_tex_smooth_default) != 0; g_eng_tex_smooth = d->tex_smooth; }
     d->fps = eng_vsync_rate_valid(eng_cfg_int("frame_rate", ENG_VSYNC_DEFAULT));
     d->volume = eng_cfg_int("volume", 100);
     if (d->volume < 0) d->volume = 0;
@@ -211,6 +213,12 @@ void eng_disp_set_hud_edges(int on)
 }
 
 bool g_eng_disp_light_gun;
+void eng_disp_set_tex_smooth(int on)
+{
+    extern int g_eng_tex_smooth;
+    g_eng_disp.tex_smooth = on != 0; g_eng_tex_smooth = g_eng_disp.tex_smooth;
+    eng_cfg_set("texture_smoothing", g_eng_disp.tex_smooth ? "1" : "0");
+}
 void eng_disp_set_crosshair(int on)
 {
     g_eng_disp.crosshair = on != 0;

@@ -341,8 +341,10 @@ int tex_bake_atlas_active(void) { return atlas_on(); }
  * (tex_bake_commit). A scene change's hundreds of bakes become a handful of
  * uploads -- per-call, a glTexSubImage2D costs ~18 us on a Mesa/i965 mobile
  * driver, and 1700 of them were the 30 ms frame at Dirt Dash's race start. */
+static void apply_filter(void);
 void tex_bake_commit(GLuint tex)               /* upload tex's page if bakes dirtied it */
 {
+    apply_filter();
     for (int i = 0; i < ap_n; i++) {
         apage *p = &apages[i];
         if (p->tex != tex || !p->ndr) continue;
@@ -389,13 +391,34 @@ static void page_dirty(int p, int x, int y, int w, int h)
     }
 }
 
+/* TEXTURE SMOOTHING (Display > Texture smoothing, engine/eng_display.c): the polygons' textures blended between texels (GL_LINEAR)
+ * instead of drawn as hard blocks (GL_NEAREST). Alpine Racer 2's cabinet footage shows smooth snow; drawn as blocks, its stretched
+ * snow texture steps as it rushes past and the slope looks as if it jumps up and down. The default is the game's
+ * (g_eng_tex_smooth_default, off unless the game says so); a change applies to every atlas page at the next draw. */
+int g_eng_tex_smooth = -1, g_eng_tex_smooth_default;
+static GLint tex_filter(void) { if (g_eng_tex_smooth < 0) g_eng_tex_smooth = g_eng_tex_smooth_default; return g_eng_tex_smooth ? GL_LINEAR : GL_NEAREST; }
+static void apply_filter(void)
+{
+    static int applied = -2;
+    const GLint f = tex_filter();
+    if (applied == (int)f) return;
+    applied = (int)f;
+    GLint was = 0; glGetIntegerv(GL_TEXTURE_BINDING_2D, &was);
+    for (int i = 0; i < ap_n; i++) {
+        glBindTexture(GL_TEXTURE_2D, apages[i].tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+    }
+    glBindTexture(GL_TEXTURE_2D, (GLuint)was);
+}
+
 static void atlas_page_init(int i)
 {
     atlas_size_pick();
     glGenTextures(1, &apages[i].tex);
     glBindTexture(GL_TEXTURE_2D, apages[i].tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex_filter());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex_filter());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ATLAS_DIM, ATLAS_DIM, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
@@ -985,8 +1008,8 @@ static GLuint bake_impl(int min_u, int min_v, int range_u, int range_v,
         if (!tex) { tex = gen_texture(); had_w = had_h = 0; }
     }
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex_filter());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex_filter());
     /* CLAMP, NOT THE DEFAULT REPEAT. Texture coordinates run to exactly the
      * far edge of the used region, and for GL_NEAREST that is texel index
      * sw -- one past the last sampled texel. Under GL_REPEAT that wraps to
