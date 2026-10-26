@@ -45,6 +45,7 @@ the arcade has and keeping them running.
 | **Ace Driver** | 1994 | up to 8, linked (tested with 8 on one PC) | Linked races; **new link** in this fork (the original project's build plays solo) |
 | **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
 | **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
+| **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
 

@@ -69,7 +69,8 @@ typedef struct {
      * first run and compare it across the set. link_cab_addr 0 = Rave Racer's (work RAM 0x100091A0, EEPROM settings group 3 byte 0 at
      * 0x2C0 / 0x2E0, 16-bit checksums, and its link status at A6 + 0x1102..0x1108). Otherwise: the 16-bit work-RAM word holding the
      * cabinet number (0-based), the EEPROM blocks (32 bytes each; -1 = none) and the byte in them, their checksum (0 = a 16-bit ~sum
-     * of bytes 0..29 in 30..31, Rave Racer's; 1 = an 8-bit ~sum of bytes 0..30 in 31, Ace Driver's), and the blocks the game itself
+     * of bytes 0..29 in 30..31, Rave Racer's; 1 = an 8-bit ~sum of bytes 0..30 in 31, Ace Driver's; 2 = an 8-bit plain sum of bytes
+     * 0..16 in 17, Cyber Commando's, whose block 0 also starts 0x94 0x01), and the blocks the game itself
      * writes on its first start, written first when the EEPROM is still blank (the game derives its car slot from the number once, at
      * start-up, so the number must be in the EEPROM before it boots -- and on a blank EEPROM the game would start over). */
     uint32_t link_cab_addr;
@@ -81,6 +82,7 @@ typedef struct {
      * shipped lifted program lacks (acedriver/tools/supplement.sh): runs target t and returns 1 when it has it, else 0; NULL = none. */
     uint32_t ram_code_at, ram_code_rom, ram_code_size;
     int (*supp_jump)(uint32_t t, uint32_t at);
+    int link_max_cabinets;                            /* our fork: the most cabinets its own numbering allows (Cyber Commando: 2); 0 = 8 */
 } rr_game_t;
 
 extern const rr_game_t *g_rr_game;

@@ -82,5 +82,8 @@ static const rr_game_t cc = {
     .spin_pc = 0, .spin_op = 0,                       /* the master's busy-wait poll is not measured for this game yet */
     .zips = cc_zips, .nzips = 2, .roms = cc_roms, .nroms = (int)(sizeof cc_roms / sizeof cc_roms[0]),
     .log_file = "cybrcomm.log",
+    /* our fork: the cabinet link. CPU NO. (GAME OPTIONS, 0 or 1: two cabinets) is A6+0x2A10 = 0x1000AA10, a copy of EEPROM block 0
+     * byte 0x0A (bytes 2..17 of the block become the words at 0x1000AA00; byte 0x11 = the plain sum of bytes 0..0x10) */
+    .link_cab_addr = 0x1000AA10, .link_ee_block = { 0x000, -1 }, .link_ee_byte = 0x0A, .link_ee_sum8 = 2, .link_max_cabinets = 2,
 };
 const rr_game_t *g_rr_game = &cc;

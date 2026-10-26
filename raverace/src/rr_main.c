@@ -442,6 +442,7 @@ int main(int argc, char **argv)
     if (g_rr_game->link_cab_addr) {                   /* not Rave Racer: its own cabinet number, its own name on the network */
         link_game.tag = !strcmp(g_rr_game->name, "acedrive") ? "AD" : g_rr_game->name;
         link_game.report = link_report_own; link_game.good = NULL; link_game.game_id = link_game_id_own;
+        link_game.max_cabinets = g_rr_game->link_max_cabinets;
     }
 #ifdef _WIN32
     rr_win_startup(logname);        /* the program's folder, the log, DPI */

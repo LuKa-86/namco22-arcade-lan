@@ -30,6 +30,7 @@ typedef struct {
     void (*hint)(const char *text, int frames);   /* a line on the screen (the safety net's "LINK LOST - RESTARTING"); NULL = none */
     void (*before_restart)(void);            /* the safety net restarts the program: save the settings, close the window and sound */
     int  rx_per_frame;                       /* received frames handed to the game per video frame (engine/lan139.h); 0 = no limit */
+    int  max_cabinets;                       /* our fork: the most cabinets the game itself can number (Cyber Commando: CPU NO. 1-2); 0 = 8 */
 } link_host_game;
 
 extern bool g_link_mute;

@@ -112,6 +112,18 @@ static const game_t games[] = {
     { "cybrcycc", "Cyber Cycles", "1995", "Cyber Cycles", "CyberCycles-ArcadeLAN.exe",
       "Motorbike racing for up to four linked cabinets. New in this package.", "Keys: 5 coin, Enter start / view, arrows bank, Up throttle, Down brake.", "link.cfg",
       8, { NET_MODES("roms") } },
+    { "cybrcomm", "Cyber Commando", "1994", "Cyber Commando", "CyberCommando-ArcadeLAN.exe",
+      "Robot battles: two linked cabinets fight each other (the challenge mode). New in this package.",
+      "Keys: 5 coin (two a credit), arrows move, Z fire, X missile, C view, Esc settings.", "link.cfg",
+      5, {
+        { "Cabinet on the network - FULL SCREEN", "This PC is one of the two linked cabinets (recommended)", true, 1, { { "roms --fullscreen", NULL } } },
+        { "Cabinet on the network - window", "The same in a window", false, 1, { { "roms --window", NULL } } },
+        { "Try 2 linked cabinets on this PC", "Two windows; click one to play it", false, 2, { { "roms --window 1 --link 1 --link-cabinets 2", NULL },
+            { "roms --window 1 --link 2 --link-cabinets 2 --mute", NULL } } },
+        { "PARTY: 2 players - keyboard + 1 controller", "Split screen on this PC; plug the controller in first", false, 2, {
+            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } },
+        { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, {
+            { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } } } },
     { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
       "Downhill skiing, one cabinet. New in this package.", "Keys: 5 coin, Enter decide / view, Z and X select, arrows ski.", NULL,
       2, {
@@ -501,7 +513,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
             text(cb, f_big, r.x + 28 * k, r.y + 12 * k, games[i].name, s ? C_AMBER : C_TEXT);
-            char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (games[i].nmodes == 6 ? "twin cabinet link" : !strcmp(games[i].id, "acedrive") ? "up to 8 linked cabinets" : "up to 4 linked cabinets") : "one cabinet");
+            char sub[64]; snprintf(sub, sizeof sub, "%s   %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "twin cabinet link" : !strcmp(games[i].id, "acedrive") ? "up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") ? "2 linked cabinets" : "up to 4 linked cabinets") : "one cabinet");
             text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
         }
         /* the chosen game: picture, lines, the ways to play */

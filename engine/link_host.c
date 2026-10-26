@@ -104,6 +104,11 @@ bool link_host_open(const link_host_game *g)
         cfg.nodes = 4;
         if (cfg.peers) { cfg.nodes = 1; for (const char *c = cfg.peers; *c; c++) cfg.nodes += *c == ','; }
     }
+    if (g->max_cabinets && cfg.nodes > g->max_cabinets) {            /* more than the game can number: two cabinets would share a number */
+        fprintf(stderr, "[LINK] %d cabinets set, but this game links at most %d: using %d\n", cfg.nodes, g->max_cabinets, g->max_cabinets);
+        cfg.nodes = g->max_cabinets;
+    }
+    if (cfg.id >= cfg.nodes) { fprintf(stderr, "[LINK] cabinet %d: this game links at most %d cabinets: not linked\n", cfg.id + 1, cfg.nodes); cfg.id = -1; return true; }
     own_build(&cfg.build_crc, &cfg.build_time);
     if (!lnk_open(&cfg)) return false;
     atexit(lnk_close);                                                 /* however the game ends, the others hear it go */

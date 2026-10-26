@@ -222,13 +222,15 @@ static void eeprom_block_set(uint32_t blk, int byte, uint8_t v)
 static bool eeprom_block_set8(uint32_t blk, int byte, uint8_t v)
 {
     uint8_t *b = g_rr.eeprom + blk;
+    const bool plain = g_rr_game->link_ee_sum8 == 2;   /* Cyber Commando: a plain sum of bytes 0..16 in byte 17 */
+    const int n = plain ? 17 : 31;
     unsigned sum = 0;
-    for (int i = 0; i < 31; i++) sum += b[i];
-    if ((uint8_t)~sum != b[31]) return false;          /* not a valid copy (yet): leave it for the game to write */
+    for (int i = 0; i < n; i++) sum += b[i];
+    if ((uint8_t)(plain ? sum : ~sum) != b[n]) return false;   /* not a valid copy (yet): leave it for the game to write */
     b[byte] = v;
     sum = 0;
-    for (int i = 0; i < 31; i++) sum += b[i];
-    b[31] = (uint8_t)~sum;
+    for (int i = 0; i < n; i++) sum += b[i];
+    b[n] = (uint8_t)(plain ? sum : ~sum);
     return true;
 }
 void rr_hw_link_on(int cabinet, bool seed_id)
