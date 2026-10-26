@@ -451,8 +451,9 @@ static void report(uint32_t frame)
     if (G->report) G->report(g, sizeof g);
     char ids[64] = ""; int k = 0;
     for (int n = 0; n < LNK_MAX_NODES; n++) { int id = lnk_peer_game_id(n); if (id >= 0) k += snprintf(ids + k, sizeof ids - (size_t)k, " %d:%d", n + 1, id + 1); }
-    fprintf(stderr, "[LINK] frame %u  down %u (now %u)  cabinets on %02X (next %d)  game IDs%s  chip tx %u rx %u queue-drop %u unacked %u  net sent %u recv %u lost %u bad %u  | %s\n",
-            frame, down_frames, down_now, lnk_alive_mask(), lnk_next_hop() + 1, ids, c->tx, c->rx, c->rx_dropped, c->rx_unacked, n->sent, n->recv, n->lost_seq, n->bad, g);
+    fprintf(stderr, "[LINK] frame %u  down %u (now %u)  cabinets on %02X (next %d)  game IDs%s  chip tx %u rx %u queue-drop %u unacked %u queue %.1f (max %u)  net sent %u recv %u lost %u bad %u  | %s\n",
+            frame, down_frames, down_now, lnk_alive_mask(), lnk_next_hop() + 1, ids, c->tx, c->rx, c->rx_dropped, c->rx_unacked, c->q_n ? (double)c->q_sum / c->q_n : 0.0, c->q_max, n->sent, n->recv, n->lost_seq, n->bad, g);
+    { lan139_stats *w = (lan139_stats *)c; w->q_sum = w->q_n = w->q_max = 0; }
 }
 
 /* THE SAFETY NET: a linked game that has lost its link for good restarts, as if its cabinet were switched off and on, so it is not left

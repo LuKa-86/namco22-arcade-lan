@@ -31,6 +31,6 @@ bool     lan139_irq(void);                            /* the interrupt condition
 void     lan139_set_per_frame(int n);
 void     lan139_frame(void);                          /* every video frame */
 
-typedef struct { uint32_t tx, rx, rx_dropped, rx_unacked, tx_restart; } lan139_stats;
+typedef struct { uint32_t tx, rx, rx_dropped, rx_unacked, tx_restart; uint32_t q_sum, q_n, q_max; } lan139_stats;   /* q_*: the queue waiting for the game, sampled per video frame (link report)  */
 const lan139_stats *lan139_get_stats(void);
 #endif
