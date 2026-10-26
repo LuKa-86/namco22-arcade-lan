@@ -48,7 +48,7 @@ the arcade has and keeping them running.
 | **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
 | **Armadillo Racing** | 1997 | up to 4, linked | Trackball racing; **new link** in this fork (the original project's build plays solo) |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
-| **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
+| **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
 
 The original project's other games (Prop Cycle, Dirt Dash, Time Crisis, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
 those, use the original project's releases. The package below keeps to the linked games and the new ones.

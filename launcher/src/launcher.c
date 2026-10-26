@@ -118,9 +118,9 @@ static const game_t games[] = {
       "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows lean  \xC2\xB7  Up throttle  \xC2\xB7  Down brake  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
     { "cybsled", "Cyber Sled", "1993", "Cyber Sled", "CyberSled-ArcadeLAN.exe",
-      "Twin-stick hover-tank battles. Its 2-player mode uses the original project's online play, not the cabinet link.",
-      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive (Shift strafes)  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", NULL,
-      2, { M_SOLO_FULL("extracted"), M_SOLO_WIN("extracted", "") } },
+      "Twin-stick hover-tank battles: 2 linked cabinets, left and right, fight each other. Linked play is new in this package.",
+      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive (Shift strafes)  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", "link.cfg",
+      3, { M_NET_FULL("extracted"), M_NET_WIN("extracted"), M_TRY2("extracted") } },
     { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
       "Racing for up to 4 linked cabinets.",
       "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
@@ -569,7 +569,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
             text(cb, f_big, r.x + 28 * k, r.y + 12 * k, games[i].name, s ? C_AMBER : C_TEXT);
-            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "Twin cabinet, 2 players" : !strcmp(games[i].id, "acedrive") ? "Up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") ? "2 linked cabinets" : "Up to 4 linked cabinets") : "Single cabinet");
+            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "Twin cabinet, 2 players" : !strcmp(games[i].id, "acedrive") ? "Up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") || !strcmp(games[i].id, "cybsled") ? "2 linked cabinets" : "Up to 4 linked cabinets") : "Single cabinet");
             text(cb, f_small, r.x + 28 * k, r.y + 54 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
