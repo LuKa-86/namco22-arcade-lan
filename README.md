@@ -46,10 +46,11 @@ the arcade has and keeping them running.
 | **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
 | **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
 | **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
+| **Armadillo Racing** | 1997 | up to 4, linked | Trackball racing; **new link** in this fork (the original project's build plays solo) |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 1 | The original project's build; its two players play online (internet), not over the cabinet LAN |
 
-The original project's other games (Prop Cycle, Dirt Dash, Armadillo Racing, Time Crisis, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
+The original project's other games (Prop Cycle, Dirt Dash, Time Crisis, Crisis Zone) are in this repository as the original author made them, but they are not built or tested in this fork; for
 those, use the original project's releases. The package below keeps to the linked games and the new ones.
 
 ## What the fork adds

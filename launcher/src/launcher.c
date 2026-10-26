@@ -124,6 +124,10 @@ static const game_t games[] = {
             { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } },
         { "PARTY: 2 players - 2 controllers", "Split screen on this PC; plug the controllers in first", false, 2, {
             { "roms --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { "roms --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } } } },
+    { "adillor", "Armadillo Racing", "1997", "Armadillo Racing", "ArmadilloRacing-ArcadeLAN.exe",
+      "Trackball racing for up to four linked cabinets (red, blue, yellow, green). New in this package.",
+      "Keys: 5 coin, 1 start; the mouse / a trackball rolls (or the arrows); Esc settings.", "link.cfg",
+      8, { NET_MODES("roms") } },
     { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
       "Downhill skiing, one cabinet. New in this package.", "Keys: 5 coin, Enter decide / view, Z and X select, arrows ski.", NULL,
       2, {

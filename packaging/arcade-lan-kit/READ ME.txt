@@ -20,6 +20,7 @@ WHAT IS IN THIS FOLDER
      Time Crisis II\        the twin cabinet: left and right sides linked
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Commando\        2 linked cabinets battle each other (linked play new in this package)
+     Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
      Cyber Sled\            one cabinet (the original project's build; its 2 players play online)
   tools\                    the Rave Racer 4-cabinet check
@@ -38,6 +39,7 @@ itself the first time it starts.
    games\Ace Driver\roms        acedrive.zip  and  namcoc74.zip
    games\Cyber Cycles\roms      cybrcycc.zip
    games\Cyber Commando\roms    cybrcomm.zip  and  namcoc74.zip
+   games\Armadillo Racing\roms  adillor.zip
    games\Alpine Racer\roms      alpinerjc.zip
    games\Cyber Sled\roms        cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
    games\Time Crisis II\roms    timecrs2.zip
@@ -88,8 +90,9 @@ How the link behaves (the same rule as the real boards):
    "LINK LOST - RESTARTING IN 5" and restarts itself (Network page > If the link is lost).
  - While linked, the Esc menu does not pause the game: a cabinet that stops is dropped.
  - Each game keeps its own cabinet ID in its test menu (Tokyo Wars: GAME OPTIONS > ID NO.;
-   Rave Racer: GAME OPTIONS > CPU NUMBER; Cyber Commando: GAME OPTIONS > CPU NO.). Every linked
-   cabinet needs a different one; a cabinet's first linked run sets it from its cabinet
+   Rave Racer: GAME OPTIONS > CPU NUMBER; Cyber Commando: GAME OPTIONS > CPU NO.;
+   Armadillo Racing: GAME OPTIONS > PCB ID, red / blue / yellow / green). Every linked cabinet
+   needs a different one; a cabinet's first linked run sets it from its cabinet
    number, after that the test menu's is kept (and a warning shows if two linked cabinets have the same one).
 
 

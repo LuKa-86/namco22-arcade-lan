@@ -30,6 +30,7 @@ GAMES=(
   "Time Crisis II|TimeCrisis2-ArcadeLAN.exe|tc2/build/tc2.exe|timecrs2.zip|timecrs2"
   "Cyber Cycles|CyberCycles-ArcadeLAN.exe|cybrcycc/build/cc.exe|cybrcycc.zip|cybrcycc"
   "Cyber Commando|CyberCommando-ArcadeLAN.exe|cybrcomm/build/cc.exe|cybrcomm.zip namcoc74.zip|cybrcomm"
+  "Armadillo Racing|ArmadilloRacing-ArcadeLAN.exe|adillor/build/am.exe|adillor.zip|adillor"
   "Alpine Racer|AlpineRacer-ArcadeLAN.exe|alpiner/build/al.exe|alpinerjc.zip|alpiner"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
 )

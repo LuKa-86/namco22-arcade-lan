@@ -110,6 +110,7 @@ typedef struct ss22_game {
      * delivers in bursts (4 copies on one PC) can push the begin later still, and one held frame is not seen where black is */
     int  pdp_hold_frames;
     int  link_rx_per_frame;                  /* link play: received frames handed to the game per video frame (engine/lan139.h); 0 = no limit */
+    void (*link_id_written)(void);          /* our fork: after link play wrote link_id_byte -- a game whose settings carry a checksum puts it right (Armadillo Racing); NULL = none */
 } ss22_game;
 
 /* Run the game's start script NAME (ss22_game.start) from now: its frame n counts from this call. The Esc menu's way to --stage. */

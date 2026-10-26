@@ -586,6 +586,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
                                                           * its ID from that; otherwise the test menu's (GAME OPTIONS) */
         uint8_t *b = &g_ss22.eeprom[g->link_id_byte];
         *b = (uint8_t)((*b & ~3u) | (unsigned)(link_host_id() & 3));
+        if (g->link_id_written) g->link_id_written();
         fprintf(stderr, "[LINK] cabinet %d: the game's own ID set to %d (change it in the test menu)\n", link_host_id() + 1, (link_host_id() & 3) + 1);
     }
     if (!ss22_dsp_init(rom_dir)) return 2;

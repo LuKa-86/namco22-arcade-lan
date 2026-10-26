@@ -134,6 +134,35 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
 
 static const eng_hud_mark hud_marks_none[] = { { 0, 0, 0 } };
 
+/* our fork, THE CABINET LINK. GAME OPTIONS > PCB ID (RED / BLUE / YELLOW / GREEN: four cabinets) is EEPROM byte 7. The game reads its
+ * settings as 16 records of 32 bytes (record r = EEPROM r*16.. and 0x1000 + r*16.., copied to 0xE01A00 by FUN_00009554), record 0's
+ * byte 7 becoming the live PCB ID at 0xE00180 (FUN_00009430); the whole 512-byte copy is checked by a 16-bit sum of its bytes
+ * 0..0x1FD, kept in its last word (FUN_000096C0) = EEPROM 0x10FE (high) / 0x10FF (low). Link play writes byte 7, then the sum.
+ * The ROM set has no EEPROM image: a blank one (all 0xFF) is set up by the game itself on its first start, which would undo the ID, so
+ * the settings it writes then (record 0 below, everything else 0, as read back from a first start) go in first. */
+static const uint8_t am_first_start[16] = { 0xB0, 0x53, 0x55, 0x01, 0x03, 0x03, 0x00, 0x00, 0x28, 0x28, 0x04, 0x01, 0x01, 0x01, 0x00, 0x00 };
+static void am_link_id_written(void)
+{
+    bool blank = true;
+    for (int r = 0; r < 16 && blank; r++) for (int k = 0; k < 16; k++)
+        if (g_ss22.eeprom[r * 16 + k] != 0xFF && !(r == 0 && k == 7)) { blank = false; break; }   /* (byte 7: the ID just written) */
+    if (blank) {
+        const uint8_t id = g_ss22.eeprom[7] & 3;
+        for (int r = 0; r < 16; r++) { memset(&g_ss22.eeprom[r * 16], 0, 16); memset(&g_ss22.eeprom[0x1000 + r * 16], 0, 16); }
+        memcpy(g_ss22.eeprom, am_first_start, 16);
+        g_ss22.eeprom[7] = id;
+    }
+    unsigned sum = 0; const unsigned old_hi = g_ss22.eeprom[0x10FE], old_lo = g_ss22.eeprom[0x10FF];
+    for (int r = 0; r < 16; r++)
+        for (int k = 0; k < 32; k++) {
+            if (r == 15 && k >= 30) break;                     /* the sum's own word */
+            sum += k < 16 ? g_ss22.eeprom[r * 16 + k] : g_ss22.eeprom[0x1000 + r * 16 + k - 16];
+        }
+    g_ss22.eeprom[0x10FE] = (uint8_t)(sum >> 8); g_ss22.eeprom[0x10FF] = (uint8_t)sum;
+    fprintf(stderr, "[LINK] Armadillo Racing: PCB ID byte %u, settings sum %04X (was %02X%02X)\n", g_ss22.eeprom[7], sum & 0xFFFF, old_hi, old_lo);
+}
+static int am_link_game_id(void) { return (int)(rr_read(0xE00180u, 2) & 3); }
+
 static const ss22_game game = {
     .name = "Armadillo Racing", .tag = "AM", .lname = "am", .logname = "adillor.log", .zip = "adillor.zip",
     .out_gain = 2.4,                         /* not measured for this game yet (Dirt Dash 2.4, Tokyo Wars 1.4) */
@@ -154,6 +183,7 @@ static const ss22_game game = {
     .polls_per_frame = 66800,               /* MAME: 40,064,130 main-CPU instructions in its first 600 frames (tools/mame/regtrace_run.sh) */
     .presses = presses, .n_presses = (int)(sizeof presses / sizeof *presses),
     .autoplay = autoplay,
+    .link_id_byte = 7, .link_game_id = am_link_game_id, .link_id_written = am_link_id_written,   /* PCB ID, see am_link_id_written */
 };
 
 int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }
