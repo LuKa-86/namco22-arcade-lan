@@ -208,23 +208,48 @@ class Lifter:
         """GHIDRA'S 68020 MEMORY-INDIRECT IS WRONG FOR THE PRE-INDEXED FORM. ([bd,An,Xn]) / ([bd,PC,Xn]) -- full extension word,
         I/IS = 1..3 with the index not suppressed -- means mem[bd + base + Xn]; Ghidra's p-code loads mem[bd + base] and THEN adds
         Xn (the post-indexed form), and prints it "([bd,PC],Xn)". A game's dispatch tables are exactly this instruction
-        (jsr ([table,PC],D0.w*4)), so every table call past entry 0 went to table[0] + 4n. Rewrite: index first, then load."""
+        (jsr ([table,PC],D0.w*4)), so every table call past entry 0 went to table[0] + 4n. Rewrite: index first, then load.
+        AND THE OTHER WAY ROUND (Alpine Racer 2): the POST-indexed form, I/IS = 5..7, ([bd,An],Xn) = mem[bd + An] + Xn, gets the
+        pre-indexed p-code and is printed "([bd,An,Xn])". Rewrite: load, then index. Which form the p-code has is read from the
+        p-code itself (does the address of the first load use the index?), so a form Ghidra gets right is left alone.
+        The extension word follows the opcode, or an immediate source (cmpi.w #n,([...]) and the like)."""
         if self.rom is None or '([' not in ins.text or ins.len < 4: return
-        ext = int.from_bytes(self.rom[ins.addr + 2:ins.addr + 4], 'big')
-        if not (ext & 0x100) or (ext & 0x40) or (ext & 7) not in (1, 2, 3): return   # brief format / index suppressed / not pre-indexed
+        mn = ins.text.split()[0]
+        at = 2
+        if mn.split('.')[0] in ('ori', 'andi', 'subi', 'addi', 'eori', 'cmpi') and '#' in ins.text.split(None, 1)[1].split(',')[0]:
+            at = 6 if mn.endswith('.l') else 4
+        if ins.text.count('([') != 1 or ins.len < at + 2: self.note('memory indirect: not checked (' + mn + ')'); return
+        ext = int.from_bytes(self.rom[ins.addr + at:ins.addr + at + 2], 'big')
+        if not (ext & 0x100) or (ext & 0x40): return                  # brief format / index suppressed: no difference
+        iis = ext & 7
+        if iis not in (1, 2, 3, 5, 6, 7): return
         ops = ins.ops
-        for k, o in enumerate(ops):
-            if o[0] != 'LOAD': continue
+        k = next((n for n, o in enumerate(ops) if o[0] == 'LOAD'), None)
+        mul = next((n for n, o in enumerate(ops) if o[0] == 'INT_MULT'), None)
+        if k is None or mul is None or mul > k: self.note('memory indirect: not checked (' + mn + ')'); return
+        idx = ops[mul][1]
+        pcode_pre = any(idx in ops[n][2] for n in range(mul + 1, k))
+        o = ops[k]
+        if iis <= 3 and not pcode_pre:                                 # wanted pre-indexed, p-code post-indexed
             for m in range(k + 1, len(ops)):
                 if ops[m][0] == 'INT_ADD' and o[1] in ops[m][2]:
-                    idx = [v for v in ops[m][2] if v != o[1]]
-                    if len(idx) != 1: return
+                    other = [v for v in ops[m][2] if v != o[1]]
+                    if len(other) != 1: return
                     tmp = 'unique:fffff0:4'
-                    ins.ops = (ops[:k] + [('INT_ADD', tmp, [o[2][1], idx[0]]), ('LOAD', o[1], [o[2][0], tmp])] + ops[k + 1:m]
+                    ins.ops = (ops[:k] + [('INT_ADD', tmp, [o[2][1], other[0]]), ('LOAD', o[1], [o[2][0], tmp])] + ops[k + 1:m]
                                + [('COPY', ops[m][1], [o[1]])] + ops[m + 1:])
                     self.note('pre-indexed memory indirect corrected')
                     return
             return
+        if iis >= 5 and pcode_pre:                                     # wanted post-indexed, p-code pre-indexed
+            j = next((n for n in range(mul + 1, k) if ops[n][0] == 'INT_ADD' and idx in ops[n][2]), None)
+            if j is None: self.note('memory indirect: not checked (' + mn + ')'); return
+            other = [v for v in ops[j][2] if v != idx]
+            if len(other) != 1: return
+            tmp = 'unique:fffff4:4'
+            ins.ops = (ops[:j] + [('COPY', ops[j][1], [other[0]])] + ops[j + 1:k]
+                       + [('LOAD', tmp, o[2]), ('INT_ADD', o[1], [tmp, idx])] + ops[k + 1:])
+            self.note('post-indexed memory indirect corrected')
 
     def fix_divide(self, ins):
         """GHIDRA'S 68020 DIVIDES ARE WRONG IN TWO WAYS. (1) divs.l <ea>,Dr:Dq with the 64-bit dividend builds it as
