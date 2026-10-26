@@ -533,8 +533,30 @@ static void restart_all_now(void)
     link_host_relaunch();
 }
 
+/* CATCHING UP (our fork). A window paces itself by its screen: a frame that took too long (a texture load, a busy PC) is lost for good,
+ * and a screen that refreshes a little slower than another's loses a frame every few seconds. In a race the games keep their cabinets
+ * together themselves, but their attract modes run alone, so the set drifted apart (one cabinet's demo a few frames behind the
+ * others'). Each cabinet tells the others how many frames it has run (engine/link_net.c, lnk_frames_behind); one that is 2 or more
+ * behind the furthest ahead runs frames without drawing them (link_host_catch_up: no picture, no wait for the screen), at most two in
+ * a row, until it is less than one behind. Only the one behind does anything; the others never wait. LINK_CATCHUP=0: off. */
+static bool cu_on = true, cu_state, cu_now, cu_host; static int cu_run; static uint32_t cu_total;   /* cu_host: the window code asks (link_host_catch_up) */
+static void catch_up_frame(uint32_t frame, bool headless)
+{
+    lnk_set_frame(frame);
+    cu_now = false;
+    if (headless || !cu_on || !cu_host || frame < 300) return;                     /* (headless copies keep to the wall clock already; start-up loads) */
+    const double b = lnk_frames_behind();
+    if (!cu_state && b >= 2.0 && b < 600.0) cu_state = true;
+    else if (cu_state && (b < 1.0 || b >= 600.0)) cu_state = false;
+    if (cu_state && cu_run < 2) { cu_now = true; cu_run++; cu_total++; }
+    else cu_run = 0;
+    if (frame % 600 == 0 && cu_total) { fprintf(stderr, "[LINK] frame %u: caught up %u frames on the others (ran them without drawing)\n", frame, cu_total); cu_total = 0; }
+}
+bool link_host_catch_up(void) { cu_host = true; return on && cu_now; }
+
 void link_host_frame(uint32_t frame, bool headless)
 {
+    { static int once; if (!once) { once = 1; const char *e = getenv("LINK_CATCHUP"); if (e && *e == '0') cu_on = false; } }
     disc_poll();
     { static long find_at = -2, restart_at = -2;                        /* TEST: LINK_TEST_FIND_AT / LINK_TEST_RESTART_AT = <frame>: the page's
                                                                          * Find cabinets / Restart all (twice) at that frame, without a menu */
@@ -556,6 +578,7 @@ void link_host_frame(uint32_t frame, bool headless)
     if (restart_in >= 0 && restart_in-- == 0) restart_all_now();
     if (headless) pace();
     if (party) party_sync();
+    catch_up_frame(frame, headless);
     if (G->good) {
         if (G->good()) { if (++up_run >= 120) was_up = true; down_now = 0; }
         else if ((up_run = 0), was_up) { down_frames++; if (++down_now == 1) fprintf(stderr, "[LINK] frame %u: the game lost the link\n", frame); }

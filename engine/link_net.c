@@ -59,6 +59,7 @@ typedef struct {
     uint32_t q_n, q_sum, q_max, q_recv, q_lost;           /* this window: round-trip samples, messages received / missing */
     int      rtt_avg, rtt_max, loss_pct;    /* the last complete window's (-1 = none) */
     bool     warned_from;
+    uint32_t vf; uint64_t vf_at;            /* our fork: the video frames it had run (+1; 0 = not told) when its last hello came, and when */
 } peer_t;
 
 static struct {
@@ -82,6 +83,7 @@ static struct {
     struct { uint64_t due; int dst, len; uint8_t b[HDR + 2 * LNK_MAX_WORDS]; } held[256];   /* test delay */
     int nheld;
     bool warned_tag;
+    uint32_t my_vf;                         /* this cabinet's video frames run (+1), told in the hellos (lnk_set_frame) */
 } L;
 
 static uint64_t now_ms(void) { return SDL_GetTicks64(); }
@@ -316,7 +318,7 @@ static void hellos(void)
     for (int n = 0; n < L.cfg.nodes; n++) if (n != L.cfg.id) {
         header(b, T_HELLO, n);
         b[HDR] = (uint8_t)L.state; b[HDR + 1] = L.members; b[HDR + 2] = (uint8_t)(L.game_id + 1); b[HDR + 3] = hear; put32(b + HDR + 4, ms);
-        b[HDR + 8] = (uint8_t)L.cfg.nodes; b[HDR + 9] = 0; b[HDR + 10] = 0; b[HDR + 11] = 0; put32(b + HDR + 12, L.list_hash);
+        b[HDR + 8] = (uint8_t)L.cfg.nodes; b[HDR + 9] = (uint8_t)(L.my_vf >> 16); b[HDR + 10] = (uint8_t)(L.my_vf >> 8); b[HDR + 11] = (uint8_t)L.my_vf; put32(b + HDR + 12, L.list_hash);
         const peer_t *p = &L.p[n];
         put32(b + HDR + 16, (uint32_t)t); put32(b + HDR + 20, p->echo_at ? p->echo_t : 0);
         put32(b + HDR + 24, p->echo_at ? (uint32_t)(t - p->echo_at) : 0);
@@ -369,6 +371,7 @@ static int take(uint16_t *w, int max)
     case T_HELLO:
         if (len >= HDR + 8) { p->state = b[HDR]; p->members = b[HDR + 1]; p->game_id = b[HDR + 2] - 1; p->hears = b[HDR + 3]; p->session = get32(b + 16); p->ms = get32(b + HDR + 4); }
         if (len >= HDR + 16) { p->nodes = b[HDR + 8]; p->list_hash = get32(b + HDR + 12); }
+        if (len >= HDR + 12) { const uint32_t v = (uint32_t)b[HDR + 9] << 16 | (uint32_t)b[HDR + 10] << 8 | b[HDR + 11]; if (v) { p->vf = v; p->vf_at = now_ms(); } }
         if (len >= HDR + HELLO_LEN) {
             p->echo_t = get32(b + HDR + 16); p->echo_at = now_ms();
             const uint32_t back = get32(b + HDR + 20), held = get32(b + HDR + 24);
@@ -500,4 +503,25 @@ int lnk_local_addresses(char out[][16], int max)
     }
     freeaddrinfo(res);
     return n;
+}
+
+/* our fork: KEEPING THE SET IN STEP between the games' own syncs (attract mode runs on each cabinet alone). Each cabinet tells the
+ * others in its hellos how many video frames it has run since the set started; a cabinet whose program stopped for a moment (a
+ * texture load, a busy PC) or whose screen refreshes a little slower is behind from then on, and lnk_frames_behind says by how much
+ * (engine/link_host.c then has it run frames without drawing them until it is level). */
+void lnk_set_frame(uint32_t frames) { L.my_vf = (frames + 1) & 0xFFFFFF; }
+double lnk_frames_behind(void)
+{
+    if (!L.on || L.state != LNK_LINKED || !L.my_vf) return 0;
+    const uint64_t t = now_ms();
+    double worst = 0;
+    for (int n = 0; n < L.cfg.nodes; n++) {
+        const peer_t *p = &L.p[n];
+        if (n == L.cfg.id || !(L.members >> n & 1) || !p->vf || t - p->vf_at > 300 || p->state != LNK_LINKED || p->session != L.session) continue;
+        const double travel = p->rtt_avg > 0 ? p->rtt_avg / 2.0 : 0.0;
+        const double est = (double)(p->vf - 1) + (double)(t - p->vf_at + travel) * 59.906 / 1000.0;   /* its frame now */
+        const double d = est - (double)(L.my_vf - 1);
+        if (d > worst) worst = d;
+    }
+    return worst;
 }

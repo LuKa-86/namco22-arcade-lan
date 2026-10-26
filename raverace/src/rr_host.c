@@ -835,6 +835,7 @@ bool rr_host_frame(void)
     inputs_done: ;
     }
     wheel_motor(paused || rr_ui_is_open());
+    if (link_host_catch_up()) return true;           /* linked and behind the set: this frame is not drawn and not waited for (engine/link_host.c) */
 
     /* the window may have been resized: keep the render size in step (a
      * native or widescreen size follows the window; it lands next frame) */

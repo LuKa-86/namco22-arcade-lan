@@ -51,6 +51,8 @@ uint32_t lnk_present_mask(void);                      /* GATHER: who is here so 
 uint32_t lnk_members(void);                           /* SESSION: the cabinets that started together */
 int      lnk_gather_left_ms(void);                    /* GATHER: how long until the set starts without the missing ones */
 void     lnk_send(const uint16_t *w, int n);          /* one chip frame to the next member that is on */
+void     lnk_set_frame(uint32_t frames);            /* the video frames this cabinet has run since the set started (told in the hellos) */
+double   lnk_frames_behind(void);                   /* how many frames the furthest-ahead cabinet of the set is ahead of this one (0 = none) */
 int      lnk_recv(uint16_t *w, int max);              /* the next frame received (its word count), 0 = none; also handles the hellos */
 uint32_t lnk_alive_mask(void);                        /* bit n = member n is on now (this one included) */
 int      lnk_next_hop(void);                          /* where a frame goes now, -1 = nobody else is on */
