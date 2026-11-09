@@ -137,6 +137,7 @@ void s23_backup_load(int window)
     const char *e = getenv("S23_BACKUP");
     const char *s23_instance(void);
     static char def[64]; snprintf(def, sizeof def, "%s%s_backup.nv", s23_game.tag, s23_instance());
+    S23_SS_KEEP(backup_path); S23_SS_KEEP(backup_on); S23_SS_KEEP(backup_saved);   /* this process's file, not the saving one's */
     backup_path = e && *e ? e : window ? def : NULL;
     if (!backup_path) return;
     backup_on = 1;

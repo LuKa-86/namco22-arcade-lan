@@ -14,6 +14,8 @@
 /* save states (src/s23_savestate.c): a debug switch's static, registered BEFORE it is parsed, is reset by a load (re-read) */
 void s23_ss_env(void *p, size_t n);
 #define S23_SS_ENV(v) s23_ss_env(&(v), sizeof (v))
+void s23_ss_keep(void *p, size_t n);                 /* a load leaves this value as this process has it (src/s23_savestate.c) */
+#define S23_SS_KEEP(v) s23_ss_keep(&(v), sizeof (v))
 #define S23_SLICE     1000                 /* instructions between scheduler polls */
 void s23_host_step(uint32_t instructions);  /* time passed: devices, frames */
 uint32_t s23_until_event(void);            /* instructions to the next interrupt event: the scheduler polls right there */

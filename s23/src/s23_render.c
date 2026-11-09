@@ -840,6 +840,7 @@ static int build_mid(s23_built **slot, const s23_built *a, const s23_built *b, d
 }
 static int soft_raster = 1;                            /* 0 once the window's GPU renderer is up */
 void s23_render_soft(int on) { soft_raster = on; }
+__attribute__((constructor)) static void soft_keep(void) { S23_SS_KEEP(soft_raster); }   /* (a window's capture loaded headless still draws) */
 static void *work(void *u)
 {
     (void)u;

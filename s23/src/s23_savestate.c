@@ -54,6 +54,16 @@ void s23_ss_env(void *p, size_t n)
     }
 }
 
+/* ---- THIS PROCESS'S OWN values inside the saved state (s23_ss_keep): a load leaves them as they are -- the backup file's name and
+ * whether it is written, the software renderer on / off (a headless load of a window's capture crashed writing a file with no name) ---- */
+typedef struct { uint8_t *p; size_t n; uint8_t *tmp; } keep_var;
+static keep_var keeps[32]; static int nkeep;
+void s23_ss_keep(void *p, size_t n)
+{
+    for (int i = 0; i < nkeep; i++) if (keeps[i].p == p) return;
+    if (nkeep < 32) { keeps[nkeep].p = p; keeps[nkeep].n = n; keeps[nkeep].tmp = malloc(n); nkeep++; }
+}
+
 /* ---- the memory this process has (a word pointing into it was a pointer) ---- */
 typedef struct { uint64_t lo, hi; } region;
 static region *map_of(int *n)
@@ -114,6 +124,7 @@ static int load(const char *path)
     env_var *ev = calloc((size_t)(nev ? nev : 1), sizeof *ev);
     for (int i = 0; i < nev && ok; i++) { ok = rd(f, &ev[i], 3 * sizeof(uint32_t)); if (ok) { ev[i].first = malloc(ev[i].n); ok = rd(f, ev[i].first, ev[i].n); } }
     s23_render_wait_idle();
+    for (int i = 0; i < nkeep; i++) memcpy(keeps[i].tmp, keeps[i].p, keeps[i].n);
     unsigned long kept = 0;
     for (int s = 0; s < 2 && ok; s++) {
         uint8_t *buf = malloc((size_t)len[s]);
@@ -134,6 +145,7 @@ static int load(const char *path)
     /* the debug switches: back to their first value (both runs' lists), so this run's own are read again */
     for (int i = 0; i < nev; i++) if (ev[i].sec < 2 && ev[i].off + ev[i].n <= (uint64_t)(sec_hi[ev[i].sec] - sec_lo[ev[i].sec])) memcpy(sec_lo[ev[i].sec] + ev[i].off, ev[i].first, ev[i].n);
     for (int i = 0; i < nenv; i++) memcpy(sec_lo[envs[i].sec] + envs[i].off, envs[i].first, envs[i].n);
+    for (int i = 0; i < nkeep; i++) memcpy(keeps[i].p, keeps[i].tmp, keeps[i].n);
     for (int i = 0; i < nev; i++) free(ev[i].first);
     free(ev); free(r);
     rr_ss_after_irq = hdr[3];
