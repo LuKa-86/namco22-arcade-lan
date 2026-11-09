@@ -247,7 +247,7 @@ void s23_on_vblank(uint32_t frame)
       if (rt) { const uint64_t f = SDL_GetPerformanceFrequency(), due = t0 + (uint64_t)((double)frame * (double)f / hz);
                 for (uint64_t now; (now = SDL_GetPerformanceCounter()) < due; ) if (due - now > f / 500) SDL_Delay(1); } }
     { static int rf = -2, rt, re; static char rd[512];        /* $S23_RAMDUMP=dir:from-to:every (tests, our fork): the first 4 MB of RAM, r<frame>.bin */
-      if (rf == -2) { rf = -1; const char *e = getenv("S23_RAMDUMP"); if (e) { snprintf(rd, sizeof rd, "%s", e); char *c = strrchr(rd, ':'); char *c2 = c ? (*c = 0, strrchr(rd, ':')) : NULL;
+      if (rf == -2) { S23_SS_ENV(rf); rf = -1; const char *e = getenv("S23_RAMDUMP"); if (e) { snprintf(rd, sizeof rd, "%s", e); char *c = strrchr(rd, ':'); char *c2 = c ? (*c = 0, strrchr(rd, ':')) : NULL;
                       if (c && c2) { *c2 = 0; re = atoi(c + 1); if (sscanf(c2 + 1, "%d-%d", &rf, &rt) != 2) rf = -1; } } }
       if (rf >= 0 && (int)frame >= rf && (int)frame <= rt && re > 0 && ((int)frame - rf) % re == 0) {
           char p[600]; snprintf(p, sizeof p, "%s/r%05u.bin", rd, frame); FILE *f = fopen(p, "wb"); if (f) { fwrite(s23_ram, 1, 0x400000, f); fclose(f); } } }

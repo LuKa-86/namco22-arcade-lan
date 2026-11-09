@@ -934,6 +934,7 @@ void s23_render_frame_end(void)
           for (int i = 0; i < snap->list.count; i++) {
               s23_render_entry *e = &snap->list.e[i];
               if (e->type == S23_RE_IMMEDIATE) e->clip43 = 1;   /* the flat quads (the select screen's buttons and banners) */
+              if (s23_game.wide_pillar && s23_game.wide_pillar()) e->clip43 = 1;   /* the game's option: everything in 4:3 outside a match */
               if (e->type == S23_RE_MODEL && e->vp_fov > 0.f && (float)e->v[2] >= e->vp_fov - 8.f && (float)e->v[2] <= e->vp_fov + 8.f) e->clip43 = 1;
           } }
       else if (g_eng_hud_edges_on && ex > 0)

@@ -407,11 +407,14 @@ static void gw_notice_skip(void)
 static int fps_cross = -1;                                        /* Options "Crosshair (FPS)": 0 hidden (default), 1 shown */
 static int gw_fps_cross(void) { if (fps_cross < 0) fps_cross = eng_cfg_int("fps_crosshair", 0) != 0; return fps_cross; }
 static int gw_hide_crosshair(void) { return gw_fps_layout() && !gw_fps_cross(); }
-static int nc_rows(void) { return 5; }
+static int wide_pillar = -1;                                      /* Options "Widescreen outside matches": 1 = 4:3 with black bars (default) */
+static int gw_wide_pillar(void) { if (wide_pillar < 0) wide_pillar = eng_cfg_int("wide_pillar", 1) != 0; return wide_pillar; }
+static int nc_rows(void) { return 6; }
 static void nc_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
     static const char *names[4] = { "Auto", "Webcam", "Photo file", "Off" };
     if (r == 0) { snprintf(l, ln, "NamCam photo"); snprintf(v, vn, "%s", names[src_now()]); return; }
+    if (r == 5) { snprintf(l, ln, "Widescreen outside matches"); snprintf(v, vn, "%s", gw_wide_pillar() ? "4:3 with black bars (the demo's sets end at the 4:3 edges)" : "full width"); return; }
     if (r == 4) { snprintf(l, ln, "Crosshair (FPS)"); snprintf(v, vn, "%s", gw_fps_cross() ? "shown" : "hidden (the mouse turns; nothing to point at)"); return; }
     if (r == 3) { snprintf(l, ln, "Mouse sensitivity"); snprintf(v, vn, "%d  (FPS layout; 1 slow - 10 fast)", gw_fps_sens()); return; }
     if (r == 2) { snprintf(l, ln, "Controls"); snprintf(v, vn, "%s", gw_fps_layout() ? "FPS (the mouse turns)" : "Cursor (push to a side to turn)"); return; }
@@ -421,6 +424,7 @@ static void nc_text(int r, char *l, size_t ln, char *v, size_t vn)
 static void nc_change(int r, int dir)
 {
     if (r == 0) { namcam_src = (src_now() + (dir < 0 ? 3 : 1)) & 3; eng_cfg_set_int("namcam_source", namcam_src); photo_apply(); return; }
+    if (r == 5) { wide_pillar = !gw_wide_pillar(); eng_cfg_set_int("wide_pillar", wide_pillar); return; }
     if (r == 4) { fps_cross = !gw_fps_cross(); eng_cfg_set_int("fps_crosshair", fps_cross); return; }
     if (r == 3) { fps_sens = gw_fps_sens() + (dir < 0 ? -1 : 1); if (fps_sens < 1) fps_sens = 1; if (fps_sens > 10) fps_sens = 10; eng_cfg_set_int("fps_sensitivity", fps_sens); return; }
     if (r == 2) { fps_layout = !gw_fps_layout(); eng_cfg_set_int("fps_layout", fps_layout); gw_mouse_capture(); return; }
@@ -452,6 +456,7 @@ static void gw_list_hook(void *lv)
 {
     { static int once; if (!once) { once = 1; gw_photo_load(); photo_apply(); } }
     gw_notice_skip();
+    { void gw_test_pokes(void); gw_test_pokes(); }   /* TEST switches kept outside the saved state (src/gw_link.c) */
     { static int hl = -1; if (hl < 0) hl = getenv("GW_HUDLOG") != NULL;   /* $GW_HUDLOG: each screen-plane model id / x (first time seen) */
       if (hl) { const s23_render_list *l = lv; static uint8_t seen[0x4000][2]; extern uint32_t rr_frame;
         for (int i = 0; i < l->count; i++) { const s23_render_entry *e = &l->e[i];
@@ -538,7 +543,7 @@ const s23_game_t s23_game = {
     .npt = 2, .pt_rom = { { "gm1pt0h.7a", "gm1pt0l.7c" }, { "gm1pt1h.5a", "gm1pt1l.5c" } },
     .ccrl = "gm1ccrl.7f", .ccrh = "gm1ccrh.7e", .cg = { "gm1cgll.4m", "gm1cglm.4k", "gm1cgum.4j", "gm1cguu.5f" },
     .wave = { "gm1wave.2c", NULL },
-    .hide_crosshair = gw_hide_crosshair,
+    .hide_crosshair = gw_hide_crosshair, .wide_pillar = gw_wide_pillar,
     .no_smooth = 0, .io_asca = 1, .mem_read = gw_read, .mem_write = gw_write,
     .list_hook = gw_list_hook,
     .hud_wide_ok = gw_hud_wide_ok,

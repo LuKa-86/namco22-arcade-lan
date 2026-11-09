@@ -815,3 +815,16 @@ static void photo_in(int cab, const uint8_t *b, int r)
 
 void disc_start_answering_(void) { disc_start_answering(); }
 int auto_place_(const char *l, int *n) { return auto_place(l, n); }
+
+/* TEST: $GW_POKEF=addr=float,... written into main RAM every frame (here: outside the saved state, so captures still load) */
+void gw_test_pokes(void)
+{
+    extern uint8_t s23_ram[];
+    static int np = -1; static uint32_t pa[8]; static float pv[8];
+    if (np < 0) { np = 0; const char *e = getenv("GW_POKEF");
+        while (e && *e && np < 8) { unsigned a; float v; if (sscanf(e, "%x=%f", &a, &v) != 2) break; pa[np] = a & 0x3FFFFF; pv[np++] = v; e = strchr(e, ','); if (e) e++; else break; } }
+    { static int nh = -1; static uint32_t ha[8]; static unsigned hv[8];   /* $GW_POKEH=addr=hex16,... */
+      if (nh < 0) { nh = 0; const char *e = getenv("GW_POKEH"); while (e && *e && nh < 8) { unsigned a, v; if (sscanf(e, "%x=%x", &a, &v) != 2) break; ha[nh] = a & 0x3FFFFF; hv[nh++] = v; e = strchr(e, ','); if (e) e++; else break; } }
+      for (int i = 0; i < nh; i++) { s23_ram[ha[i]] = (uint8_t)(hv[i] >> 8); s23_ram[ha[i] + 1] = (uint8_t)hv[i]; } }
+    for (int i = 0; i < np; i++) { uint32_t u; memcpy(&u, &pv[i], 4); s23_ram[pa[i]] = (uint8_t)(u >> 24); s23_ram[pa[i] + 1] = (uint8_t)(u >> 16); s23_ram[pa[i] + 2] = (uint8_t)(u >> 8); s23_ram[pa[i] + 3] = (uint8_t)u; }
+}
