@@ -76,6 +76,9 @@ typedef struct {
     int (*hide_crosshair)(void);                  /* optional: 1 = the crosshair is not drawn now (Gunmen Wars: the FPS layout, where the mouse turns
                                                    * and the crosshair's spot means nothing -- Options page "Crosshair (FPS)") */
     int (*hud_wide_ok)(const void *list);
+    void (*imm_adjust)(const void *imm, float *v_add, int *boost, int *uv_pal);   /* imm = the s23_immediate (src/s23_c435.h); uv_pal[3] =
+                                                   * u, v, palette to use instead (uv_pal[2] >= 0)   /* optional: an immediate polygon's texture v
+                                                   * offset and 2x brightness (Gunmen Wars: the namco ball / letters, matched to the arcade footage) */
     int (*wide_pillar)(void);                     /* optional: 1 = outside the in-game HUD (hud_wide_ok 0) the whole picture stays 4:3 in widescreen
                                                    * (Gunmen Wars: its attract fly-throughs are sets built only as far as the 4:3 camera sees) */        /* the widescreen HUD shift applies to this list? (NULL = always; Gunmen Wars: only with the in-game HUD up) */
     void (*menu_pages)(void);                     /* optional: add the game's own pages to the Esc menu (eng_ui_add_page), after Controls */

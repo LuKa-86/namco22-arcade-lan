@@ -18,6 +18,7 @@ typedef struct {
     int stencil, cmode, tbase, color_base, blend, prioverchar, alpha_enabled;
     int vp_size_x, vp_size_y, vp_offset_x, vp_offset_y;
     int clip43;                                        /* widescreen: clip to the 4:3 picture (s23_render_entry.clip43) */
+    int boost;                                         /* shade may go to 2x (s23_game.imm_adjust: Gunmen Wars' namco logo) */
     int entry, model;                                  /* the render-list entry it came from and its model (-1 = immediate / direct) */
 } s23_poly;
 /* the C404's per-frame values every polygon uses */

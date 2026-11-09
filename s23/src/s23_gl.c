@@ -119,8 +119,8 @@ static const char *fs_poly =
     "  int prow = int(v_par.z) + int(pty) - u_photo;\n"            /* the photo page: any way a polygon reaches its rows */
     "  if (u_photo != 0 && prow >= 0 && prow < 256 && ptx < 1024u) { c = texelFetch(t_photo, ivec2(int(ptx), prow), 0); pen = 1u; }\n"
     "  ivec3 col = ivec3(c.rgb * 255.0 + 0.5);\n"
-    "  int sh = clamp(int(v_uvs.z), 0, 63);\n"
-    "  col = (col * sh) >> 6;\n"
+    "  int sh = clamp(int(v_uvs.z), 0, (fl & 64) != 0 ? 127 : 63);\n"
+    "  col = min((col * sh) >> 6, ivec3(255));\n"
     "  if (u_pfade != 0) col = (col * u_pcol) >> 8;\n"
     "  if (u_ff != 255) col = (col * u_ff + u_fcol * (256 - u_ff)) >> 8;\n"
     "  bool ua = u_alpha != 255 && ((fl & 4) != 0 || int(pen) == u_alpha_pen);\n"
@@ -335,7 +335,7 @@ static int fill_vertices(const s23_built *b)
         /* widescreen (Hor+): a viewport that fills the 4:3 screen fills the wide one -- same camera, more world at the sides */
         const int full = ex && cl <= 0 && cr >= 640 && !p->clip43;
         const int ccl = full ? -ex : cl, ccr = full ? 640 + ex : cr;
-        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3);
+        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3 | (p->boost != 0) << 6);
         for (int k = 1; k + 1 < p->n; k++) {
             const int tri[3] = { 0, k, k + 1 };
             /* a triangle with a non-finite or absurd coordinate is dropped: Intel's GL driver crashed on such vertices (Gunmen Wars, in a

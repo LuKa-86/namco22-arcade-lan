@@ -295,7 +295,7 @@ static void render_model(const s23_render_entry *e)
               e->scaling, e->v[0], e->v[1], e->v[2], e->vp_size_x, e->vp_size_y, e->vp_fov); }
         p->blend = (int)((h >> 10) & 1);                    /* known before finish() (the S23_XYCULL_BLEND test); effects() sets it again */
         if (p->n >= 3 && finish(p, e, (int)((h & 0x300) >> 8), polyshift, 17, 0x1FFFF, 0xFFFC0000u)) {
-            p->stencil = stencil; p->cmode = cmode; p->tbase = tbase; p->color_base = color << 8;
+            p->stencil = stencil; p->cmode = cmode; p->tbase = tbase; p->color_base = color << 8; p->boost = 0;
             effects(p, color, (int)((type >> 21) & 1), (int)h);
             GNPOLY++;
         }
@@ -321,6 +321,10 @@ static void render_immediate(const s23_render_entry *e)
          * flatten (video 1, 159.6 -> 160.0 s): not found -- ruled out: fewer v bits, 2 / 4 fraction bits, v offsets 0x60 / 0xC0 (brown with
          * skyline), palette / C404 / text layer / C412-C417 writes (all constant over the logo). Likely a C435 / C404 feature not emulated) */
         pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & 0xFFFF); pv[i].p[3] = (float)(int32_t)q->i[i];    }
+    int boost = 0;
+    int uvp[3] = { 0, 0, -1 };
+    if (s23_game.imm_adjust) { float va = 0.f; s23_game.imm_adjust(q, &va, &boost, uvp);
+        for (int i = 0; i < ne && i < 4; i++) { pv[i].p[2] += va; if (boost) pv[i].p[3] *= 2.f; if (uvp[2] >= 0) { pv[i].p[1] = (float)uvp[0]; pv[i].p[2] = (float)uvp[1]; } } }
     if (GNPOLY >= MAX_POLYS) return;
     poly *p = &GPOLYS[GNPOLY];
     p->n = zclip(ne < 4 ? ne : 4, pv, p->pv, znear());
@@ -333,7 +337,7 @@ static void render_immediate(const s23_render_entry *e)
           (unsigned)q->u[0], (unsigned)q->v[0], (unsigned)q->u[1], (unsigned)q->v[1], (unsigned)q->u[2], (unsigned)q->v[2], (unsigned)q->i[0], (unsigned)q->i[1]); }
     p->blend = (int)((h >> 10) & 1);
     if (p->n >= 3 && finish(p, e, 2, q->zbias, 16, 0xFFFF, 0xFFFE0000u)) {
-        p->stencil = (int)((h >> 11) & 1); p->cmode = 0; p->tbase = 0;
+        p->stencil = (int)((h >> 11) & 1); p->cmode = 0; p->tbase = 0; p->boost = boost;
         /* THE PHOTO SQUARE of an immediate (Gunmen Wars' diamond graph: u 0x8000-0x8080, v 0xF000-0xF080 -- u bit 15 set, the area starting
          * at u 0, v 0xF000): drawn from the photo page's 128 x 128 player picture, as the team select's model slot. Only that square: the
          * graph's line (u 0x8020, v 0xF080, also bit 15) reads its red from the texture ROM as before */
@@ -341,7 +345,7 @@ static void render_immediate(const s23_render_entry *e)
             for (int i = 0; i < q->n && i < 4; i++) { all15 &= (q->u[i] >> 15) & 1; if ((q->u[i] & 0x7FFF) < mu) mu = q->u[i] & 0x7FFF; if ((q->v[i] & 0xFFFF) < mv) mv = q->v[i] & 0xFFFF; }
             if (all15 && mu < 0x80 && mv >= 0xF000 && mv < 0xF080) {
                 for (int i = 0; i < p->n; i++) p->pv[i].p[1] -= 32768.f * p->pv[i].p[0];   /* (u is stored times 1/z) */
-                p->tbase = s23_game.photo_page - 0xF000; } } p->color_base = (int)(q->pal & 0x7F00);
+                p->tbase = s23_game.photo_page - 0xF000; } } p->color_base = uvp[2] >= 0 ? uvp[2] << 8 : (int)(q->pal & 0x7F00);
         effects(p, (int)((q->pal >> 8) & 0x7F), 0, (int)h);
         GNPOLY++;
     }
@@ -378,7 +382,7 @@ static void render_direct(const s23_render_entry *e)
         p->tbase = (d[2] & 0xF) << 12 | ((d[2] >> 7) & 1) << 16;
         p->cmode = (d[2] & 0x70) >> 4;
         p->vp_size_x = e->vp_size_x; p->vp_size_y = e->vp_size_y; p->vp_offset_x = e->vp_offset_x; p->vp_offset_y = e->vp_offset_y;
-        p->clip43 = 0;
+        p->clip43 = 0; p->boost = 0;
         p->entry = (int)(e - FS->list.e); p->model = -1;
         effects(p, (d[2] >> 8) & 0x7F, 0, 0);
         p->blend = 0;
@@ -461,8 +465,8 @@ static void span(const poly *p, int y, int x0, int x1, const float *s, const flo
             { c = s23_photo_tex[((ty + (uint32_t)p->tbase - (uint32_t)s23_game.photo_page) & 255) * S23_PHOTO_W + (tx & (S23_PHOTO_W - 1))]; pen = 1; }
         else { ty += (uint32_t)p->tbase; c = tex_lookup(pbase, penshift, penmask, tx, ty, &pen); }
         int r = c >> 16 & 0xFF, g = c >> 8 & 0xFF, b = c & 0xFF;
-        int sh = (int)(i * ooz); if (sh < 0) sh = 0; if (sh > 63) sh = 63;
-        r = r * sh >> 6; g = g * sh >> 6; b = b * sh >> 6;
+        int sh = (int)(i * ooz); if (sh < 0) sh = 0; if (sh > (p->boost ? 127 : 63)) sh = p->boost ? 127 : 63;
+        r = r * sh >> 6; g = g * sh >> 6; b = b * sh >> 6; if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
         if (rx.pfade) { r = r * rx.pr >> 8; g = g * rx.pg >> 8; b = b * rx.pb >> 8; }
         if (rx.fadefactor != 0xFF) { r = (r * rx.fadefactor + rx.fr * rx.fadefactor_inv) >> 8; g = (g * rx.fadefactor + rx.fg * rx.fadefactor_inv) >> 8; b = (b * rx.fadefactor + rx.fb * rx.fadefactor_inv) >> 8; }
         const int use_alpha = rx.alpha != 0xFF && (p->alpha_enabled || pen == rx.alpha_pen);

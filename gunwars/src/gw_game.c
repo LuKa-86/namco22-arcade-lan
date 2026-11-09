@@ -407,6 +407,22 @@ static void gw_notice_skip(void)
 static int fps_cross = -1;                                        /* Options "Crosshair (FPS)": 0 hidden (default), 1 shown */
 static int gw_fps_cross(void) { if (fps_cross < 0) fps_cross = eng_cfg_int("fps_crosshair", 0) != 0; return fps_cross; }
 static int gw_hide_crosshair(void) { return gw_fps_layout() && !gw_fps_cross(); }
+/* THE NAMCO LOGO (attract): a ball rolls out and unrolls into the letters, which turn RED-ORANGE the moment they lie flat (arcade footage:
+ * video 1 at 159.6-160.0 s, the Japanese set's video at 3:23). The ball / letters are 3-corner immediates (type 0x33C0, h 0x12E3, palette
+ * 0x0C) reflecting a dusk-sky panorama; ours read it as given and the letters stayed grey-blue (the sky above the sunset). The hardware
+ * rule is not known (palette, C404, text layer, texture chips: all constant). Matched to the footage: read 0x90 rows lower (into the
+ * sunset glow) at double brightness -> the arcade's bright ball and red-orange letters. Those polygons only. $GW_LOGOFIX=0 off */
+static void gw_imm_adjust(const void *iv, float *v_add, int *boost, int *uv_pal)
+{
+    const s23_immediate *q = iv;
+    static int off = -1, flat_v = 0, ball_v = 0x90;
+    if (off < 0) { const char *e = getenv("GW_LOGOFIX"); off = e && *e == '0';
+        if ((e = getenv("GW_LOGOV"))) sscanf(e, "%x,%x", &ball_v, &flat_v); }   /* (tuning: ball,flat row offsets, hex) */
+    if (off || (q->type & 0xFFFF) != 0x33C0 || (q->h & 0xFFFF) != 0x12E3 || (q->pal & 0x7F00) != 0x0C00) return;
+    int flat = 1; for (int i = 0; i < 3; i++) flat &= (q->u[i] & 0xFFFF) == 0x0A00 && (q->v[i] & 0xFFFF) == 0x7100;
+    if (flat) { uv_pal[0] = 0x370; uv_pal[1] = 0x1E30; uv_pal[2] = 0x7A; return; }   /* flat letters: the logo's own red, as its (R) mark (pal FA00) */
+    *v_add = (float)ball_v; *boost = 1;
+}
 static int wide_pillar = -1;                                      /* Options "Widescreen outside matches": 1 = 4:3 with black bars (default) */
 static int gw_wide_pillar(void) { if (wide_pillar < 0) wide_pillar = eng_cfg_int("wide_pillar", 1) != 0; return wide_pillar; }
 static int nc_rows(void) { return 6; }
@@ -543,7 +559,7 @@ const s23_game_t s23_game = {
     .npt = 2, .pt_rom = { { "gm1pt0h.7a", "gm1pt0l.7c" }, { "gm1pt1h.5a", "gm1pt1l.5c" } },
     .ccrl = "gm1ccrl.7f", .ccrh = "gm1ccrh.7e", .cg = { "gm1cgll.4m", "gm1cglm.4k", "gm1cgum.4j", "gm1cguu.5f" },
     .wave = { "gm1wave.2c", NULL },
-    .hide_crosshair = gw_hide_crosshair, .wide_pillar = gw_wide_pillar,
+    .hide_crosshair = gw_hide_crosshair, .wide_pillar = gw_wide_pillar, .imm_adjust = gw_imm_adjust,
     .no_smooth = 0, .io_asca = 1, .mem_read = gw_read, .mem_write = gw_write,
     .list_hook = gw_list_hook,
     .hud_wide_ok = gw_hud_wide_ok,
