@@ -1,9 +1,9 @@
-/* csz_game.c -- CRISIS ZONE's table for the System 23 host (../tc2/include/tc2_game.h): MAME's crszone set (World, CSZO4 Ver. B),
+/* csz_game.c -- CRISIS ZONE's table for the System 23 host (../s23/include/s23_game.h): MAME's crszone set (World, CSZO4 Ver. B),
  * System 23 EVOLUTION 2. Values from MAME's namcos23.cpp (crszone_state, ROM_START(crszone)) and the I/O board's device (namco_csz1). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tc2_game.h"
+#include "s23_game.h"
 
 static const eng_rom_t chips[] = {
     { "cszo4verb.ic4", 0x800000, NULL, NULL, 0x6192533D }, { "cszo3verb.ic1", 0x80000, NULL, NULL, 0xC790743B },
@@ -21,21 +21,21 @@ static const eng_rom_t chips[] = {
 };
 static const char *const zips[] = { "crszone.zip", "namco_csz1.zip" };   /* a split MAME set may keep the I/O board's program in its device zip */
 
-int tc2_rom_read(const char *dir, const char *name, uint8_t *dst, size_t n);   /* ../tc2/src/tc2_rom.c */
+int s23_rom_read(const char *dir, const char *name, uint8_t *dst, size_t n);   /* ../s23/src/s23_rom.c */
 
 static void unswap(uint8_t *d, size_t n) { for (size_t k = 0; k + 1 < n; k += 2) { const uint8_t t = d[k]; d[k] = d[k + 1]; d[k + 1] = t; } }
 /* the boot ROM (8 MB at 0x1F800000): cszo4verb.ic4 word-swapped (MAME ROM_LOAD16_WORD_SWAP into "user1"). The reset vector 0x1FC00000 is its
  * second half: the NMON monitor ("for SYSTEM23 EV2") and, 0x20000 on, the game's ELF (crszone/tools/make_prog.py prints the layout) */
 static int rom_boot(const char *dir, uint8_t *boot)
 {
-    if (!tc2_rom_read(dir, "cszo4verb.ic4", boot, 0x800000)) return 0;
+    if (!s23_rom_read(dir, "cszo4verb.ic4", boot, 0x800000)) return 0;
     unswap(boot, 0x800000);
     return 1;
 }
 /* the sub-CPU's (H8/3002) program: cszo3verb.ic1, word-swapped as Time Crisis 2's */
 static int rom_sub(const char *dir, uint8_t *dst, size_t n)
 {
-    if (n < 0x80000 || !tc2_rom_read(dir, "cszo3verb.ic1", dst, 0x80000)) return 0;
+    if (n < 0x80000 || !s23_rom_read(dir, "cszo3verb.ic1", dst, 0x80000)) return 0;
     unswap(dst, 0x80000);
     return 1;
 }
@@ -43,13 +43,13 @@ static int rom_sub(const char *dir, uint8_t *dst, size_t n)
 static int rom_io(const char *dir, uint8_t *dst, size_t n)
 {
     uint8_t *all = malloc(0x20000);
-    const int ok = all && n <= 0x20000 && tc2_rom_read(dir, "csz1prg0a.8f", all, 0x20000);
+    const int ok = all && n <= 0x20000 && s23_rom_read(dir, "csz1prg0a.8f", all, 0x20000);
     if (ok) { memcpy(dst, all, n); if (n > 0x4ED && dst[0x4EC] == 0xF8 && dst[0x4ED] == 0x04) dst[0x4ED] = 0x05; }   /* MAME's patch (tools/make_prog.py says why) */
     free(all);
     return ok;
 }
 
-const tc2_game_t tc2_game = {
+const s23_game_t s23_game = {
     .title = "Crisis Zone", .tag = "crszone", .window_title = "Crisis Zone", .mame_set = "crszone", .io_analog_out = 1, .recoil_hold = 1,
     .speech_bank_lo = 0xDB, .speech_bank_hi = 0xFF,   /* the call-outs (0xDB/0xDC/0xE1, centred) and the shouts (0xFD, panned): voices 30/31, and 17 doubling 0xFD */
     .zip_help = "MAME's crszone.zip (Crisis Zone, World CSZO4 Ver. B)",
@@ -62,8 +62,8 @@ const tc2_game_t tc2_game = {
     .c352_div = 2304,                             /* 88200 Hz */
     /* MAME crszone_state::machine_start: IRQ0 RS-232, IRQ1 sub-CPU + C422, IRQ2 vblank, IRQ3 C361 + C451, IRQ4 C450 (no C435 interrupt) */
     .irq_prompt = 1,                              /* ~550 C450 DMA interrupts a frame: take each at once, as MAME */
-    .ip = { [TC2_SRC_RS232] = TC2_IP(0), [TC2_SRC_SUB] = TC2_IP(1), [TC2_SRC_C422] = TC2_IP(1), [TC2_SRC_VBLANK] = TC2_IP(2),
-            [TC2_SRC_C361] = TC2_IP(3), [TC2_SRC_C451] = TC2_IP(3), [TC2_SRC_C450] = TC2_IP(4), [TC2_SRC_TIMER] = TC2_IP(5) },
+    .ip = { [S23_SRC_RS232] = S23_IP(0), [S23_SRC_SUB] = S23_IP(1), [S23_SRC_C422] = S23_IP(1), [S23_SRC_VBLANK] = S23_IP(2),
+            [S23_SRC_C361] = S23_IP(3), [S23_SRC_C451] = S23_IP(3), [S23_SRC_C450] = S23_IP(4), [S23_SRC_TIMER] = S23_IP(5) },
     .boot_size = 0x800000, .rom_boot = rom_boot, .rom_sub = rom_sub, .rom_io = rom_io, .io_rom_size = 0x4000, .c417_status = 0x0000, .no_direct_buf = 1, .depth_default = 0, .gun_x0 = 0x040, .gun_xw = 0x33F - 0x040, .gun_y0 = 0x020, .gun_yh = 0x0FF - 0x020, .sub_p7 = 0x80, .io_6001_held = 0x08,
     .data_rom = { { "csz1mtah.2j", "csz1mtal.2h" }, { "csz1mtbh.2m", "csz1mtbl.2f" } },
     .npt = 4, .pt_rom = { { "csz1pt0h.7a", "csz1pt0l.7c" }, { "csz1pt1h.5a", "csz1pt1l.5c" }, { "csz1pt2h.4a", "csz1pt2l.4c" }, { "csz1pt3h.3a", "csz1pt3l.3c" } },

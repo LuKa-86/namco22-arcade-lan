@@ -25,6 +25,7 @@ WHAT IS IN THIS FOLDER
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
      Dirt Dash\             one cabinet (the original project's own program)
+     Gunmen Wars\           one cabinet, early version (new in this package; linked play and the camera to come)
      Prop Cycle\            one cabinet (the original project's own program)
      Rave Racer\            up to 4 linked cabinets
      Time Crisis\           one cabinet (the original project's own program)
@@ -51,6 +52,7 @@ itself the first time it starts.
    games\Cyber Cycles\roms      cybrcycc.zip
    games\Cyber Sled\roms        cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
    games\Dirt Dash\roms         dirtdash.zip
+   games\Gunmen Wars\roms       gunwars.zip  and  namco_asca5.zip
    games\Prop Cycle\roms        propcycl.zip
    games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
    games\Time Crisis\roms       timecris.zip

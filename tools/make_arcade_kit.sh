@@ -35,6 +35,7 @@ GAMES=(
   "Alpine Surfer|AlpineSurfer-ArcadeLAN.exe|alpines/build/af.exe|alpines.zip|alpines"
   "Aqua Jet|AquaJet-ArcadeLAN.exe|aquajet/build/aj.exe|aquajet.zip|aquajet"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
+  "Gunmen Wars|GunmenWars-ArcadeLAN.exe|gunwars/build/gunwars.exe|gunwars.zip namco_asca5.zip|gunwars"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|@CrisisZone.exe|crszone.zip|crszone"
   "Dirt Dash|DirtDash.exe|@DirtDash.exe|dirtdash.zip|dirtdash"

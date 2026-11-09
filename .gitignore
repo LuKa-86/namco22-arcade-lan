@@ -174,3 +174,10 @@ __pycache__/
 /aquajet/*.cfg
 /aquajet/*.rec
 /aquajet/*.wav
+
+# Gunmen Wars (gunwars/): game files, the translation's working files, test output
+/gunwars/extracted/
+/gunwars/gen/
+/gunwars/build/
+/gunwars/build_watch/
+/gunwars/*.pcode
