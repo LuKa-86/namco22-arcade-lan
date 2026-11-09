@@ -234,11 +234,24 @@ public class SeedTables extends GhidraScript {
         int total = 0;
         String[] args = getScriptArgs();
         if (args.length > 0 && new File(args[0]).exists()) {
+            // first the DATA ranges ("LO-HI data": a little table Ghidra read as code, swallowing a real entry point after it, Air
+            // Combat 22's 0xD05E-0xD067 before the rts at 0xD068): cleared, and kept out of every pass, as the switch tables are
+            BufferedReader rd = new BufferedReader(new FileReader(args[0]));
+            String dl;
+            while ((dl = rd.readLine()) != null) {
+                String w = dl.trim().split("\\s+")[0];
+                if (w.isEmpty() || w.startsWith("#") || !w.contains("-")) continue;
+                String[] p = w.split("-");
+                long lo = Long.parseLong(p[0], 16), hi = Long.parseLong(p[1], 16);
+                switchTables.put(lo, hi);
+                clearListing(toAddr(lo), toAddr(hi));
+            }
+            rd.close();
             BufferedReader r = new BufferedReader(new FileReader(args[0]));
             String line; int n = 0;
             while ((line = r.readLine()) != null) {
                 line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (line.isEmpty() || line.startsWith("#") || line.split("\\s+")[0].contains("-")) continue;
                 long t = Long.parseLong(line.split("\\s+")[0], 16);
                 if (plausible(t) && seed(t, true)) n++;
             }

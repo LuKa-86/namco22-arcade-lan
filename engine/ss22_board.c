@@ -367,7 +367,7 @@ void ss22_hw_keycus_force(uint32_t v) { keycus_forced = 1; keycus_forced_v = (ui
 
 static uint32_t ss22_hw_keycus_r(uint32_t unit)
 {
-    if (unit == cfg->keycus_unit) return cfg->keycus_value;
+    if (unit == cfg->keycus_unit || cfg->keycus_all) return cfg->keycus_value;
     if (keycus_forced) { keycus_forced = 0; return g_hw.keycus_rng = keycus_forced_v; }
     unsigned v;
     if (keycus_replay && fscanf(keycus_replay, "%x", &v) == 1) return g_hw.keycus_rng = (uint16_t)v;

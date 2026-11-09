@@ -73,6 +73,7 @@ typedef struct {
     bool (*load_eeprom)(const char *rom_dir);         /* the EEPROM's starting contents (the set's defaults, or blank) */
     bool (*extra_read)(uint32_t a, int size, uint32_t *v);   /* optional: a device on the map only this game has, asked first for every read in 0x430000..0x43FFFF (a light gun) */
     void (*rom_write)(uint32_t a, int size, uint32_t v);     /* optional: a write into the program ROM's space (Alpine Surfer's ROM bank register at 0x300000); NULL = an error, as before */
+    bool keycus_all;                                  /* our fork: EVERY unit answers keycus_value (MAME: Air Combat 22 has no keycus -- all reads 0) */
 } ss22_board_cfg;
 
 /* THE LIGHT GUN (MAME gun_r): 16-bit reads on the HIGH half of each long at 0x430000 (X), 0x430004 and 0x430008 (Y, twice); both axes read 0 when
