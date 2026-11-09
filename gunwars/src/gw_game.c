@@ -452,6 +452,12 @@ static void gw_list_hook(void *lv)
 {
     { static int once; if (!once) { once = 1; gw_photo_load(); photo_apply(); } }
     gw_notice_skip();
+    { static int hl = -1; if (hl < 0) hl = getenv("GW_HUDLOG") != NULL;   /* $GW_HUDLOG: each screen-plane model id / x (first time seen) */
+      if (hl) { const s23_render_list *l = lv; static uint8_t seen[0x4000][2]; extern uint32_t rr_frame;
+        for (int i = 0; i < l->count; i++) { const s23_render_entry *e = &l->e[i];
+            if (e->type != S23_RE_MODEL || e->vp_fov <= 0.f || e->v[2] < e->vp_fov - 8.f || e->v[2] > e->vp_fov + 8.f || e->model >= 0x4000) continue;
+            const int side = e->v[0] < 0 ? 0 : 1; if (seen[e->model][side]) continue; seen[e->model][side] = 1;
+            fprintf(stderr, "[HUD] f%u model %04X x %d y %d\n", rr_frame, e->model, (int)e->v[0], (int)e->v[1]); } } }
     { /* THE WIDESCREEN HUD (engine: screen-plane models slide to the edges, src/s23_render.c): the counters' diamond and digits are TEXT
        * (the C361 layer) over the 3D panels (models 0x0E43 / 0x0E44 at x -+232): while those panels are up, their bands of text move too */
       s23_render_list *hl = (s23_render_list *)lv; extern int g_eng_hud_edges_on; int s23_gl_wide(void); const int ex = s23_gl_wide();

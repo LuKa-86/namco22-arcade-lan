@@ -174,6 +174,19 @@ static uint32_t peer_session[MAXCAB];
 static uint64_t peer_time[MAXCAB], heard_ms[MAXCAB];
 static uint32_t tx_seq, rx_seq_last[MAXCAB];
 static uint64_t lag = FRAME_CYCLES / 10, poll_every, poll_at, hello_ms;   /* poll_every: lag / 4 (the cable read, our packets sent) */
+/* THE NETWORK SETTING (Link page "Network", link_net in gunwars.cfg): how far behind the others' packets are played, = how much delay
+ * and jitter the link rides out before a cabinet has to wait. 0 LAN 0.1 frame (as before), 1 Wi-Fi 1 frame, 2 slow 3 frames, 3 internet
+ * 6 frames. Each hello carries it (header byte 6); while the cabinets find each other every one takes the LARGEST, so all play alike */
+static int net_level;
+static const char *const net_key[4] = { "lan", "wifi", "slow", "internet" };
+static const double net_frames[4] = { 0.1, 1.0, 3.0, 6.0 };
+static void set_lag(void)
+{
+    lag = (uint64_t)(net_frames[net_level] * FRAME_CYCLES);
+    if (getenv("GW_LINK_LAG")) lag = (uint64_t)(atof(getenv("GW_LINK_LAG")) * FRAME_CYCLES);
+    if (lag < 4 * AHEAD_MARGIN) lag = 4 * AHEAD_MARGIN;
+    poll_every = lag / 4;
+}
 static char why_alone[96], warn_text[112];
 static unsigned long n_dgram_out, n_dgram_in, n_pkt_out, n_pkt_in, n_drops, n_late, n_waits;
 static uint64_t wait_ms_total, wait_ms_max;
@@ -196,7 +209,7 @@ static uint32_t make_session(void)
 }
 static int hdr(uint8_t *b, char type)
 {
-    memcpy(b, "GWL", 3); b[3] = VERSION; b[4] = (uint8_t)me; b[5] = (uint8_t)type; b[6] = b[7] = 0;
+    memcpy(b, "GWL", 3); b[3] = VERSION; b[4] = (uint8_t)me; b[5] = (uint8_t)type; b[6] = (uint8_t)net_level; b[7] = 0;
     put32(b + 8, session); put32(b + 12, type == 'H' ? 0 : tx_seq++);   /* hellos are not counted (read before the sequence check) */
     return 16;
 }
@@ -219,6 +232,7 @@ static void cfg_read(gw_link_cfg *c, int *on)
             else if (!strcmp(k, "link_address")) snprintf(c->address, sizeof c->address, "%s", v);
             else if (!strcmp(k, "link_port")) c->port = (unsigned)atoi(v);
             else if (!strcmp(k, "link_wait")) wait_s = atoi(v);
+            else if (!strcmp(k, "link_net")) { for (int i = 0; i < 4; i++) if (!strcmp(v, net_key[i])) net_level = i; }
         }
         fclose(f);
     }
@@ -229,8 +243,9 @@ static void cfg_read(gw_link_cfg *c, int *on)
                    "# (the game's PCB ID follows it). link_cabinets: how many are linked. link_address: auto finds the others on the\n"
                    "# network; or list the other PCs, e.g. 192.168.1.20,192.168.1.21; loop = copies on this one PC (each in its own folder).\n"
                    "# link_port: the same on every PC. link_wait: seconds to wait at power-on for the others. link_lights: off, bottom-left,\n"
-                   "# bottom-centre, bottom-right, top-left, top-centre, top-right\n"
-                   "link = off\nlink_cabinet = 1\nlink_cabinets = 2\nlink_address = auto\nlink_port = 23100\nlink_wait = 60\nlink_lights = bottom-left\n");
+                   "# bottom-centre, bottom-right, top-left, top-centre, top-right.\n"
+                   "# link_net: lan, wifi, slow or internet (more delay, rides out a worse network; the linked PCs use the slowest)\n"
+                   "link = off\nlink_cabinet = 1\nlink_cabinets = 2\nlink_address = auto\nlink_port = 23100\nlink_wait = 60\nlink_lights = bottom-left\nlink_net = lan\n");
         fclose(f);
     }
 }
@@ -272,9 +287,8 @@ static void open_link(void)
         fprintf(stderr, "[LINK] This cabinet is Auto: number %d of %d (its place in the address list)\n", pos, n);
     }
     if (getenv("GW_LINK_WAIT")) wait_s = atoi(getenv("GW_LINK_WAIT"));
-    if (getenv("GW_LINK_LAG")) lag = (uint64_t)(atof(getenv("GW_LINK_LAG")) * FRAME_CYCLES);
-    if (lag < 4 * AHEAD_MARGIN) lag = 4 * AHEAD_MARGIN;
-    poll_every = lag / 4;
+    if (getenv("GW_LINK_NET")) net_level = atoi(getenv("GW_LINK_NET")) & 3;   /* tests: 0 lan .. 3 internet */
+    set_lag();
     if (!on) { fprintf(stderr, "[LINK] link off (gunwars.cfg): this cabinet plays alone\n"); return; }
     if (c.cabinets < 2 || c.cabinets > MAXCAB || c.cabinet < 0 || c.cabinet >= c.cabinets) {
         fprintf(stderr, "[LINK] link_cabinet %d of link_cabinets %d does not fit (2-%d cabinets, link_cabinet 1 to link_cabinets): this cabinet plays alone\n", c.cabinet + 1, c.cabinets, MAXCAB);
@@ -333,6 +347,8 @@ static void on_hello(int cab, const uint8_t *b, int r)
         return;
     }
     if (state != ST_WAIT) return;
+    if (b[6] > net_level && b[6] < 4) { net_level = b[6]; set_lag();
+        fprintf(stderr, "[LINK] cabinet %d is set to network \"%s\": this one plays the same (%.1f frames behind)\n", cab + 1, net_key[net_level], net_frames[net_level]); }
     nonce_of[cab] = nonce; heard[cab] = 1; peer_state[cab] = b[17]; peer_session[cab] = get32(b + 24); heard_ms[cab] = ms_now();
     for (int i = 0; i < ncab; i++) if (!heard[i]) return;     /* not all here yet */
     const uint32_t s = make_session();
@@ -345,11 +361,13 @@ static void on_hello(int cab, const uint8_t *b, int r)
 static uint8_t outb[1400]; static int outn;
 static uint64_t flushed_upto;                                  /* the board's time when our packets last went: what "time T" may promise */
 uint64_t gw_gmen_time(void);
-static void flush(uint64_t now)
+/* cap: the most this datagram may promise. A datagram that fills up mid-run of the board goes early: the board's clock is already at the
+ * end of the run, but packets stamped before it are still to come -- so it promises only the stamp of the packet that did not fit (the
+ * cause of "packets late" with a longer Network delay, where datagrams fill more often) */
+static void flush_to(uint64_t cap)
 {
-    (void)now;
     if (state != ST_LINKED) { outn = 0; return; }
-    flushed_upto = gw_gmen_time();
+    flushed_upto = gw_gmen_time(); if (flushed_upto > cap) flushed_upto = cap;
     if (!outn) return;
     uint8_t b[16 + 8 + sizeof outb]; int p = hdr(b, 'P');
     put64(b + p, flushed_upto); p += 8;
@@ -358,12 +376,13 @@ static void flush(uint64_t now)
     if (logon) fprintf(stderr, "[LINK] f%u out %d bytes\n", rr_frame, p);
     n_dgram_out++; outn = 0;
 }
+static void flush(uint64_t now) { (void)now; flush_to(UINT64_MAX); }
 void gw_link_send(int kind, int dst, const uint32_t *q, int n, uint64_t t)
 {
     if (state != ST_LINKED || n <= 0 || n > GW_PKT_MAXQ) return;
     const int need = 12 + 4 * n;
     if (need > (int)sizeof outb) { static int said; if (!said++) fprintf(stderr, "[LINK] a packet of %d quadlets is too big for a datagram: dropped\n", n); return; }
-    if (outn + need > (int)sizeof outb) { const uint64_t keep = flushed_upto; flush(0); flushed_upto = keep < t ? keep : t; }   /* (a full datagram: promises no more than before) */
+    if (outn + need > (int)sizeof outb) { const uint64_t keep = flushed_upto; flush_to(t); if (flushed_upto < keep) flushed_upto = keep; }   /* (a full datagram: promises no more than what went) */
     uint8_t *o = outb + outn;
     put64(o, t); o[8] = (uint8_t)kind; o[9] = (uint8_t)n; put16(o + 10, (uint32_t)dst);
     for (int i = 0; i < n; i++) put32(o + 12 + 4 * i, q[i]);
@@ -692,7 +711,8 @@ static int auto_place(const char *list, int *count)
 #include "eng/eng_cfg.h"
 static int pg_get(const char *k, int def) { return eng_cfg_int(k, def); }
 static int cab_auto(void) { const char *c = eng_cfg_get("link_cabinet"); return c && !strcmp(c, "auto"); }
-static int lk_rows(void) { return 7; }
+static int net_cfg(void) { const char *v = eng_cfg_get("link_net"); for (int i = 0; i < 4; i++) if (v && !strcmp(v, net_key[i])) return i; return 0; }
+static int lk_rows(void) { return 8; }
 static void lk_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
     const char *a = eng_cfg_get("link_address");
@@ -705,7 +725,10 @@ static void lk_text(int r, char *l, size_t ln, char *v, size_t vn)
     case 3: snprintf(l, ln, "Find the others");
             snprintf(v, vn, "%s", !a || !strcmp(a, "auto") ? "On the network (auto)" : !strcmp(a, "loop") ? "On this PC (test copies)" : a); break;
     case 4: snprintf(l, ln, "Port"); snprintf(v, vn, "%d  (the same on every PC)", pg_get("link_port", 23100)); break;
-    case 5: snprintf(l, ln, "Find cabinets"); snprintf(v, vn, "%s", D.searching ? "searching..." : "Enter: search the network"); break;
+    case 5: { static const char *const nm[4] = { "LAN  (cable / good network, no added delay)", "Wi-Fi  (+17 ms, rides out small hiccups)",
+                                                  "Slow network  (+50 ms)", "Internet  (+100 ms)" };
+              snprintf(l, ln, "Network"); snprintf(v, vn, "%s", nm[net_cfg()]); break; }
+    case 6: snprintf(l, ln, "Find cabinets"); snprintf(v, vn, "%s", D.searching ? "searching..." : "Enter: search the network"); break;
     default: snprintf(l, ln, "Use found"); snprintf(v, vn, "%s", D.done && D.n >= 2 ? "Enter: link with these PCs" : "(find 2 or more first)"); break;
     }
 }
@@ -720,7 +743,8 @@ static void lk_change(int r, int dir)
                   if (!cab_auto() && pg_get("link_cabinet", 1) > n) eng_cfg_set_int("link_cabinet", n); return; }
     if (r == 3) { const char *a = eng_cfg_get("link_address"); eng_cfg_set("link_address", a && !strcmp(a, "loop") ? "auto" : "loop"); return; }
     if (r == 4) { int p = pg_get("link_port", 23100) + d * 10; if (p < 1024) p = 1024; if (p > 65000) p = 65000; eng_cfg_set_int("link_port", p); return; }
-    if (r == 5) { if (dir == 0) disc_find(); return; }
+    if (r == 5) { eng_cfg_set("link_net", net_key[(net_cfg() + (d < 0 ? 3 : 1)) & 3]); return; }
+    if (r == 6) { if (dir == 0) disc_find(); return; }
     if (dir == 0) disc_use();
 }
 static void lk_notes(void (*line)(const char *, ...))
@@ -738,6 +762,7 @@ static void lk_notes(void (*line)(const char *, ...))
         if (D.n >= 2) line("\"Use found\" on EVERY PC: the same list, each its own number.");
         else line("Start the game on the other PCs, then search again.");
     } else line("Find cabinets: start the game on every PC, then search.");
+    if (state == ST_LINKED) line("Network: %s (the slowest setting of the linked PCs is used).", net_key[net_level]);
     line("Changes take effect at the next start.");
 }
 const eng_ui_page gw_link_page = { "Link", 560, 140, 26, lk_rows, NULL, NULL, lk_text, lk_change, lk_notes };

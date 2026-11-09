@@ -927,6 +927,9 @@ void s23_render_frame_end(void)
               if (e->type != S23_RE_MODEL || e->vp_fov <= 0.f || e->v[0] == 0) continue;
               const float z = (float)e->v[2];
               if (z < e->vp_fov - 8.f || z > e->vp_fov + 8.f) continue;
+              /* only the pieces out towards the sides (more than 160 of the 320 pixels from the centre): one near the middle (Gunmen Wars'
+               * diamond pop-up over the health bar, models 0x0240-3 at x 0..-60) stays whole -- shifting it split its parts apart */
+              if (fabsf((float)e->v[0] * e->vp_fov / z) < 160.f) continue;
               const int32_t d = (int32_t)((float)ex * z / e->vp_fov + 0.5f);
               e->v[0] += e->v[0] < 0 ? -d : d;
           } }
