@@ -314,15 +314,21 @@ static void render_immediate(const s23_render_entry *e)
         /* 24-BIT signed positions (like the point ROM's): Gunmen Wars' title logo sends -0.008 as 0x00FFFF80 -- read as a 32-bit value
          * (as MAME does) it became +1024 and the logo was projected far off-screen */
         pv[i].x = s24(q->x[i]) / 16384.f; pv[i].y = s24(q->y[i]) / 16384.f; pv[i].p[0] = s24(q->z[i]) / 16384.f;
-        pv[i].p[1] = (float)(int32_t)q->u[i]; pv[i].p[2] = (float)(int32_t)q->v[i]; pv[i].p[3] = (float)(int32_t)q->i[i];
+        /* u / v: the LOW 16 BITS only (Gunmen Wars' namco logo: 300 triangles whose words carry junk in the high half -- u 79C60A00,
+         * v 022A7100 -- read whole they sampled noise all over the texture ROM; masked they all read the logo's red at 0A00, 7100) */
+        static long vm = -2; if (vm == -2) { const char *e = getenv("S23_IMMVMASK"); vm = e ? strtol(e, NULL, 16) : 0xFFFF; }   /* TEST */
+        pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & (uint32_t)vm); pv[i].p[3] = (float)(int32_t)q->i[i];
+        { static int sh = -1; if (sh < 0) { const char *e = getenv("S23_IMMSH"); sh = e ? atoi(e) : 0; }   /* TEST: 3-corner immediates' u / v with sh fraction bits */
+          if (sh && ne == 3) { pv[i].p[1] = (float)((q->u[i] & 0xFFFF) >> sh); pv[i].p[2] = (float)((q->v[i] & 0xF000) | ((q->v[i] & 0xFFF) >> sh)); } }
     }
     if (GNPOLY >= MAX_POLYS) return;
     poly *p = &GPOLYS[GNPOLY];
     p->n = zclip(ne < 4 ? ne : 4, pv, p->pv, znear());
-    { static int lg = -1, n; if (lg < 0) lg = getenv("S23_IMMLOG") != NULL;   /* debug: how an immediate polygon decodes */
+    { static int lg = -1, n, lg2; if (lg < 0) { const char *el = getenv("S23_IMMLOG"); lg = el ? (*el == '3' ? 3 : 1) : 0; lg2 = el && *el == '2'; }   /* debug: how an immediate polygon decodes (=2: the first 4 of every frame) */
       extern uint32_t rr_frame;
       static long from = -2; if (from == -2) { const char *ef = getenv("S23_IMMFROM"); from = ef ? atol(ef) : 3090; }
-      if (lg && (long)rr_frame >= from && n++ < 300) fprintf(stderr, "[IMMR] f%u type %08X h %08X ne %d v0 %g %g z %g v1 %g %g z %g v2 %g %g z %g clip-n %d pal %X | u/v %08X %08X %08X %08X %08X %08X | i %08X %08X\n", rr_frame, type, h, ne,
+      static uint32_t lf; static int pf; if (rr_frame != lf) { lf = rr_frame; pf = 0; }
+      if (lg && (long)rr_frame >= from && (lg2 ? pf++ < 4 : n++ < (lg == 3 ? 3000 : 300))) fprintf(stderr, "[IMMR] f%u type %08X h %08X ne %d v0 %g %g z %g v1 %g %g z %g v2 %g %g z %g clip-n %d pal %X | u/v %08X %08X %08X %08X %08X %08X | i %08X %08X\n", rr_frame, type, h, ne,
           pv[0].x, pv[0].y, pv[0].p[0], pv[1].x, pv[1].y, pv[1].p[0], pv[2].x, pv[2].y, pv[2].p[0], p->n, (unsigned)q->pal,
           (unsigned)q->u[0], (unsigned)q->v[0], (unsigned)q->u[1], (unsigned)q->v[1], (unsigned)q->u[2], (unsigned)q->v[2], (unsigned)q->i[0], (unsigned)q->i[1]); }
     p->blend = (int)((h >> 10) & 1);
@@ -332,7 +338,7 @@ static void render_immediate(const s23_render_entry *e)
          * at u 0, v 0xF000): drawn from the photo page's 128 x 128 player picture, as the team select's model slot. Only that square: the
          * graph's line (u 0x8020, v 0xF080, also bit 15) reads its red from the texture ROM as before */
         if (s23_game.photo_page) { uint32_t mu = 0xFFFFFFFFu, mv = 0xFFFFFFFFu; int all15 = 1;
-            for (int i = 0; i < q->n && i < 4; i++) { all15 &= (q->u[i] >> 15) & 1; if ((q->u[i] & 0x7FFF) < mu) mu = q->u[i] & 0x7FFF; if (q->v[i] < mv) mv = q->v[i]; }
+            for (int i = 0; i < q->n && i < 4; i++) { all15 &= (q->u[i] >> 15) & 1; if ((q->u[i] & 0x7FFF) < mu) mu = q->u[i] & 0x7FFF; if ((q->v[i] & 0xFFFF) < mv) mv = q->v[i] & 0xFFFF; }
             if (all15 && mu < 0x80 && mv >= 0xF000 && mv < 0xF080) {
                 for (int i = 0; i < p->n; i++) p->pv[i].p[1] -= 32768.f * p->pv[i].p[0];   /* (u is stored times 1/z) */
                 p->tbase = s23_game.photo_page - 0xF000; } } p->color_base = (int)(q->pal & 0x7F00);
@@ -449,7 +455,8 @@ static void span(const poly *p, int y, int x0, int x1, const float *s, const flo
         { static int npx = -1, pxs[8], pys[8]; if (npx < 0) { const char *e = getenv("S23_PIXDBG"); npx = 0;   /* debug: who writes pixel x,y[;x,y...] and from where */
               while (e && npx < 8 && sscanf(e, "%d,%d", &pxs[npx], &pys[npx]) == 2) { npx++; e = strchr(e, ';'); if (e) e++; } }
           for (int j = 0; j < npx; j++) if (vx == pxs[j] && oy == pys[j]) { extern uint32_t rr_frame;
-              fprintf(stderr, "[PIX] f%u %d,%d entry %d model %d tx %X ty %X tbase %X shade %d zkey %07X\n", rr_frame, vx, oy, p->entry, p->model, tx, ty, p->tbase, (int)(i * ooz), p->zkey); } }
+              uint8_t pn; const uint32_t cc = tex_lookup(pbase, penshift, penmask, tx, ty + (uint32_t)p->tbase, &pn);
+              fprintf(stderr, "[PIX] f%u %d,%d entry %d model %d tx %X ty %X tbase %X shade %d zkey %07X pen %02X pbase %X rgb %06X\n", rr_frame, vx, oy, p->entry, p->model, tx, ty, p->tbase, (int)(i * ooz), p->zkey, pn, pbase, cc & 0xFFFFFF); } }
         if (!nophoto && s23_game.photo_page && (uint32_t)(ty + (uint32_t)p->tbase - (uint32_t)s23_game.photo_page) < 256u && tx < (uint32_t)S23_PHOTO_W)   /* the camera board's page (any way a polygon reaches it) */
             { c = s23_photo_tex[((ty + (uint32_t)p->tbase - (uint32_t)s23_game.photo_page) & 255) * S23_PHOTO_W + (tx & (S23_PHOTO_W - 1))]; pen = 1; }
         else { ty += (uint32_t)p->tbase; c = tex_lookup(pbase, penshift, penmask, tx, ty, &pen); }
@@ -652,6 +659,13 @@ void s23_soft_raster(const s23_built *b, uint32_t *rgba)
     if (rx.fade) { rx.fadefactor = 0xFF - f->ffactor; rx.fadefactor_inv = 0x100 - rx.fadefactor; rx.fr = f->fr; rx.fg = f->fg; rx.fb = f->fb; }
     rx.pfade = f->pr || f->pg || f->pb; rx.pr = f->pr; rx.pg = f->pg; rx.pb = f->pb;
     rx.alpha = 0xFF - f->alpha; rx.alpha_inv = 0x100 - rx.alpha; rx.alpha_pen = f->alpha_pen;
+    { static long a = -2, z; if (a == -2) { const char *e = getenv("S23_FXLOG"); a = -1; if (e) sscanf(e, "%ld:%ld", &a, &z); }   /* debug: $S23_FXLOG=a:b -- the C404 effects per frame */
+      extern uint32_t rr_frame;
+      if (a >= 0 && (long)rr_frame >= a && (long)rr_frame <= z) fprintf(stderr, "[FX] f%u fflags %X ffactor %02X fade %02X%02X%02X pfade %02X%02X%02X bg %06X layers %X alpha %02X pen %X\n",
+          rr_frame, f->fflags, f->ffactor, f->fr, f->fg, f->fb, f->pr, f->pg, f->pb, (unsigned)f->bg, f->layers, f->alpha, f->alpha_pen);
+      static long pal = -2; if (pal == -2) { const char *e = getenv("S23_FXPAL"); pal = e ? strtol(e, NULL, 16) : -1; }   /* + 16 pens of palette <hex> */
+      if (a >= 0 && pal >= 0 && (long)rr_frame >= a && (long)rr_frame <= z) { fprintf(stderr, "[PAL] f%u %04lX:", rr_frame, pal << 8);
+          for (int k = 0; k < 256; k += 16) fprintf(stderr, " %06X", (unsigned)(b->fs.pens[((pal << 8) + k) & 0x7FFF] & 0xFFFFFF)); fprintf(stderr, "\n"); } }
     if (seamtest < 0) { const char *e = getenv("S23_SEAMTEST"); seamtest = e ? atoi(e) : 0; }
     for (int k = 0; k < 640 * 480; k++) rgba[k] = seamtest ? 0xFF00FF : f->bg;
     memset(pri, 0, sizeof pri);
