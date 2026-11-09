@@ -136,6 +136,8 @@ void (*rr_read_probe)(uint32_t, int);          /* (the trace build links lift_en
 uint32_t g_lift_pc;                          /* gen/: the instruction last started (LIFT_LAST_PC) */
 static void ac_frame(long n)
 {
+    { static long pf = -2; static unsigned pa, pv; if (pf == -2) { pf = -1; const char *e = getenv("AC_POKE"); if (e) sscanf(e, "%ld:%x:%x", &pf, &pa, &pv); }
+      if (pf >= 0 && n == pf) rr_write(pa, 4, pv); }   /* TEST AC_POKE=frame:addr:value -- a long into memory (e.g. a bad routine pointer: the crash path) */
     { static int on = -1; if (on < 0) on = getenv("AC_ADCLOG") != NULL;  /* AC_ADCLOG=1: the stick words the I/O chip leaves (0xA0BD0A..) and the game's centres */
       if (on && n % 10 == 0) fprintf(stderr, "[ADC] f%ld raw %04X %04X %04X %04X centre %04X %04X %04X\n", n,
           (unsigned)rr_read(0xA0BD0A, 2), (unsigned)rr_read(0xA0BD0C, 2), (unsigned)rr_read(0xA0BD0E, 2), (unsigned)rr_read(0xA0BD10, 2),

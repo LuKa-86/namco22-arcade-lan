@@ -144,16 +144,36 @@ static void rec_open(const char *path)
 /* THE LAST WORD (rr_fatal_hook): the lifted program reached code it does not have (an untranslated address, a broken call frame) and must
  * stop. Keep what the player needs -- the session's recording (the way to replay this crash) and the EEPROM -- and, in a window, say so
  * instead of vanishing. */
-static const char *fatal_rec;
+static const char *fatal_rec, *fatal_log;             /* this session's recording and log (a linked cabinet's is <game>_cabN.log) */
+static bool copy_file(const char *src, const char *dst)
+{
+    FILE *in = fopen(src, "rb"); if (!in) return false;
+    FILE *out = fopen(dst, "wb"); if (!out) { fclose(in); return false; }
+    char b[65536]; size_t n;
+    while ((n = fread(b, 1, sizeof b, in)) > 0) fwrite(b, 1, n, out);
+    fclose(in); fclose(out);
+    return true;
+}
 static void on_fatal(const char *why)
 {
     if (rec_f) { fflush(rec_f); fclose(rec_f); rec_f = NULL; }
     ss22_eeprom_save();
+    /* KEEP THE EVIDENCE: the next start overwrites the recording and the log, so copy both to captures/crash_<date>_<time>.rec / .log */
+    char kept[200] = "";
+    if (fatal_rec) {
+        char stamp[32]; const time_t t = time(NULL); strftime(stamp, sizeof stamp, "%Y%m%d_%H%M%S", localtime(&t));
+        char r[80], l[80];
+        snprintf(r, sizeof r, "captures/crash_%s.rec", stamp); snprintf(l, sizeof l, "captures/crash_%s.log", stamp);
+        fprintf(stderr, "[%s] keeping the crash: %s\n", g_ss22_game->tag, r);
+        fflush(stderr);
+        mkdir("captures", 0777);                         /* (include/win_compat.h maps it on Windows) */
+        if (copy_file(fatal_rec, r)) { copy_file(fatal_log ? fatal_log : g_ss22_game->logname, l); snprintf(kept, sizeof kept, "%s and %s", r, l); }
+    }
     if (!win_scale) return;
     char msg[1024];
     snprintf(msg, sizeof msg, "%s stopped: the game reached code that has not been translated yet.\n\n%s\n\n"
-             "Please report it with %s%s%s -- that file replays this session up to the crash.",
-             g_ss22_game->name, why, g_ss22_game->logname, fatal_rec ? " and " : "", fatal_rec ? fatal_rec : "");
+             "Please report it with %s -- they replay this session up to the crash.",
+             g_ss22_game->name, why, kept[0] ? kept : g_ss22_game->logname);
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, g_ss22_game->name, msg, NULL);
 }
 static void rep_read(void)
@@ -497,6 +517,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
         snprintf(logname, sizeof logname, "%.*s_cab%d%s", dot ? (int)(dot - g->logname) : (int)strlen(g->logname), g->logname, cab, dot ? dot : "");
         snprintf(title, sizeof title, "%s - Cabinet %d", g->name, cab);
     } else { snprintf(logname, sizeof logname, "%s", g->logname); snprintf(title, sizeof title, "%s", g->name); }
+    fatal_log = logname;
     eng_win_startup(logname);                           /* Windows: the program's own folder, a log file, real pixel sizes */
     snprintf(cfgfile, sizeof cfgfile, "%s_controls.cfg", g->lname);
     if (cab > 0) snprintf(nvfile, sizeof nvfile, "%s_eeprom_cab%d.nv", g->lname, cab);
