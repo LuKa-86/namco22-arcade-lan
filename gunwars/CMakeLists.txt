@@ -27,7 +27,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/gw_sub.c
 add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/gw_io.c
     COMMAND ${CMAKE_COMMAND} -E env H8_ROMSIZE=0x4000 python3 ${H8T}/h8_translate.py extracted/io.bin 0 s23io gen/gw_io.c ${H8IO_PREFIX}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/extracted/io.bin ${H8_TOOLS} ${H8IO_COV} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set(GW_SRC ${S23_HOST_SRC} src/gw_game.c src/gw_gmen.c src/gw_link.c src/gw_cam.c gen/gw_sub.c gen/gw_io.c ${GW_LIFTED} ${S23_HOST_TAIL})
+set(GW_SRC ${S23_HOST_SRC} src/gw_game.c src/gw_gmen.c gen/gw_sub.c gen/gw_io.c ${GW_LIFTED} ${S23_HOST_TAIL} src/gw_link.c src/gw_cam.c)   # (the link and the webcam: sockets, threads -- outside the saved state)
 option(PORTABLE "Bind glibc symbols to baseline versions (runs on glibc >= 2.34)" ON)
 if(PORTABLE AND NOT WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   add_compile_options(-include ${S23_HOST_DIR}/include/glibc_compat.h)
