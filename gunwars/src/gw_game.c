@@ -307,22 +307,44 @@ static void slot_set(const uint32_t *img)                       /* this player's
 #include "gw_namcam_text.h"
 static uint32_t cam_phase_at, cam_seen_at;                                   /* the frame the camera screen began */
 static uint32_t cam_stop_at;                                    /* the frame to free the webcam (0 = none due) */
+static void photo_apply(void);
 static void gw_camera_overlay(s23_render_list *l)
 {
     static int off = -1; if (off < 0) { const char *e = getenv("GW_CAMFRAME"); off = e && *e == '0'; }
     extern uint32_t rr_frame;
     /* the camera step has short stretches with 3D in it: the webcam stays on until 3 s after it last ended (no on / off flicker) */
     if (cam_stop_at && rr_frame >= cam_stop_at) { cam_stop_at = 0; gw_cam_stop(); }
+    /* THE GAME'S OWN CAMERA SCREEN (2026-11-09; with the board's per-frame IRQ6, src/gw_gmen.c, the main program draws it itself, as the
+     * arcade video: model 0x0CC8 = the orange frame + captions, then the video box = a photo-page immediate (pal FB00) -- the camera board
+     * wrote its LIVE picture into the photo page). So: while 0x0CC8 is up, the webcam (or photo file) goes into this cabinet's photo square
+     * each frame; when it goes (the white flash) the last picture is the photo, and the other cabinets get it. The old flow below (the
+     * screen empty of 3D, our own frame drawn) runs only with $GW_IRQ6VB=0 */
+    { int on = 0; for (int i = 0; i < l->count && !on; i++) on = l->e[i].type == S23_RE_MODEL && l->e[i].model == 0x0CC8;
+      static int cam_on;
+      int gw_link_nodes(void), gw_link_node(void); const int own = gw_link_nodes() > 0 ? gw_link_node() : 0;
+      if (on) {
+          if (!cam_on) { cam_on = 1; cam_stop_at = 0; gw_photo_slot(own, use_file() ? photo_file : NULL); if (use_cam()) gw_cam_start();
+                         fprintf(stderr, "[CAM] f%u: camera screen\n", rr_frame); }
+          if (use_cam() && gw_cam_frame(live)) gw_photo_slot(own, live);
+          gw_cam_phase = 0; return;
+      }
+      if (cam_on) {
+          cam_on = 0; cam_stop_at = rr_frame + 180;
+          if (use_cam() && gw_cam_frame(live)) { slot_set(live); fprintf(stderr, "[CAM] f%u: photo taken\n", rr_frame); }
+          else photo_apply();
+          gw_cam_phase = 0; return;
+      } }
+    { int gw_gmen_irq6vb(void); if (gw_gmen_irq6vb()) { gw_cam_phase = 0; return; } }   /* (the old flow's "empty screen" test misfires here) */
     if (!gw_cam_phase) return;
     if (l->count) {                                             /* the flash: the camera step is over */
         if (gw_cam_phase == 2) {
-            gw_cam_phase = 0;
-            if (use_cam() && gw_cam_frame(live)) { slot_set(live); fprintf(stderr, "[CAM] photo taken\n"); }
+            gw_cam_phase = 0; fprintf(stderr, "[CAM] f%u: 3D back (%d entries)\n", rr_frame, l->count);
+            if (use_cam() && gw_cam_frame(live)) { slot_set(live); fprintf(stderr, "[CAM] f%u: photo taken\n", rr_frame); }
             cam_stop_at = rr_frame + 180;
         }
         return;
     }
-    if (gw_cam_phase != 2) { gw_cam_phase = 2; cam_stop_at = 0; if (rr_frame - cam_seen_at > 600) cam_phase_at = rr_frame; if (use_cam()) gw_cam_start(); }   /* (a new camera screen, not its short breaks) */
+    if (gw_cam_phase != 2) { fprintf(stderr, "[CAM] f%u: camera screen (no 3D)\n", rr_frame); gw_cam_phase = 2; cam_stop_at = 0; if (rr_frame - cam_seen_at > 600) cam_phase_at = rr_frame; if (use_cam()) gw_cam_start(); }   /* (a new camera screen, not its short breaks) */
     cam_seen_at = rr_frame;
     if (off) return;
     static const s23_rect r[5] = {
@@ -382,11 +404,15 @@ static void gw_notice_skip(void)
     if (v >= 30 && v < 1400) { s23_ram[o] = 1470 >> 8; s23_ram[o + 1] = 1470 & 0xFF; done = 1; fprintf(stderr, "[GMEN] boot notice skipped\n"); }
 }
 /* ---- the menu's Options page: the NamCam source, the boot notice ---- */
-static int nc_rows(void) { return 4; }
+static int fps_cross = -1;                                        /* Options "Crosshair (FPS)": 0 hidden (default), 1 shown */
+static int gw_fps_cross(void) { if (fps_cross < 0) fps_cross = eng_cfg_int("fps_crosshair", 0) != 0; return fps_cross; }
+static int gw_hide_crosshair(void) { return gw_fps_layout() && !gw_fps_cross(); }
+static int nc_rows(void) { return 5; }
 static void nc_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
     static const char *names[4] = { "Auto", "Webcam", "Photo file", "Off" };
     if (r == 0) { snprintf(l, ln, "NamCam photo"); snprintf(v, vn, "%s", names[src_now()]); return; }
+    if (r == 4) { snprintf(l, ln, "Crosshair (FPS)"); snprintf(v, vn, "%s", gw_fps_cross() ? "shown" : "hidden (the mouse turns; nothing to point at)"); return; }
     if (r == 3) { snprintf(l, ln, "Mouse sensitivity"); snprintf(v, vn, "%d  (FPS layout; 1 slow - 10 fast)", gw_fps_sens()); return; }
     if (r == 2) { snprintf(l, ln, "Controls"); snprintf(v, vn, "%s", gw_fps_layout() ? "FPS (the mouse turns)" : "Cursor (push to a side to turn)"); return; }
     if (skip_notice < 0) skip_notice = eng_cfg_int("skip_notice", 0) != 0;
@@ -395,6 +421,7 @@ static void nc_text(int r, char *l, size_t ln, char *v, size_t vn)
 static void nc_change(int r, int dir)
 {
     if (r == 0) { namcam_src = (src_now() + (dir < 0 ? 3 : 1)) & 3; eng_cfg_set_int("namcam_source", namcam_src); photo_apply(); return; }
+    if (r == 4) { fps_cross = !gw_fps_cross(); eng_cfg_set_int("fps_crosshair", fps_cross); return; }
     if (r == 3) { fps_sens = gw_fps_sens() + (dir < 0 ? -1 : 1); if (fps_sens < 1) fps_sens = 1; if (fps_sens > 10) fps_sens = 10; eng_cfg_set_int("fps_sensitivity", fps_sens); return; }
     if (r == 2) { fps_layout = !gw_fps_layout(); eng_cfg_set_int("fps_layout", fps_layout); gw_mouse_capture(); return; }
     skip_notice = !skip_notice; eng_cfg_set_int("skip_notice", skip_notice);
@@ -505,7 +532,8 @@ const s23_game_t s23_game = {
     .npt = 2, .pt_rom = { { "gm1pt0h.7a", "gm1pt0l.7c" }, { "gm1pt1h.5a", "gm1pt1l.5c" } },
     .ccrl = "gm1ccrl.7f", .ccrh = "gm1ccrh.7e", .cg = { "gm1cgll.4m", "gm1cglm.4k", "gm1cgum.4j", "gm1cguu.5f" },
     .wave = { "gm1wave.2c", NULL },
-    .no_smooth = 1, .io_asca = 1, .mem_read = gw_read, .mem_write = gw_write,
+    .hide_crosshair = gw_hide_crosshair,
+    .no_smooth = 0, .io_asca = 1, .mem_read = gw_read, .mem_write = gw_write,
     .list_hook = gw_list_hook,
     .hud_wide_ok = gw_hud_wide_ok,
     .zbias_scale = gw_zbias_scale,

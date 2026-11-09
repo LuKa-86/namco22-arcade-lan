@@ -94,7 +94,8 @@ static DWORD WINAPI cam_thread(void *u)
                     const BYTE *row = stride < 0 ? p + (size_t)(h - 1 - sy) * (size_t)astr : p + (size_t)sy * (size_t)astr;   /* bottom-up when negative */
                     if ((size_t)(row - p) + (size_t)w * 4 > len) continue;
                     for (int x = 0; x < 128; x++) {
-                        const uint32_t px = ((const uint32_t *)row)[ox + (127 - x) * side / 128];   /* mirrored: a selfie, as the player sees himself */
+                        const uint32_t px = ((const uint32_t *)row)[ox + x * side / 128];   /* as the camera sees it: the game's camera screen draws
+                                                                                                 * the box mirrored itself (a selfie view), the photo the right way */
                         tmp[y * 128 + x] = px & 0xFFFFFF;
                     }
                 }

@@ -223,7 +223,7 @@ static void draw_crosshair(void)
 {
     float ax, ay; int dw, dh;
     SDL_GL_GetDrawableSize(win, &dw, &dh);
-    const int on = ss22_input_aim(&ax, &ay);                     /* the copied input module: mouse, absolute-mouse gun, either stick, the keys */
+    const int on = ss22_input_aim(&ax, &ay) && !(s23_game.hide_crosshair && s23_game.hide_crosshair());   /* the copied input module: mouse, absolute-mouse gun, either stick, the keys; a game may hide it */
     /* the OS pointer: shown on the menu; in play hidden over the picture with the crosshair on, and ALWAYS with the crosshair off (a light-gun
      * player turns the crosshair off to see nothing but the game) */
     set_pointer(eng_ui_is_open() ? 1 : (!g_eng_disp.crosshair || on) ? 0 : 1);

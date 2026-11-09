@@ -73,6 +73,8 @@ typedef struct {
     int (*mem_read)(uint32_t p, int size, uint32_t *v);
     int (*mem_write)(uint32_t p, int size, uint32_t v);
     void (*list_hook)(void *list);
+    int (*hide_crosshair)(void);                  /* optional: 1 = the crosshair is not drawn now (Gunmen Wars: the FPS layout, where the mouse turns
+                                                   * and the crosshair's spot means nothing -- Options page "Crosshair (FPS)") */
     int (*hud_wide_ok)(const void *list);        /* the widescreen HUD shift applies to this list? (NULL = always; Gunmen Wars: only with the in-game HUD up) */
     void (*menu_pages)(void);                     /* optional: add the game's own pages to the Esc menu (eng_ui_add_page), after Controls */
     const void *input;                            /* optional: the game's own controls (an ss22_input_game: rows, keys, the Controls page notes);

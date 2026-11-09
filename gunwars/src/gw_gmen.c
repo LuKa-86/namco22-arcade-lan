@@ -600,6 +600,7 @@ void gw_gmen_command_written(void) { cmd_irq = 1; }
 void gw_gmen_vblank(int on) { vref_irq = on; }   /* the VPX's vertical reference -> IRQ4 (one per field; tied to the screen here) */
 /* run the SH-2 up to the main CPU's time now: the SH-2 at 28.6 MHz against the main 169.344 MHz -> 169 instructions per 1000 main cycles
  * (an instruction a cycle; the SH-2's real timing is not modelled) */
+int gw_gmen_irq6vb(void) { static int t = -1; if (t < 0) { const char *e = getenv("GW_IRQ6VB"); t = !(e && *e == '0'); } return t; }
 void gw_gmen_run(uint64_t main_now)
 {
     if (!S.running) { main_seen = main_now; return; }
@@ -613,9 +614,10 @@ void gw_gmen_run(uint64_t main_now)
     if (main_now >= next_field) { vref_irq = vpx_on; while (next_field <= main_now) { next_field += 2822400; gw_vpx_field++; }
         /* IRQ6 ONCE A FRAME while linked: the board's IRQ6 handler (0x04011920) is its per-frame link step -- it swaps the send / receive
          * buffers and sets the "frame ready" word the main program waits for each frame (shared +0xC040; main 0x80093D10, else LINK NG).
-         * Its source on the real board is not known (the main board's frame, presumably); one cabinet keeps MAME's behaviour (no IRQ6
-         * after boot) unless $GW_IRQ6VB (test) */
-        { static int t = -1; if (t < 0) t = getenv("GW_IRQ6VB") != NULL; if ((t || gw_link_nodes() > 0) && vpx_on) cmd_irq = 1; } }
+         * Its source on the real board is not known (the main board's frame, presumably). ONE CABINET gets it too (2026-11-09): without it
+         * the main program polls +0xC040 ~65,000 times every frame until its wait times out (~10% of solo time); $GW_IRQ6VB=0 = MAME's
+         * behaviour (no IRQ6 after boot) */
+        if ((gw_gmen_irq6vb() || gw_link_nodes() > 0) && vpx_on) cmd_irq = 1; }
     static uint64_t fw_next;                          /* the link chip's 16 kHz tick: 10584 main cycles */
     if (!fw_next) fw_next = main_now;
     while (fw_next <= main_now) { fw.now = fw_next; if (gw_link_nodes() > 0) gw_link_deliver(fw_next); fw_cycle_tick(); fw_next += 10584; }
