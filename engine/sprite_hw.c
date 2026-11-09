@@ -50,6 +50,7 @@ static uint32_t *read_words(const char *path, int *nwords)
 uint8_t *g_sprite_tiles;
 size_t   g_sprite_tiles_size;
 int      g_sprite_vics_count_in_list;
+int      g_sprite_vics_linked;            /* ss22_video_cfg.vics_linked */
 static uint32_t *live_spr, *live_vicsd;
 
 void sprite_free(sprite_state *st)
@@ -227,7 +228,11 @@ static void build_list_impl(const sprite_state *st)
             printf("    [SPRHDR] W0=%08x W1=%08x on=%d base=%d num=%d\n",
                    W(0), W(1), sprites_on, base, num); }
     int n = 0;
-    if (sprites_on && num > 0 && num < 0x400) {
+    static int off = -1; if (off < 0) { const char *e = getenv("SPR_OFF"); off = e ? atoi(e) : 0; }   /* TEST: SPR_OFF bits 1 main list, 2 VICS set 1, 4 set 2 */
+    { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;
+      if (lg) fprintf(stderr, "[SPR] f%u main on %d base %d num %d\n", rr_frame, sprites_on, base, num);
+      if (lg && st->have_vics) { fprintf(stderr, "[VREG] f%u", rr_frame); for (int i = 0; i < 0x80 / 4; i++) fprintf(stderr, " %08X", st->vicsc[i]); fprintf(stderr, "\n"); } }
+    if (sprites_on && num > 0 && num < 0x400 && !(off & 1)) {
         for (int i = 0; i < num && n < 4096; i++, n++) {
             for (int k = 0; k < 4; k++) g_list[n].src[k] = W(0x4000/4 + (base+i)*4 + k);
             for (int k = 0; k < 2; k++) g_list[n].att[k] = W(0x20000/4 + (base+i)*2 + k);
@@ -238,11 +243,37 @@ static void build_list_impl(const sprite_state *st)
         #define VD(i) (((i) >= 0 && (i) < vn) ? vd[i] : 0u)
         int v_on = !((st->vicsc[0x30/4] >> 24) & 1);
         const int cregs[2] = {0x48, 0x68}, aregs[2] = {0x58, 0x78}, nregs[2] = {0x40, 0x60};
+        int linked_n = -1;                    /* vics_linked: set 2's count from set 1's header (-1 = not this game) */
+        if (g_sprite_vics_linked) { const int h0 = (int)(st->vicsc[cregs[0]/4] & 0xFFFF) / 4;
+            const unsigned flag = VD(h0) >> 16;
+            linked_n = flag == 6 ? (int)(VD(h0 + 1) >> 16) + 1 : 0; }
         for (int b = 0; b < 2 && v_on; b++) {
+            if (off & (2 << b)) continue;
+            if (linked_n >= 0 && b == 0) continue;   /* (the header: not drawn) */
+            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;   /* the set's first entries (source words, attribute words) */
+              if (lg) { const int s0 = (int)(st->vicsc[cregs[b]/4] & 0xFFFF) / 4, a0 = (int)(st->vicsc[aregs[b]/4] & 0xFFFF) / 4;
+                  fprintf(stderr, "[VSET] f%u set %d n %d:", rr_frame, b + 1, (int)((st->vicsc[nregs[b]/4] >> 4) & 0x1FF));
+                  for (int i = 0; i < 10; i++) fprintf(stderr, " [%08X %08X %08X %08X|%08X %08X]", VD(s0 + i * 4), VD(s0 + i * 4 + 1), VD(s0 + i * 4 + 2), VD(s0 + i * 4 + 3), VD(a0 + i * 2), VD(a0 + i * 2 + 1));
+                  fprintf(stderr, "\n[VHDR] f%u set %d base %X attr %X before:", rr_frame, b + 1, s0 * 4, a0 * 4);
+                  for (int i = 16; i >= 1; i--) fprintf(stderr, " %08X", VD(s0 - i));
+                  fprintf(stderr, " | attr-before:"); for (int i = 4; i >= 1; i--) fprintf(stderr, " %08X", VD(a0 - i));
+                  int live = 0; for (int i = 0; i < 320; i++) if (VD(s0 + i * 4) || VD(s0 + i * 4 + 1)) live = i + 1;
+                  uint32_t hsh = 2166136261u; for (int i = 0; i < 320 * 4; i++) hsh = (hsh ^ VD(s0 + i)) * 16777619u;
+                  fprintf(stderr, " | last non-empty %d hash %08X\n", live, hsh); } }
             int n2 = (int)((st->vicsc[nregs[b]/4] >> 4) & 0x1FF);   /* no +1 */
             /* MAME: "where do the games store the number of sprites to be processed by vics???" -- Dirt Dash's list starts at xxx4 and its
              * count minus one is the byte at xxx0 (the 0x4000 bit of the list base names the bank); set #2 is unused there. */
+            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL;   /* VICS_LOG=1: the sprite set's registers and the list's count word, per frame */
+              extern uint32_t rr_frame;
+              if (lg && b == 0) fprintf(stderr, "[VICS] f%u ctl30 %08X n40 %08X n60 %08X c48 %08X c68 %08X a58 %08X | list[0] %08X [1] %08X | reg-n %d list-n %d\n", rr_frame,
+                  st->vicsc[0x30/4], st->vicsc[0x40/4], st->vicsc[0x60/4], st->vicsc[0x48/4], st->vicsc[0x68/4], st->vicsc[0x58/4],
+                  VD((st->vicsc[cregs[0]/4] & 0x4000) / 4), VD((st->vicsc[cregs[0]/4] & 0x4000) / 4 + 1), n2, (int)(VD((st->vicsc[cregs[0]/4] & 0x4000) / 4) & 0xFF) + 1);
+              if (lg && b == 0) { const int s0 = (int)(st->vicsc[0x48/4] & 0xFFFF) / 4, a0 = (int)(st->vicsc[0x58/4] & 0xFFFF) / 4;
+                  fprintf(stderr, "[VICS2] f%u s-2 %08X s-1 %08X s0 %08X s1 %08X | a-1 %08X a0 %08X | first empty", rr_frame, VD(s0 - 2), VD(s0 - 1), VD(s0), VD(s0 + 1), VD(a0 - 1), VD(a0));
+                  int fe = -1; for (int i = 0; i < 128; i++) if (!VD(s0 + i * 4) && !VD(s0 + i * 4 + 1) && !VD(s0 + i * 4 + 2) && !VD(s0 + i * 4 + 3)) { fe = i; break; }
+                  fprintf(stderr, " %d\n", fe); } }
             if (g_sprite_vics_count_in_list && b == 0) n2 = (int)(VD((st->vicsc[cregs[0]/4] & 0x4000) / 4) & 0xFF) + 1;
+            if (linked_n >= 0 && b == 1) n2 = linked_n;
             if (n2 <= 0) continue;
             int sbase = (int)(st->vicsc[cregs[b]/4] & 0xFFFF) / 4;
             int abase = (int)(st->vicsc[aregs[b]/4] & 0xFFFF) / 4;

@@ -49,6 +49,7 @@ extern uint8_t *g_sprite_tiles;
 extern size_t   g_sprite_tiles_size;
 /* Dirt Dash: the VICS bank's sprite count is in its list (the byte at the list's page start, plus one), not in a control register */
 extern int      g_sprite_vics_count_in_list;
+extern int      g_sprite_vics_linked;
 
 /* Render the sprite layer into a 640x480 RGBA buffer (alpha 0 = untouched)
  * and a matching priority buffer. */

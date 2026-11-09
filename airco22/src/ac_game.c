@@ -161,7 +161,7 @@ static const ss22_game game = {
     .snd = { "acs1data.8k", { "acs1wav0.1", "acs1wav1.2" }, { 0x400000, 0x800000 }, 0x1000000, 0xFFFF, { 1, 2 } },
     .video = { { "acs1cg0.8d", "acs1cg1.10d", "acs1cg2.12d", "acs1cg3.13d", "acs1cg4.14d", "acs1cg5.16d", "acs1cg6.18d", "acs1cg7.19d" },
                "acs1ccrl.3d", "acs1ccrh.1d", { "acs1scg0.12f", "acs1scg1.10f" }, 2, 0x1000000, 0xFF,
-               true },                          /* the VICS sprite count is in the list (MAME: "a workaround is needed for airco22b and dirtdash") */
+               false, false, { 0 }, true },  /* vics_linked: set 1 is set 2's header (engine/ss22_game.h) */                     /* the VICS sprite count is the REGISTER (0x40), not the list: MAME reads it from the list as for Dirt Dash, but Air Combat 22 rotates 4 lists and that word never changes (65 sprites always -- old sprites stuck on screen, the user's captures) */
     .input = &input,
     .roms = k_roms, .n_roms = NROMS,
     .entry = L_5000,

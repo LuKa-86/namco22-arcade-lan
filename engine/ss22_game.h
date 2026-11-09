@@ -54,6 +54,9 @@ typedef struct {
     bool        vics_count_in_list;          /* the VICS bank's sprite count is stored in its list (Dirt Dash; MAME's per-game workaround) */
     bool        spot_in_dumps;               /* MAME's captures do not record the spot enable: treat the spot as ON in them (Dirt Dash; Tokyo Wars' table is not a spot) */
     eng_hud_cfg  hud;                        /* WIDESCREEN: which frames show the race HUD and what of the picture is HUD (engine/hud_edges.h) */
+    bool        vics_linked;                 /* our fork: VICS set 1 is set 2's HEADER, not sprites (Air Combat 22, its code 0x3AD02): entry 0's
+                                              * first halfword 6 = draw set 2, 7 = draw nothing; its third halfword = set 2's count - 1. The
+                                              * registers' counts are constants. MAME draws both sets as sprites: stale ones stuck on screen */
 } ss22_video_cfg;
 
 typedef struct { const char *name; uint16_t bit; } ss22_press_name;      /* --press NAME@F[+LEN] */
