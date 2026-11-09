@@ -241,7 +241,8 @@ static void pad_scan(void)
 
     /* $S23_PAD=n (our fork: two linked windows on one PC, the launcher's test modes): this copy uses only the n-th gamepad (0 = the first),
      * so each window has its own player */
-    static int only = -2; if (only == -2) { const char *e = getenv("S23_PAD"); only = e && *e ? atoi(e) : -1; }
+    int s23_pad_choice(void); const int only = s23_pad_choice();
+    if (only == -3) return;                                        /* S23_PAD=none: the keyboard and mouse's copy, no pad */
     for (int j = 0, n = SDL_NumJoysticks(), gi = -1; j < n; j++) {
         if (!SDL_IsGameController(j)) continue;
         gi++;
@@ -769,9 +770,10 @@ static uint32_t mouse_state(int *x, int *y)
 static void aim_update(const uint8_t *k)
 {
     static int last_mx = -1, last_my = -1;
-    int mx, my; const uint32_t mb_now = mouse_state(&mx, &my);
+    int s23_pads_only(void); const bool pads_only = s23_pads_only();   /* (a party's pad player: the mouse is the other player's) */
+    int mx = 0, my = 0; const uint32_t mb_now = pads_only ? 0 : mouse_state(&mx, &my);
     float px, py; bool inside;
-    const bool have = ss22_host_pointer(&px, &py, &inside);
+    const bool have = !pads_only && ss22_host_pointer(&px, &py, &inside);
     if (have && (mx != last_mx || my != last_my)) { aim_src = 1; last_mx = mx; last_my = my; }
     float dx = 0, dy = 0;                               /* the stick and the arrow keys move the crosshair (a full deflection crosses the picture in ~1 s) */
     for (int i = 0; i < MAX_DEV; i++) {
@@ -812,12 +814,25 @@ static void aim_update(const uint8_t *k)
 static uint16_t swallow;                 /* buttons held since the menu closed: masked until released */
 static bool swallow_arm;
 
+/* $S23_PAD: -1 every pad (not set), n >= 0 the n-th pad only, -3 none ("none": the keyboard and mouse's copy) */
+int s23_pad_choice(void)
+{
+    static int only = -2;
+    if (only == -2) { const char *e = getenv("S23_PAD"); only = !e || !*e ? -1 : (*e == 'n' || *e == 'N') ? -3 : atoi(e); }
+    return only;
+}
+/* PARTY ($S23_PARTY, the launcher's split screen): a copy with a pad reads ONLY its pad -- the keyboard and mouse belong to the copy
+ * without one, even if a pad player's window is clicked */
+int s23_party(void) { static int p = -1; if (p < 0) { const char *e = getenv("S23_PARTY"); p = e && *e && *e != '0'; } return p; }
+int s23_party_pad(void) { const int c = s23_pad_choice(); return c >= 0 ? c : -1; }
+int s23_pads_only(void) { return s23_party() && s23_pad_choice() >= 0; }
 void ss22_input_update(void)
 {
-    const uint8_t *k = SDL_GetKeyboardState(NULL);
+    static const uint8_t no_keys[SDL_NUM_SCANCODES];
+    const uint8_t *k = s23_pads_only() ? no_keys : SDL_GetKeyboardState(NULL);
     uint16_t p = 0;
     int left = 0, right = 0, pk[2] = { 0, 0 };
-    const uint32_t mb = game->light_gun ? mouse_state(NULL, NULL) : 0;
+    const uint32_t mb = game->light_gun && !s23_pads_only() ? mouse_state(NULL, NULL) : 0;
     if (game->light_gun) aim_update(k);
 
     for (int a = 0; a < game->n; a++) {

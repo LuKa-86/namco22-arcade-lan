@@ -463,7 +463,9 @@ void s23_c422_gate(int (*pump)(const char *l1, const char *l2))
         if (k == 'S') { go_alone("S WAS PRESSED"); break; }
     }
     void eng_ui_set_hint(const char *, int);
-    if (pump && state == ST_LINKED) eng_ui_set_hint(side_right ? "LINKED WITH THE LEFT (RED) CABINET" : "LINKED WITH THE RIGHT (BLUE) CABINET", 60 * 6);
+    if (pump && state == ST_LINKED) { const char *s23_party_hint(void); const char *ph = s23_party_hint();   /* (a party: whose picture this is) */
+        if (ph[0]) eng_ui_set_hint(ph, 60 * 15);
+        else eng_ui_set_hint(side_right ? "LINKED WITH THE LEFT (RED) CABINET" : "LINKED WITH THE RIGHT (BLUE) CABINET", 60 * 6); }
     if (pump && state == ST_ALONE) { static char h[128]; snprintf(h, sizeof h, "NOT LINKED: %s", why_alone); eng_ui_set_hint(h, 60 * 8); }
 }
 

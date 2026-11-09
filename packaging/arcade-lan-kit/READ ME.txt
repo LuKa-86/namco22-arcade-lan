@@ -1,8 +1,8 @@
 NAMCO 22 ARCADE LAN
 ===================
 
-Namco's 1990s arcade games, rebuilt to run on a PC, for real arcade cabinets: one PC in each
-cabinet in place of the original boards, the cabinets linked over a wired network the way the
+Namco's 1990s arcade games (System 22 and System 23), rebuilt to run on a PC, for real arcade
+cabinets: one PC in each cabinet in place of the original boards, the cabinets linked over a wired network the way the
 boards were linked by their cable. Nothing here uses the internet.
 
 The games are the work of the namco22-decompile project (spacestate1); this package adds the
@@ -76,9 +76,12 @@ The ways to play:
    Test: 2 / 4 linked cabinets on this PC  linked copies in windows, to see the link working
                                          (Ace Driver also has Test: 8)
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
-   Full screen / Window                  the single-cabinet games
+                                         (Gunmen Wars and Time Crisis II: 2 players, keyboard and
+                                         mouse + a controller, or 2 controllers)
+   Full screen / Window                  the single-cabinet games, and Gunmen Wars (its link is set
+                                         up in the game's own Esc menu, Link page)
    Time Crisis II                        Left or Right cabinet, Both sides on one PC (2 monitors,
-                                         2 guns), or Test: both sides on this PC
+                                         2 guns), Test: both sides on this PC, or Party
 
 
 3. LINKING THE CABINETS (once per set)
@@ -164,8 +167,8 @@ cabinet; grey = not in this set.
 
 7. GUNMEN WARS
 --------------
- - Ways to play: Full screen, Window, and "2 players on this PC" (two linked windows, a game
-   controller each). Linked cabinets: set them up on the game's own Esc menu > Link page
+ - Ways to play: Full screen, Window, Test: 2 linked cabinets on this PC, and Party: 2 players
+   (split screen: keyboard and mouse + a controller, or 2 controllers). Linked cabinets: set them up on the game's own Esc menu > Link page
    ("Find cabinets", then "Use found" on every PC); 2 or 3 cabinets, 4 is experimental.
  - Link page > Network: LAN (cables, the default), Wi-Fi, Slow network or Internet. A slower
    choice adds a little delay but rides out a less steady network; linked PCs all use the

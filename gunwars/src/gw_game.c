@@ -139,8 +139,8 @@ static int pad_axis(SDL_GameControllerAxis ax)
 {
     if (!pad || !SDL_GameControllerGetAttached(pad)) {
         pad = NULL;
-        static int only = -2; if (only == -2) { const char *e = getenv("S23_PAD"); only = e && *e ? atoi(e) : -1; }   /* (one pad a window: $S23_PAD) */
-        for (int i = 0, gi = -1; i < SDL_NumJoysticks() && !pad; i++) if (SDL_IsGameController(i) && (++gi == only || only < 0)) pad = SDL_GameControllerOpen(i);
+        int s23_pad_choice(void); const int only = s23_pad_choice();   /* (one pad a window: $S23_PAD; "none" = the keyboard's copy) */
+        for (int i = 0, gi = -1; only != -3 && i < SDL_NumJoysticks() && !pad; i++) if (SDL_IsGameController(i) && (++gi == only || only < 0)) pad = SDL_GameControllerOpen(i);
         if (!pad) return 0;
     }
     const int v = SDL_GameControllerGetAxis(pad, ax);
@@ -194,7 +194,8 @@ static int gw_fps_layout(void) { int eng_cfg_int(const char *, int); if (fps_lay
 void gw_mouse_capture(void)
 {
     _Bool eng_ui_is_open(void); SDL_Window *w = SDL_GetKeyboardFocus();
-    const int want = w && gw_fps_layout() && !eng_ui_is_open();
+    int s23_pads_only(void);
+    const int want = w && gw_fps_layout() && !eng_ui_is_open() && !s23_pads_only();   /* (a party's pad player never takes the mouse) */
     if ((SDL_GetRelativeMouseMode() == SDL_TRUE) != want) SDL_SetRelativeMouseMode(want ? SDL_TRUE : SDL_FALSE);
 }
 static uint16_t gw_analog(int ch)
@@ -230,7 +231,7 @@ static uint16_t gw_analog(int ch)
             extern uint32_t rr_frame; static uint32_t lastf; static double sw;
             if (rr_frame != lastf) {
                 lastf = rr_frame;
-                int dx = 0, dy; SDL_GetRelativeMouseState(&dx, &dy);
+                int dx = 0, dy; SDL_GetRelativeMouseState(&dx, &dy); { int s23_pads_only(void); if (s23_pads_only()) dx = 0; }
                 void gw_mouse_capture(void); gw_mouse_capture();
                 const int rx = pad_axis(SDL_CONTROLLER_AXIS_RIGHTX);
                 /* the mouse's speed, smoothed over a few frames (the user: "a bit twitchy"); a slow movement only nudges the aim (below the

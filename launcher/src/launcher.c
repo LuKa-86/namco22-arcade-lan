@@ -144,11 +144,18 @@ static const game_t games[] = {
     { "gunwars", "Gunmen Wars", "1998", "Gunmen Wars", "GunmenWars-ArcadeLAN.exe",
       "Team shoot-outs for up to 3 linked cabinets (set up in the game's Esc menu, Link page). New in this package.",
       "Controls: mouse turns  \xC2\xB7  left button fires  \xC2\xB7  right button decide  \xC2\xB7  W A S D move  \xC2\xB7  5 coin  \xC2\xB7  Esc menu (Options: NamCam webcam / photo)", NULL,
-      3, { { "Full screen", "The normal choice for a cabinet, linked or not (the game's Esc menu, Link page).", true, 1, { { "--window --fullscreen", NULL } } },
-           { "Window", "The same, in a window.", false, 1, { { "--window", NULL } } },
-           { "2 players on this PC (2 linked windows)", "Two linked windows side by side. Pad 1 plays the left window, pad 2 the right; keyboard and mouse play the window you click.", false, 2, {
+      5, { { "Full screen", "The normal choice for a cabinet: on its own, or linked with others (set up in the game's Esc menu, Link page).", true, 1,
+               { { "--window --fullscreen", NULL } } },
+           { "Window", "The same, in a window. Useful while setting up or testing.", false, 1, { { "--window", NULL } } },
+           { "Test: 2 linked cabinets on this PC", "Opens 2 linked windows side by side. Controller 1 plays the left, controller 2 the right; the keyboard and mouse play the window you click.", false, 2, {
                { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PAD=0" },
-               { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PAD=1;S23_MUTE=1" } } } } },
+               { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PAD=1;S23_MUTE=1" } } },
+           { "Party: 2 players - keyboard and 1 controller", "Split screen on this PC: player 1 on the keyboard and mouse (left), player 2 on a controller (right). Connect the controller first.", false, 2, {
+               { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=none" },
+               { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=0;S23_MUTE=1" } } },
+           { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each (controller 1 left, controller 2 right). Connect the controllers first.", false, 2, {
+               { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=0" },
+               { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=1;S23_MUTE=1" } } } } },
     { "propcycl", "Prop Cycle", "1996", "Prop Cycle", "PropCycle.exe",
       "Pedal-powered flying for a single cabinet. The original project's build.",
       "Keys: 5 coin  \xC2\xB7  Enter start  \xC2\xB7  arrows steer and lean  \xC2\xB7  Esc menu", NULL,
@@ -164,7 +171,7 @@ static const game_t games[] = {
     { "timecrs2", "Time Crisis II", "1997", "Time Crisis II", "TimeCrisis2-ArcadeLAN.exe",
       "The twin light-gun cabinet: the left and right sides link for 2 players.",
       "Controls: mouse or light gun aims and shoots  \xC2\xB7  the pedal takes cover  \xC2\xB7  Esc menu", "tc2_link.cfg",
-      6, {
+      8, {
         { "Left cabinet (red player) - full screen", "This PC is the left side of the twin cabinet. The normal choice for a cabinet.", true, 1,
             { { "--window --fullscreen", "TC2_SIDE=left" } } },
         { "Right cabinet (blue player) - full screen", "This PC is the right side of the twin cabinet. The normal choice for a cabinet.", true, 1,
@@ -176,7 +183,13 @@ static const game_t games[] = {
         { "Right cabinet (blue player) - window", "The right side, in a window.", false, 1, { { "--window", "TC2_SIDE=right" } } },
         { "Test: both sides on this PC", "Opens the left and right sides in 2 linked windows.", false, 2, {
             { "--window", "TC2_LINK=L:23011:127.0.0.1:23012;TC2_CABINET_DIR=try-left;TC2_WINPOS=left" },
-            { "--window", "TC2_LINK=R:23012:127.0.0.1:23011;TC2_CABINET_DIR=try-right;TC2_WINPOS=right" } } } } },
+            { "--window", "TC2_LINK=R:23012:127.0.0.1:23011;TC2_CABINET_DIR=try-right;TC2_WINPOS=right" } } },
+        { "Party: 2 players - keyboard and 1 controller", "Split screen on this PC: the red player on the mouse and keyboard (left), the blue player on a controller (right). Connect the controller first.", false, 2, {
+            { "--window", "TC2_LINK=L:23031:127.0.0.1:23032;TC2_CABINET_DIR=party-left;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=none" },
+            { "--window", "TC2_LINK=R:23032:127.0.0.1:23031;TC2_CABINET_DIR=party-right;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=0;S23_MUTE=1" } } },
+        { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each: controller 1 the red player (left), controller 2 the blue (right). Connect the controllers first.", false, 2, {
+            { "--window", "TC2_LINK=L:23031:127.0.0.1:23032;TC2_CABINET_DIR=party-left;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=0" },
+            { "--window", "TC2_LINK=R:23032:127.0.0.1:23031;TC2_CABINET_DIR=party-right;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=1;S23_MUTE=1" } } } } },
     { "tokyowar", "Tokyo Wars", "1996", "Tokyo Wars", "TokyoWars-ArcadeLAN.exe",
       "Team tank battles for up to 4 linked cabinets.",
       "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows drive  \xC2\xB7  Ctrl fire  \xC2\xB7  Esc menu", "link.cfg",
@@ -194,6 +207,16 @@ static void logm(const char *fmt, ...)
     fprintf(log_file, "%04d-%02d-%02d %02d:%02d:%02d  ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
     va_list a; va_start(a, fmt); vfprintf(log_file, fmt, a); va_end(a);
     fputc('\n', log_file); fflush(log_file);
+}
+/* the game list's second line: how many cabinets play together */
+static const char *cabinets_text(const game_t *g)
+{
+    static const struct { const char *id, *text; } t[] = {
+        { "acedrive", "Up to 8 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
+        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" },
+        { "raverace", "Up to 4 linked cabinets" }, { "timecrs2", "Twin cabinet, 2 players" }, { "tokyowar", "Up to 4 linked cabinets" } };
+    for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
+    return "Single cabinet";
 }
 static void game_dir(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s", base, g->folder); }
 static void game_exe(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s\\%s", base, g->folder, g->exe); }
@@ -552,7 +575,7 @@ static void draw(int W, int H, SDL_Window *win)
     /* the title bar */
     nk_fill_rect(cb, nk_rect(0, 0, (float)W, 120 * k), 0, C_DARK);
     text(cb, f_title, pad, 26 * k, "NAMCO 22  ARCADE LAN", C_TEXT);
-    text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "One PC in each cabinet, linked over a wired network", C_AMBER);
+    text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "Namco System 22 and System 23 games  \xC2\xB7  one PC in each cabinet, linked over a wired network", C_AMBER);
     {   /* the X: closes the launcher (in a full-screen menu there is no window frame to close it with) */
         const float s = 64 * k; const struct nk_rect r = nk_rect(W - pad - s, 28 * k, s, s);
         const bool h = nk_input_is_mouse_hovering_rect(in, r);
@@ -599,7 +622,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
             text(cb, f_big, r.x + 28 * k, r.y + 6 * k, games[i].name, s ? C_AMBER : C_TEXT);
-            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, games[i].cfg ? (!strcmp(games[i].id, "timecrs2") ? "Twin cabinet, 2 players" : !strcmp(games[i].id, "acedrive") ? "Up to 8 linked cabinets" : !strcmp(games[i].id, "cybrcomm") || !strcmp(games[i].id, "cybsled") ? "2 linked cabinets" : "Up to 4 linked cabinets") : "Single cabinet");
+            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, cabinets_text(&games[i]));
             text(cb, f_small, r.x + 28 * k, r.y + 46 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));

@@ -43,7 +43,8 @@ the arcade has and keeping them running.
 | **Tokyo Wars** | 1996 | up to 4, linked | Team tank battles |
 | **Rave Racer** | 1995 | up to 4, linked | Linked races |
 | **Ace Driver** | 1994 | up to 8, linked (tested with 8 on one PC) | Linked races; **new link** in this fork (the original project's build plays solo) |
-| **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players |
+| **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players; **party mode** (split screen on one PC) |
+| **Gunmen Wars** | 1998 | up to 3, linked | **New**: a port made for this fork (System 23 with its GMEN camera and link board): team shoot-outs, the NamCam photo from a webcam or a picture, party mode |
 | **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
 | **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
 | **Armadillo Racing** | 1997 | up to 4, linked | Trackball racing; **new link** in this fork (the original project's build plays solo) |
@@ -83,7 +84,8 @@ play it with the keyboard, a controller or the mouse:
 
 - **Linked cabinet** (full screen or in a window), **Time Crisis II's left or right cabinet**, both sides on one PC,
   **Test** modes that run 2, 4 or 8 linked copies on one PC, and **Party** modes (2 or 4 players on one PC, split
-  screen, a controller each).
+  screen, a controller each; Gunmen Wars and Time Crisis II: 2 players, the keyboard and mouse for one of them).
+- System 22 and System 23 games side by side: Gunmen Wars and Time Crisis II run on the fork's System 23 engine (`s23/`).
 - **Start a game when Windows starts**: the launcher counts down (a key or button opens the menu instead) and starts the
   chosen game. **If the game ever closes, it starts it again**, so the cabinet always comes back to its attract mode.
 - **Settings for every game at once**: the link status lights, and the session recordings (each game keeps the last session's
@@ -152,6 +154,11 @@ in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 
 ## Version history
 
+- **0.9.3** (November 2026): **Gunmen Wars** (System 23 + GMEN), new: linked up to 3 cabinets over the GMEN boards' FireWire
+  bus model, a Network setting for slower networks, the NamCam photo from a webcam or a picture, widescreen with the HUD at
+  the edges, mouse-look controls, F9 captures (a picture and the game's state, to replay a problem), party mode. The System 23
+  engine moved to its own folder (`s23/`), shared by Gunmen Wars and Time Crisis II; Time Crisis II gains party mode.
+
 - **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
   geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer; Ace Driver links (up to 8). The launcher, with the automatic start
   and the restart watchdog; the package with a folder per game; the session recording switch.
@@ -166,6 +173,9 @@ in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 - Rare: when a cabinet is switched off without warning, the others may show a link blip of about a third of a second
   before carrying on.
 - Not yet tested with real controllers in party mode, or in a full arcade installation.
+- Gunmen Wars: four linked cabinets are experimental (one cabinet can stall at team select); the namco logo's change to red is
+  matched to arcade footage (the hardware rule is not known); in widescreen the attract demo shows in 4:3 (its scenery only
+  exists as far as the original screen shows).
 
 ## Building
 
@@ -175,12 +185,13 @@ its sound and DSP programs are translated from them at build time (see the origi
 
 ```
 cmake -S tokyowar -B tokyowar/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DZLIB_LIBRARY=/mingw64/lib/libz.a
-ninja -C tokyowar/build          # the same for raverace, tc2, cybrcycc, alpiner and cybsled (cs21, -j1)
+ninja -C tokyowar/build          # the same for raverace, tc2, gunwars, cybrcycc, alpiner and cybsled (cs21, -j1)
 cmake -S launcher -B launcher/build -G Ninja && ninja -C launcher/build
 ```
 
 Cyber Cycles and Alpine Racer are translated from the game's own program with Ghidra and this fork's 68020 translator
-(`tools/gen/lift68k.py`, `tools/gen/ghidra/`); their `tools/import.sh` / `regen.sh` need `N22TOOLS` set to the folder
+(`tools/gen/lift68k.py`, `tools/gen/ghidra/`); Gunmen Wars with its MIPS translator (`tools/gen/liftmips.py`,
+`gunwars/tools/regen.sh`); their `tools/import.sh` / `regen.sh` need `N22TOOLS` set to the folder
 with Ghidra and a JDK. The link tests run four copies on one PC over 127.0.0.1, with network faults injected:
 `tokyowar/tools/link_tests.sh` and `raverace/tools/link_tests.sh` (`gather`, `missing`, `bad`, `skew`, `crash`).
 
@@ -191,7 +202,9 @@ Each original board has a link chip (Namco's C139; the C422 on System 23) joined
 it: a frame the game sends goes to the next cabinet as one UDP packet (`engine/link_net.c`), and a frame received is
 put in the chip's buffer and the game is interrupted, as on the board. `engine/link_host.c` handles start-up (finding the
 others, the power-on wait, the fixed set), the Network page, `link.cfg` and the safety net. Notes on each game's link
-protocol are in [docs/LINK_NOTES.md](docs/LINK_NOTES.md). The original author's own online play (`engine/net.c` and
+protocol are in [docs/LINK_NOTES.md](docs/LINK_NOTES.md). Gunmen Wars links differently: its cabinets talk through the GMEN
+board's IEEE 1394 (FireWire) chip, modelled in `gunwars/src/gw_gmen.c` and carried over UDP in lockstep on game time
+(`gunwars/src/gw_link.c`, [gunwars/LINK.md](gunwars/LINK.md)); its settings are the `link` lines of `gunwars.cfg`. The original author's own online play (`engine/net.c` and
 friends) is kept as it is, hidden by *Arcade mode*, so their releases keep merging cleanly.
 
 ## Licence and legal
@@ -200,7 +213,7 @@ MIT License; see `LICENSE`. Copyright of the original project is its author's; t
 licence.
 
 This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Ace Driver, Time Crisis, Cyber Cycles,
-Alpine Racer and Cyber Sled are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
+Alpine Racer, Cyber Sled and Gunmen Wars are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
 each game.
 
 ## Credits

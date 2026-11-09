@@ -46,7 +46,9 @@ static int gpu;                                                /* the GPU render
 static GLuint gpu_tex;
 static uint32_t pic[640 * 480];
 static int paused, shots;
-static int smooth_active;                                      /* motion smoothing: this game frame shows in-between frames */
+static char party_hint[96];                                    /* party (S23_PARTY): "PLAYER n: ..." for the first seconds */
+const char *s23_party_hint(void) { return party_hint; }        /* ("" when not a party; a game's link shows it in place of its "LINKED") */
+static int smooth_active;                                    /* motion smoothing: this game frame shows in-between frames */
 static const s23_built *smooth_pic[3]; static double smooth_at[3]; static int smooth_np;   /* the frame's pictures and where each belongs (0..1] */
 static const s23_built *smooth_shown;
 static const char *smooth_tag;                                 /* ENG_SWAPLOG: which picture the next swap shows */
@@ -155,13 +157,29 @@ int s23_window_open(int scale, int fullscreen)
                                                     * a window being dragged stops its game, and the other cabinet loses it) -- the two windows
                                                     * side by side, edge to edge, in the middle of the screen (eng/eng_tile.h) */
       int wi = 0, wn = 0;                          /* or N/M: window N of M in a grid (several linked copies, e.g. Gunmen Wars' 4) */
-      if (wp && !g_eng_disp.winmode) { if (sscanf(wp, "%d/%d", &wi, &wn) == 2 && wi >= 1 && wi <= wn) eng_tile_window(win, wi - 1, wn);
+      int s23_party(void), s23_party_pad(void);
+      if (wp && s23_party() && sscanf(wp, "%d/%d", &wi, &wn) == 2 && wi >= 1 && wi <= wn) {
+          /* PARTY (the launcher's split screen, as the other games' --party): no frames, the copies together fill the WHOLE screen (over the
+           * task bar, kept on top) -- side by side for 2, a 2 x 2 grid for 3-4; each picture keeps its shape inside its part */
+          SDL_Rect b; const int di = SDL_GetWindowDisplayIndex(win);
+          if (SDL_GetDisplayBounds(di, &b) == 0) {
+              const int pc = wn <= 1 ? 1 : 2, pr = (wn + pc - 1) / pc, tw = b.w / pc, th = b.h / pr;
+              SDL_SetWindowBordered(win, SDL_FALSE); SDL_SetWindowAlwaysOnTop(win, SDL_TRUE);
+              SDL_SetWindowSize(win, tw, th); SDL_SetWindowPosition(win, b.x + ((wi - 1) % pc) * tw, b.y + ((wi - 1) / pc) * th);
+              fprintf(stderr, "[HOST] party: player %d of %d, %d x %d\n", wi, wn, tw, th);
+          }
+          { const int pd = s23_party_pad();   /* (shown once the menu is up, below) */
+            if (pd >= 0) snprintf(party_hint, sizeof party_hint, "PLAYER %d: CONTROLLER %d", wi, pd + 1);
+            else snprintf(party_hint, sizeof party_hint, "PLAYER %d: KEYBOARD AND MOUSE (CLICK HERE FIRST)", wi); }
+          if (s23_party_pad() < 0) SDL_RaiseWindow(win);   /* the keyboard's copy in front, so the keys reach it */
+      } else if (wp && !g_eng_disp.winmode) { if (sscanf(wp, "%d/%d", &wi, &wn) == 2 && wi >= 1 && wi <= wn) eng_tile_window(win, wi - 1, wn);
                                        else eng_tile_window(win, wp[0] == 'r' || wp[0] == 'R', 2); } }
     eng_vsync_init(&vs, win, getenv("S23_VSYNC"));
     s23_smooth_set(eng_cfg_int("motion_smooth", 0));
     eng_pace_reset(&pace);
     fprintf(stderr, "[HOST] OpenGL: %s; display %d Hz, %s\n", (const char *)glGetString(GL_RENDERER), vs.hz, eng_vsync_mode(&vs));
     if (!eng_ui_init(win, s23_game.window_title)) fprintf(stderr, "[HOST] no menu\n");
+    if (party_hint[0]) { void eng_ui_set_hint(const char *, int); eng_ui_set_hint(party_hint, 60 * 15); }   /* party: whose picture this is */
     ss22_input_init(s23_game.input ? (const ss22_input_game *)s23_game.input : &s23_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
     eng_ui_add_page(ss22_input_page());
     if (s23_game.menu_pages) s23_game.menu_pages();

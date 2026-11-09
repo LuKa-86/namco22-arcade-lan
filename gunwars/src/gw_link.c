@@ -515,7 +515,9 @@ static void gate(int (*pump)(const char *, const char *))
         if (k == 'S') { go_alone("S WAS PRESSED"); break; }
     }
     void eng_ui_set_hint(const char *, int);
-    if (pump && state == ST_LINKED) { static char h[96]; snprintf(h, sizeof h, "LINKED: CABINET %d OF %d", me + 1, ncab); eng_ui_set_hint(h, 60 * 6); }
+    if (pump && state == ST_LINKED) { static char h[96]; const char *s23_party_hint(void); const char *ph = s23_party_hint();
+        if (ph[0]) eng_ui_set_hint(ph, 60 * 15);                       /* a party: whose picture this is (src/s23_window.c) */
+        else { snprintf(h, sizeof h, "LINKED: CABINET %d OF %d", me + 1, ncab); eng_ui_set_hint(h, 60 * 6); } }
     if (pump && state == ST_ALONE) { static char h[128]; snprintf(h, sizeof h, "NOT LINKED: %s", why_alone); eng_ui_set_hint(h, 60 * 8); }
 }
 static void tick(void)
