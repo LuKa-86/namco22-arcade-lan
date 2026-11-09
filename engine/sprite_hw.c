@@ -232,7 +232,7 @@ static void build_list_impl(const sprite_state *st)
     { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;
       if (lg) fprintf(stderr, "[SPR] f%u main on %d base %d num %d\n", rr_frame, sprites_on, base, num);
       if (lg && st->have_vics) { fprintf(stderr, "[VREG] f%u", rr_frame); for (int i = 0; i < 0x80 / 4; i++) fprintf(stderr, " %08X", st->vicsc[i]); fprintf(stderr, "\n"); } }
-    if (sprites_on && num > 0 && num < 0x400 && !(off & 1)) {
+    if (sprites_on && num > 0 && num < 0x400 && !(off & 1) && !g_sprite_vics_linked) {   /* (vics_linked: Air Combat 22 never sets this list; its one entry is junk) */
         for (int i = 0; i < num && n < 4096; i++, n++) {
             for (int k = 0; k < 4; k++) g_list[n].src[k] = W(0x4000/4 + (base+i)*4 + k);
             for (int k = 0; k < 2; k++) g_list[n].att[k] = W(0x20000/4 + (base+i)*2 + k);

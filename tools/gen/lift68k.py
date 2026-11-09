@@ -411,7 +411,11 @@ void rr_jump(uint32_t t, uint32_t at);
 extern uint32_t g_lift_pc;
 extern uint8_t g_lift_cov[];        /* one byte per even address: this instruction has run */
 #undef RR_INS
+#ifdef RR_TRACE                     /* (the trace build: also the per-instruction hook) */
+#define RR_INS(a) (g_lift_cov[(a) >> 1] = 1, g_lift_pc = (a), rr_trace_ins(a), --rr_budget)
+#else
 #define RR_INS(a) (g_lift_cov[(a) >> 1] = 1, g_lift_pc = (a), --rr_budget)
+#endif
 #endif
 '''
 

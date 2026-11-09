@@ -50,3 +50,12 @@ add_executable(ac src/ac_game.c src/ac_interp.c src/ac_snd_interp.c
 target_compile_options(ac PRIVATE -Wall)
 target_link_libraries(ac ${SDL2_LIBRARIES} ${AC_GL_LIB} ZLIB::ZLIB m)
 
+# DEV: the instruction-trace build (SS22_WATCH=<addr> write watch, RR_WATCHPC; run with RR_TRACE_OFF=1). Never shipped.
+add_executable(ac_trace EXCLUDE_FROM_ALL src/ac_game.c src/ac_interp.c src/ac_snd_interp.c
+    ${NAMCO22_ENGINE_NET_SRC}
+    ${NAMCO22_ENGINE_LIFT_SRC} ${NAMCO22_ENGINE_C25_SRC} ${NAMCO22_ENGINE_SND_SRC}
+    ${NAMCO22_ENGINE_GL_SRC} ${NAMCO22_ENGINE_SS22_SRC} ${NAMCO22_ENGINE_SS22_HOST_SRC} ${NAMCO22_ENGINE_UI_SRC} ${NAMCO22_ENGINE_ROMZIP_SRC} ${AC_GL_SRC}
+    ${AC_LIFTED})
+target_compile_definitions(ac_trace PRIVATE RR_TRACE)
+target_link_libraries(ac_trace ${SDL2_LIBRARIES} ${AC_GL_LIB} ZLIB::ZLIB m)
+

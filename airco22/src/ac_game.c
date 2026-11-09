@@ -94,7 +94,13 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     static int v = -1; if (v < 0) { const char *e = getenv("AC_AUTO"); v = e ? atoi(e) : 0; }
     int auto_pitch = 0, auto_throttle = 0;
     *wheel = 0x200; *pedal1 = *pedal2 = 0x200;
-    if (v == 4) return;
+    if (v == 4) {   /* AC_STICK=F+LEN:X,Y;...: hold the stick (and X = throttle when written T) from frame F for LEN frames (scripts the test menu) */
+        static const char *sc; static int got; if (!got) { got = 1; sc = getenv("AC_STICK"); }
+        for (const char *q = sc; q && *q; ) { long f, len; int x, y, k = 0;
+            if (sscanf(q, "%ld+%ld:%i,%i%n", &f, &len, &x, &y, &k) == 4 && n >= f && n < f + len) { *wheel = (unsigned)x; *pedal1 = (unsigned)y; }
+            const char *nx = strchr(q, ';'); q = nx ? nx + 1 : NULL; }
+        return;
+    }
     if (v == 6) {
         if (n > 300 && n < 9000) *p |= IN_TEST;
         if (n % 480 >= 300 && n % 480 < 306) *p |= IN_START;
@@ -112,9 +118,16 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
 }
 
 uint8_t g_lift_cov[0x200000];                /* gen/: which instructions have run (LIFT_LAST_PC) */
+#ifdef RR_TRACE
+void (*rr_read_probe)(uint32_t, int);          /* (the trace build links lift_env.c's weak hook: Windows needs a definition) */
+#endif
 uint32_t g_lift_pc;                          /* gen/: the instruction last started (LIFT_LAST_PC) */
 static void ac_frame(long n)
 {
+    { static int on = -1; if (on < 0) on = getenv("AC_ADCLOG") != NULL;  /* AC_ADCLOG=1: the stick words the I/O chip leaves (0xA0BD0A..) and the game's centres */
+      if (on && n % 10 == 0) fprintf(stderr, "[ADC] f%ld raw %04X %04X %04X %04X centre %04X %04X %04X\n", n,
+          (unsigned)rr_read(0xA0BD0A, 2), (unsigned)rr_read(0xA0BD0C, 2), (unsigned)rr_read(0xA0BD0E, 2), (unsigned)rr_read(0xA0BD10, 2),
+          (unsigned)rr_read(0xE08000 - 0x79EC, 2), (unsigned)rr_read(0xE08000 - 0x79EA, 2), (unsigned)rr_read(0xE08000 - 0x79E8, 2)); }
     { static int on = -1; if (on < 0) on = getenv("AC_PCLOG") != NULL;      /* AC_PCLOG=1: where the 68K is at each frame's end */
       if (on && n % 20 == 0) fprintf(stderr, "[AC] f%ld pc %06X  D0 %08X A0 %08X SP %08X\n", n, (unsigned)g_lift_pc, (unsigned)RG4(0x00), (unsigned)RG4(0x20), (unsigned)RG4(0x3C)); }
     { static long c0 = -2, c1; if (c0 == -2) { c0 = -1; const char *e = getenv("AC_COV"); if (e) sscanf(e, "%ld:%ld", &c0, &c1); }   /* AC_COV=from:to -> ac_cov.txt */

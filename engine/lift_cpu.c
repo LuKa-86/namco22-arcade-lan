@@ -90,8 +90,10 @@ void rr_trace_ins(uint32_t pc)
             for (char *q = (char *)e; e && *q && nwp < 16; ) { char *end; unsigned long v = strtoul(q, &end, 16);
                 if (end == q) { q++; continue; } wp[nwp++] = (uint32_t)v; q = end; } }
         for (int i = 0; i < nwp; i++) if (wp[i] == pc) {
-            fprintf(stderr, "[PCW] %06X D0=%08X D1=%08X N%dZ%dV%dC%d\n", pc, (uint32_t)RG4(0), (uint32_t)RG4(4),
-                    (int)RG1(0x44), (int)RG1(0x45), (int)RG1(0x46), (int)RG1(0x47)); break; }
+            fprintf(stderr, "[PCW] f%u %06X D0=%08X D1=%08X N%dZ%dV%dC%d A:", rr_frame, pc, (uint32_t)RG4(0), (uint32_t)RG4(4),
+                    (int)RG1(0x44), (int)RG1(0x45), (int)RG1(0x46), (int)RG1(0x47));
+            for (int r = 8; r < 16; r++) fprintf(stderr, " %08X", (uint32_t)RG4(r * 4));
+            fprintf(stderr, "\n"); break; }
     }
     { extern int rd_cov_on; extern void rd_cov_ins(uint32_t); if (rd_cov_on) rd_cov_ins(pc); }
     static int off = -1;
