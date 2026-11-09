@@ -51,6 +51,7 @@ the arcade has and keeping them running.
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
 | **Alpine Racer 2** | 1996 | 2, linked | **New**: a port made for this fork, not in the original project; 2 linked cabinets race head to head, party mode |
 | **Alpine Surfer** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
+| **Air Combat 22** | 1995 | 1 | **New**: a port made for this fork, not in the original project (jet-fighter missions) |
 | **Aqua Jet** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
 
@@ -215,7 +216,7 @@ MIT License; see `LICENSE`. Copyright of the original project is its author's; t
 licence.
 
 This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Ace Driver, Time Crisis, Cyber Cycles,
-Alpine Racer, Cyber Sled and Gunmen Wars are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
+Alpine Racer, Cyber Sled, Gunmen Wars and Air Combat are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
 each game.
 
 ## Credits

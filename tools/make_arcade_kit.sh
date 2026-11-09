@@ -33,6 +33,7 @@ GAMES=(
   "Alpine Racer|AlpineRacer-ArcadeLAN.exe|alpiner/build/al.exe|alpinerjc.zip|alpiner"
   "Alpine Racer 2|AlpineRacer2-ArcadeLAN.exe|alpinr2/build/a2.exe|alpinr2a.zip|alpinr2"
   "Alpine Surfer|AlpineSurfer-ArcadeLAN.exe|alpines/build/af.exe|alpines.zip|alpines"
+  "Air Combat 22|AirCombat22-ArcadeLAN.exe|airco22/build/ac.exe|airco22b.zip|airco22"
   "Aqua Jet|AquaJet-ArcadeLAN.exe|aquajet/build/aj.exe|aquajet.zip|aquajet"
   "Cyber Sled|CyberSled-ArcadeLAN.exe|cybsled/build/cs21.exe|cybsled.zip namcoc67.zip namcoc68.zip|cybsled"
   "Gunmen Wars|GunmenWars-ArcadeLAN.exe|gunwars/build/gunwars.exe|gunwars.zip namco_asca5.zip|gunwars"
