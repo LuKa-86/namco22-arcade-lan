@@ -178,7 +178,20 @@ static bool rep_open(const char *path)
     return true;
 }
 static const char *rec_path, *rep_path;
-static const char *link_spec;                        /* --link ID/N[:PORT][:free] (engine/ss22_link.h) */
+/* F9, A GLITCH CAPTURE (engine/ss22_host.c): this session's recording so far, copied to dst -- replayed (--replay dst) it reaches the
+ * same frame, instruction for instruction. false = no recording (link.cfg record=off) */
+bool ss22_rec_copy(const char *dst)
+{
+    if (!rec_f || !rec_path) return false;
+    fflush(rec_f);
+    FILE *in = fopen(rec_path, "rb"); if (!in) return false;
+    FILE *out = fopen(dst, "wb"); if (!out) { fclose(in); return false; }
+    char b[65536]; size_t n;
+    while ((n = fread(b, 1, sizeof b, in)) > 0) fwrite(b, 1, n, out);
+    fclose(in); fclose(out);
+    return true;
+}
+static const char *link_spec;                      /* --link ID/N[:PORT][:free] (engine/ss22_link.h) */
 static const char *start_name;                       /* --stage NAME (the game's start script, ss22_game.start) */
 static bool start_on;                                /* the start script owns the cabinet this frame: the window's keys stay out of it */
 static long start_base;                              /* the frame the script started at (0: --stage, from power-on) */

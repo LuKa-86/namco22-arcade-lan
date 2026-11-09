@@ -61,7 +61,7 @@ static const ss22_board_cfg ac_board = { "AC", 0, 0, ac_load_program, ac_load_ee
 #define IN_MISSILE 0x0010
 #define IN_GUN     0x0020
 #define IN_START   0x0040
-/* the stick's Y and the throttle are read in ac_adc (below) from these keys / the pad; X is the engine's wheel axis */
+/* the stick's Y and the throttle are read in ac_send (below) from the arrows / W S / the pad; X is the engine's wheel axis */
 static const ss22_action actions[] = {
     { "Insert coin",      "coin",      SDL_SCANCODE_5,      SDL_SCANCODE_6,        IN_COIN,    0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_BACK) },
     { "Start / view",     "start",     SDL_SCANCODE_RETURN, SDL_SCANCODE_KP_ENTER, IN_START,   0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_START) | SS22_PAD(SDL_CONTROLLER_BUTTON_Y) },
@@ -72,26 +72,28 @@ static const ss22_action actions[] = {
     { "Stick left",       "left",      SDL_SCANCODE_LEFT,   SDL_SCANCODE_UNKNOWN,  0,          SS22_AX_WHEEL_LEFT,  0 },
     { "Stick right",      "right",     SDL_SCANCODE_RIGHT,  SDL_SCANCODE_UNKNOWN,  0,          SS22_AX_WHEEL_RIGHT, 0 },
 };
+static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2);
 static const ss22_input_game input = {
     actions, (int)(sizeof actions / sizeof *actions),
     0x100, 0x300, 0x100, 12,
     { 0x100, 0x100 }, 16,
     { "Enter, then press the new key (Esc cancels)", "Stick: arrows (up / down pitch); throttle: W / S (springs back)",
       "Pad: left stick flies, right stick up / down throttle, A gun, B missile" },
-    ss22_snd_inputs,
+    ac_send,
     IN_TEST, IN_SERVICE,
 };
 
 static const ss22_press_name presses[] = { {"coin", IN_COIN}, {"start", IN_START}, {"service", IN_SERVICE}, {"test", IN_TEST},
                                            {"gun", IN_GUN}, {"missile", IN_MISSILE} };
 
-static int auto_pitch, auto_throttle;           /* the test player's stick Y / throttle (centre 0) */
+static unsigned clamp_adc(int v) { return (unsigned)(v < 0x100 ? 0x100 : v > 0x300 ? 0x300 : v); }
 static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, unsigned *pedal2)
 {
-    (void)pedal1; (void)pedal2;
-    /* AC_AUTO picks the test player: 0 flies about and fires (default), 4 never coins up (the attract loop), 6 goes into the test menu */
+    /* AC_AUTO picks the test player: 0 flies about and fires (default), 4 never coins up (the attract loop), 6 goes into the test menu.
+     * The stick's Y and the throttle travel as the "pedals" (ADC 1, 2), so a recording keeps them */
     static int v = -1; if (v < 0) { const char *e = getenv("AC_AUTO"); v = e ? atoi(e) : 0; }
-    *wheel = 0x200; auto_pitch = auto_throttle = 0;
+    int auto_pitch = 0, auto_throttle = 0;
+    *wheel = 0x200; *pedal1 = *pedal2 = 0x200;
     if (v == 4) return;
     if (v == 6) {
         if (n > 300 && n < 9000) *p |= IN_TEST;
@@ -106,6 +108,7 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     *wheel = ((n / 120) % 2 == 0) ? 0x180 : 0x280;
     auto_pitch = ((n / 200) % 2 == 0) ? 0x60 : -0x60;
     auto_throttle = 0x80;
+    *pedal1 = clamp_adc(0x200 + auto_pitch); *pedal2 = clamp_adc(0x200 + auto_throttle);
 }
 
 uint8_t g_lift_cov[0x200000];                /* gen/: which instructions have run (LIFT_LAST_PC) */
@@ -132,22 +135,20 @@ static int ac_axis(SDL_GameControllerAxis ax)
     const int v = SDL_GameControllerGetAxis(ac_pad, ax);
     return v > -6000 && v < 6000 ? 0 : v;
 }
-static uint16_t clamp_adc(int v) { return (uint16_t)(v < 0x100 ? 0x100 : v > 0x300 ? 0x300 : v); }
-static void ac_adc(uint16_t *adc)
+/* the window's controls -> the board: Y and the throttle as the two "pedals" (ADC 1, 2: .snd adc_pedal), so the session recording
+ * (and an F9 capture's replay) keeps them -- an A-D hook after the recording made replays drift */
+static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2)
 {
+    (void)pedal1; (void)pedal2;
     int y = 0, t = 0;
-    if (SDL_WasInit(SDL_INIT_VIDEO)) {
-        const Uint8 *k = SDL_GetKeyboardState(NULL);
-        if (k[SDL_SCANCODE_UP]) y -= 0x100;
-        if (k[SDL_SCANCODE_DOWN]) y += 0x100;
-        if (k[SDL_SCANCODE_W]) t += 0x100;
-        if (k[SDL_SCANCODE_S]) t -= 0x100;
-        y += ac_axis(SDL_CONTROLLER_AXIS_LEFTY) / 128;
-        t -= ac_axis(SDL_CONTROLLER_AXIS_RIGHTY) / 128;
-    }
-    y += auto_pitch; t += auto_throttle;
-    adc[1] = clamp_adc(0x200 + y);
-    adc[2] = clamp_adc(0x200 + t);
+    const Uint8 *k = SDL_GetKeyboardState(NULL);
+    if (k[SDL_SCANCODE_UP]) y -= 0x100;
+    if (k[SDL_SCANCODE_DOWN]) y += 0x100;
+    if (k[SDL_SCANCODE_W]) t += 0x100;
+    if (k[SDL_SCANCODE_S]) t -= 0x100;
+    y += ac_axis(SDL_CONTROLLER_AXIS_LEFTY) / 128;
+    t -= ac_axis(SDL_CONTROLLER_AXIS_RIGHTY) / 128;
+    ss22_snd_inputs(p, wheel, clamp_adc(0x200 + y), clamp_adc(0x200 + t));
 }
 
 static const ss22_game game = {
@@ -156,7 +157,7 @@ static const ss22_game game = {
     .dsp = { { {"acs1ptl0.18k", "acs1ptl1.16k", "acs1ptl2.15k", "acs1ptl3.14k"},
                {"acs1ptm0.18j", "acs1ptm1.16j", "acs1ptm2.15j", "acs1ptm3.14j"},
                {"acs1ptu0.18f", "acs1ptu1.16f", "acs1ptu2.15f", "acs1ptu3.14f"} }, 4, ac_c25_exec },
-    /* MAME's c352 region: acs1wav0.1 at 0x400000, acs1wav1.2 at 0x800000. ADC 1 and 2 are set in ac_adc (the pedals' slots unused) */
+    /* MAME's c352 region: acs1wav0.1 at 0x400000, acs1wav1.2 at 0x800000. ADC 1 and 2 = the "pedals": the stick's Y and the throttle (ac_send, autoplay) */
     .snd = { "acs1data.8k", { "acs1wav0.1", "acs1wav1.2" }, { 0x400000, 0x800000 }, 0x1000000, 0xFFFF, { 1, 2 } },
     .video = { { "acs1cg0.8d", "acs1cg1.10d", "acs1cg2.12d", "acs1cg3.13d", "acs1cg4.14d", "acs1cg5.16d", "acs1cg6.18d", "acs1cg7.19d" },
                "acs1ccrl.3d", "acs1ccrh.1d", { "acs1scg0.12f", "acs1scg1.10f" }, 2, 0x1000000, 0xFF,
@@ -172,4 +173,4 @@ static const ss22_game game = {
     .frame = ac_frame,
 };
 
-int main(int argc, char **argv) { g_ss22_adc_hook = ac_adc; return ss22_main(argc, argv, &game); }
+int main(int argc, char **argv) { return ss22_main(argc, argv, &game); }

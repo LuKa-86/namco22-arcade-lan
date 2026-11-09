@@ -40,7 +40,7 @@ static const eng_ui_page network_page = { "Network", 480, 210, 24, link_page_row
 static const ss22_host_game *game;
 static SDL_Window *win;
 static SDL_GLContext glc;
-static bool paused, shot_pending, headless_open, restart_req;
+static bool paused, shot_pending, capture_pending, headless_open, restart_req;
 static eng_vsync vs;                               /* the frame pacer (engine/eng_vsync.h) */
 
 static uint64_t now_ns(void)                     /* split the scaling: counter * 1e9 overflows 64 bits (and this works on Windows too) */
@@ -155,6 +155,23 @@ static void present(void)
                  tm.tm_hour, tm.tm_min, tm.tm_sec, n++);
         if (eng_gl_write_ppm(p, vw, vh)) fprintf(stderr, "[HOST] saved %s\n", p);
     }
+    { static long at = -2; extern uint32_t rr_frame;   /* tests: SS22_CAPTURE_AT=<frame> presses F9 then */
+      if (at == -2) { const char *e = getenv("SS22_CAPTURE_AT"); at = e ? atol(e) : -1; }
+      if (at >= 0 && rr_frame == (uint32_t)at) { capture_pending = true; at = -1; } }
+    if (capture_pending) {                           /* F9, A GLITCH CAPTURE: the picture and this session's recording up to now (replayed with
+                                                      * --replay it reaches this frame exactly) -- captures/capture_<frame>.ppm / .rec */
+        capture_pending = false;
+        extern uint32_t rr_frame; bool ss22_rec_copy(const char *dst);
+        char p[96], r[96]; static char h[128];
+        mkdir("captures", 0755);
+        snprintf(p, sizeof p, "captures/capture_%06u.ppm", rr_frame);
+        snprintf(r, sizeof r, "captures/capture_%06u.rec", rr_frame);
+        const bool pic = eng_gl_write_ppm(p, vw, vh), rec = ss22_rec_copy(r);
+        if (rec) snprintf(h, sizeof h, "GLITCH CAPTURED (F9): captures/capture_%06u", rr_frame);
+        else snprintf(h, sizeof h, "PICTURE SAVED (F9), NO RECORDING: session recording is off (launcher Settings)");
+        eng_ui_set_hint(h, 60 * 4);
+        fprintf(stderr, "[HOST] capture at frame %u: %s%s%s\n", rr_frame, pic ? p : "(no picture)", rec ? " + " : "", rec ? r : " (no recording)");
+    }
     const SDL_Rect r = eng_disp_picture_rect(rw, rh);
     pic_r = r; gun_r = r;
     if (g_eng_disp.wide) { const int w = (int)(r.h * 4.0 / 3.0 + 0.5); gun_r.x = r.x + (r.w - w) / 2; gun_r.w = w; }   /* the 2D layers and the gun stay 4:3 */
@@ -245,6 +262,7 @@ static bool pump(void)
                 else { paused = !paused; if (paused) game->input_neutral(); fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }   /* neutral: no force (wheel motor, a kick) is held through the pause */
             }
             if (sc == SDL_SCANCODE_F12) shot_pending = true;
+            if (sc == SDL_SCANCODE_F9) capture_pending = true;                  /* a glitch capture (above) */
             if (sc == SDL_SCANCODE_F8 && game->aim) { eng_disp_cycle_gun_border(); fprintf(stderr, "[HOST] light-gun border %d%%\n", g_eng_disp.gun_border); }
             if (sc == SDL_SCANCODE_F11 || (sc == SDL_SCANCODE_RETURN && (e.key.keysym.mod & KMOD_ALT))) eng_disp_toggle_fullscreen();
         }
