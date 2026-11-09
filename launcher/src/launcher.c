@@ -105,9 +105,9 @@ static const game_t games[] = {
       "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ski  \xC2\xB7  Esc menu", NULL,
       2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
     { "alpinr2", "Alpine Racer 2", "1996", "Alpine Racer 2", "AlpineRacer2-ArcadeLAN.exe",
-      "Downhill skiing for a single cabinet: racing, gate racing, free skiing and moguls. New in this package.",
-      "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ski  \xC2\xB7  Esc menu", NULL,
-      2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
+      "Downhill skiing: racing, gate racing, free skiing and moguls; 2 linked cabinets race head to head. New in this package.",
+      "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ski  \xC2\xB7  Esc menu", "link.cfg",
+      5, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_PARTY2K("roms"), M_PARTY2P("roms") } },
     { "alpines", "Alpine Surfer", "1996", "Alpine Surfer", "AlpineSurfer-ArcadeLAN.exe",
       "Snowboarding for a single cabinet: freeriding and gate racing. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ride  \xC2\xB7  Esc menu", NULL,
@@ -213,7 +213,7 @@ static const char *cabinets_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
         { "acedrive", "Up to 8 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
-        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" },
+        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" }, { "alpinr2", "2 linked cabinets" },
         { "raverace", "Up to 4 linked cabinets" }, { "timecrs2", "Twin cabinet, 2 players" }, { "tokyowar", "Up to 4 linked cabinets" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
     return "Single cabinet";

@@ -149,6 +149,26 @@ static void a2_adc(uint16_t *adc)
     adc[1] = mode == 0 ? 0x200 : mode == 2 ? (uint16_t)(0x400 - adc[0]) : adc[0];
 }
 
+/* THE CABINET LINK (2 cabinets; engine/lan139.c). The driver (0x60FC init, 0x616C the receive interrupt -- level 4 -- 0x6270 the
+ * per-frame send) is point to point: each cabinet sends its own packet [length][0xA5][bytes][0x100 | count] and keeps the frames it
+ * receives (up to 8) for the game; nothing is forwarded. The game's packet (0x2EA54, 0x66 bytes) carries 0x17300000 + a counter << 4
+ * + its ID at +0x10; the receiver (0x2EDB4, state word 0xE1867E) rejects its own echo and one with the same ID (state 7). The ID is
+ * the operator setting at +0x32 of the settings (RAM 0xE186B8, the EEPROM's layout): EEPROM byte 0x32. */
+static uint16_t w16(uint32_t a) { return (uint16_t)rr_read(a, 2); }
+static int  a2_link_game_id(void) { return (int)(rr_read(0xE186EA, 1) & 3); }
+static bool a2_link_good(void)                   /* frames keep arriving: the game's "nothing received" count stays still */
+{
+    static uint16_t last; static uint32_t quiet;
+    const uint16_t n = w16(0xE18668);
+    if (n != last) { last = n; quiet++; } else quiet = 0;
+    return quiet < 30;
+}
+static void a2_link_report(char *buf, int n)
+{
+    snprintf(buf, (size_t)n, "game: cabinet %u, state %u, no data %u, bad sum %u, no end %u, no A5 %u", (unsigned)(rr_read(0xE186EA, 1) & 3) + 1,
+             w16(0xE1867E), w16(0xE18668), (unsigned)rr_read(0xE1866C, 4), (unsigned)rr_read(0xE18660, 4), (unsigned)rr_read(0xE18664, 4));
+}
+
 static const ss22_game game = {
     .name = "Alpine Racer 2", .tag = "A2", .lname = "a2", .logname = "alpinr2.log", .zip = "alpinr2a.zip",
     .more_zips = (const char *const[]){ "alpinr2b.zip", NULL },      /* a split MAME set keeps the shared chips in the parent (Ver.B) zip */
@@ -167,7 +187,8 @@ static const ss22_game game = {
     .presses = presses, .n_presses = (int)(sizeof presses / sizeof *presses),
     .autoplay = autoplay,
     .pedal_full = { 0x100, 0x100 },
-    .link_id_byte = -1,
+    .link_id_byte = 0x32,
+    .link_game_id = a2_link_game_id, .link_report = a2_link_report, .link_good = a2_link_good,
     .frame = a2_frame,
 };
 

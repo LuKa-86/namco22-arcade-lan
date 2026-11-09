@@ -16,7 +16,7 @@ WHAT IS IN THIS FOLDER
   games\                    one folder per game: its program, its roms\ and its settings
      Ace Driver\            up to 8 linked cabinets (linked play new in this package)
      Alpine Racer\          one cabinet (new in this package)
-     Alpine Racer 2\        one cabinet (new in this package)
+     Alpine Racer 2\        2 linked cabinets race head to head (new in this package)
      Alpine Surfer\         one cabinet (new in this package)
      Aqua Jet\              one cabinet (new in this package)
      Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)

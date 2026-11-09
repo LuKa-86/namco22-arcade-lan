@@ -49,7 +49,7 @@ the arcade has and keeping them running.
 | **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
 | **Armadillo Racing** | 1997 | up to 4, linked | Trackball racing; **new link** in this fork (the original project's build plays solo) |
 | **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
-| **Alpine Racer 2** | 1996 | 1 | **New**: a port made for this fork, not in the original project (its 2-cabinet link is to come) |
+| **Alpine Racer 2** | 1996 | 2, linked | **New**: a port made for this fork, not in the original project; 2 linked cabinets race head to head, party mode |
 | **Alpine Surfer** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
 | **Aqua Jet** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
 | **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
@@ -158,6 +158,8 @@ in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
   bus model, a Network setting for slower networks, the NamCam photo from a webcam or a picture, widescreen with the HUD at
   the edges, mouse-look controls, F9 captures (a picture and the game's state, to replay a problem), party mode. The System 23
   engine moved to its own folder (`s23/`), shared by Gunmen Wars and Time Crisis II; Time Crisis II gains party mode.
+  **Alpine Racer 2 links**: 2 cabinets race head to head (its point-to-point C139 driver, the cabinet ID at EEPROM 0x32), with
+  the test and party modes.
 
 - **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
   geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer; Ace Driver links (up to 8). The launcher, with the automatic start

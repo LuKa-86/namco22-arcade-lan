@@ -76,3 +76,17 @@ A slow-but-steady PC (TW_SLOWDRAW=20:12, ~55 fps in a window) did NOT break it (
 Tried and removed: a "catch-up" (run frames undrawn when behind the board's clock) -- it turned slowness into bursts and made it worse
 (4 link losses and 154 drops against 0 and 0). Kept: the chip's queue at 58 frames (the real ring buffer's size).
 Advice: full screen, cabled network; on Wi-Fi a "best performance" power plan.
+
+## Alpine Racer 2's protocol (driver at `0x60FC`–`0x63BE`, 2 cabinets)
+
+- Super 22 chip addresses (as Tokyo Wars). Init `0x60FC`; the receive interrupt is level 4 (vector `0x60DC` -> `0x616C`), enabled
+  each frame by the send routine (syscon `0x700002` = 4); only the receive interrupt is used (control `0xFFFD`).
+- **Point to point, no forwarding.** Each frame `0x6270` writes its packet into a double buffer at word 0 or `0x200`:
+  `[n+2][0xA5][n bytes][0x100 | n+1]`, and when register 5 reads 0 sends `n+2` words from the buffer word after the length
+  (register 7 = offset + 1). The receive handler scans back from register 6 (masked `0xFFF`) to the end word, checks `0xA5`
+  and keeps up to 8 frames; the frame routine copies them to 250-byte slots at `0xE17E90`.
+- The game's packet (`0x2EA54`, `0x66` bytes, a 16-bit sum) carries `0x17300000 + counter << 4 + ID` at `+0x10`; the receiver
+  (`0x2EDB4`) rejects its own echo and a cabinet with the same ID. The ID = operator setting `+0x32` (RAM `0xE186EA`, EEPROM
+  byte `0x32`). Link state word `0xE1867E`, shown in the test menu: 4 LINK ON 2, 1 LINK OFF, 7 LINK ON 1, 9 LINK NG.
+- With the ID set (alpinr2 `link_id_byte = 0x32`) the existing chip model links it unchanged: skier select says THIS IS
+  HEAD-TO-HEAD RACE, the race shows positions out of 2 and a RIVAL marker.
