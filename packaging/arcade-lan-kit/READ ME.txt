@@ -25,7 +25,7 @@ WHAT IS IN THIS FOLDER
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
      Dirt Dash\             one cabinet (the original project's own program)
-     Gunmen Wars\           one cabinet, early version (new in this package; linked play and the camera to come)
+     Gunmen Wars\           up to 3 linked cabinets, with the NamCam photo (new in this package)
      Prop Cycle\            one cabinet (the original project's own program)
      Rave Racer\            up to 4 linked cabinets
      Time Crisis\           one cabinet (the original project's own program)
@@ -160,6 +160,27 @@ To stop it starting by itself: launcher > Settings > "Start a game when Windows 
 The link lights: blue = this cabinet (flickers as it sends); green = that cabinet and this one
 hear each other; amber = one-way (it is heard but cannot hear this one); red = nothing from that
 cabinet; grey = not in this set.
+
+
+7. GUNMEN WARS
+--------------
+ - Ways to play: Full screen, Window, and "2 players on this PC" (two linked windows, a game
+   controller each). Linked cabinets: set them up on the game's own Esc menu > Link page
+   ("Find cabinets", then "Use found" on every PC); 2 or 3 cabinets, 4 is experimental.
+ - Link page > Network: LAN (cables, the default), Wi-Fi, Slow network or Internet. A slower
+   choice adds a little delay but rides out a less steady network; linked PCs all use the
+   slowest one set on any of them.
+ - THE NAMCAM: the photo taken before team select comes from the PC's webcam, or from a picture
+   named photo.jpg / photo.png / photo.bmp in the game's folder (Esc menu > Options > NamCam
+   photo: Auto, Webcam, Photo file or Off). Linked cabinets see each other's photos.
+ - Esc menu > Options: Controls (FPS: the mouse turns / Cursor), Mouse sensitivity, Crosshair
+   (FPS) hidden or shown, Boot notice (skip the 25 s notice), Widescreen outside matches (4:3
+   with black bars, the default: the attract demo's scenery only exists as far as the original
+   4:3 screen shows; matches always fill the widescreen).
+ - Esc menu > Display: Widescreen, Widescreen HUD (the scores at the screen edges), Motion
+   smoothing (for 120 Hz screens and up), Depth.
+ - F9 saves a CAPTURE (a picture and the game's state) in the captures folder: press it when
+   something looks wrong and send the files with the report. F12 takes a plain screenshot.
 
 
 IF SOMETHING GOES WRONG

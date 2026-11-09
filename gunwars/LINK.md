@@ -47,9 +47,12 @@ typedef struct {
 - **Lockstep:**
   - Every packet carries its sender's game time.
   - It is delivered at the receiver's game time = sent + LAG.
-  - Today LAG is 0.1 frame, for a LAN. The bus handshake expects answers within milliseconds.
-  - An online transport needs a bigger LAG (`GW_LINK_LAG=<frames>`).
-  - Still to check: how large a LAG the game tolerates during play.
+  - LAG is the Link page's **Network** setting (`link_net` in `gunwars.cfg`): `lan` 0.1 frame (the default),
+    `wifi` 1, `slow` 3, `internet` 6 frames. Every hello carries it (header byte 6) and while the cabinets find
+    each other each one takes the largest, so all play alike. `GW_LINK_LAG=<frames>` / `GW_LINK_NET=0-3` for tests.
+  - Tested: two copies, one on `internet` and one on `lan`: both adopted 6 frames, a full match, 0 packets late.
+  - A datagram that fills up and goes early promises only the stamp of the packet that did not fit (`flush_to`);
+    promising the board's whole run made packets late with the longer delays.
 
 ## What the game needs (read off the SH-2 program and the main program)
 
@@ -117,6 +120,7 @@ typedef struct {
   - `link_port`
   - `link_wait`
   - `link_lights`
+  - `link_net`: `lan`, `wifi`, `slow` or `internet`
 - **Tests:** `GW_LINK=<cabinet>:<cabinets>:<first port>` runs copies on one PC. Each copy needs its
   own folder. For example `GW_LINK=1:2:23150` and `GW_LINK=2:2:23150`.
 - **Two headless copies:** `build/linktest/run2.sh <instructions>`, from `build/linktest`
@@ -133,7 +137,7 @@ typedef struct {
 | `GW_SHWATCH=lo-hi` | Writes to the shared RAM (main M / SH-2 S) |
 | `GW_SHWATCH_FROM=frame` | Start of the `GW_SHWATCH` log |
 | `GW_CMDLOG`, `GW_RDLOG` | Main writes to the command word, main reads of `C000-C0FF` |
-| `GW_IRQ6VB=1` | IRQ6 once a frame with one cabinet too (test) |
+| `GW_IRQ6VB=0` | No IRQ6 after boot with one cabinet (MAME's behaviour; the default is once a frame, which makes the game draw its own NamCam screen) |
 | `GW_FWNODES=n` | One cabinet: the fake node count |
 
 ## Still to do
@@ -141,8 +145,8 @@ typedef struct {
 - **Two real PCs:**
   - `address=auto` broadcasts to find the others.
   - Windows' firewall asks once.
-- **Four or more cabinets:** the code allows up to 8; 3 tested.
-- **Launcher:** "Test: 2 / 4 linked cabinets on this PC" (each copy in its own `try-N` folder, `S23_CABINET_DIR`; windows
-  tiled with `S23_WINPOS=N/M`; copies 2+ muted, `S23_MUTE`).
+- **Four or more cabinets:** the code allows up to 8; 3 work, 4 is experimental (cabinet 3 stalls at team select).
+- **Launcher:** "2 players on this PC (2 linked windows)" (each copy in its own `try-N` folder, `S23_CABINET_DIR`; windows
+  tiled with `S23_WINPOS=N/M`; copy 2 muted, `S23_MUTE`; one game controller each, `S23_PAD=n`).
 - **A cabinet that drops out mid-game:** the others carry on after 5 s; the game's own handling
   has not been checked.

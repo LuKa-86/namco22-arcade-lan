@@ -315,11 +315,9 @@ static void render_immediate(const s23_render_entry *e)
          * (as MAME does) it became +1024 and the logo was projected far off-screen */
         pv[i].x = s24(q->x[i]) / 16384.f; pv[i].y = s24(q->y[i]) / 16384.f; pv[i].p[0] = s24(q->z[i]) / 16384.f;
         /* u / v: the LOW 16 BITS only (Gunmen Wars' namco logo: 300 triangles whose words carry junk in the high half -- u 79C60A00,
-         * v 022A7100 -- read whole they sampled noise all over the texture ROM; masked they all read the logo's red at 0A00, 7100) */
-        static long vm = -2; if (vm == -2) { const char *e = getenv("S23_IMMVMASK"); vm = e ? strtol(e, NULL, 16) : 0xFFFF; }   /* TEST */
-        pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & (uint32_t)vm); pv[i].p[3] = (float)(int32_t)q->i[i];
-        { static int sh = -1; if (sh < 0) { const char *e = getenv("S23_IMMSH"); sh = e ? atoi(e) : 0; }   /* TEST: 3-corner immediates' u / v with sh fraction bits */
-          if (sh && ne == 3) { pv[i].p[1] = (float)((q->u[i] & 0xFFFF) >> sh); pv[i].p[2] = (float)((q->v[i] & 0xF000) | ((q->v[i] & 0xFFF) >> sh)); } }
+         * v 022A7100 -- read whole they sampled noise all over the texture ROM; masked they read the ball's metallic map, as the arcade.
+         * Tried and ruled out: fewer v bits (0x0FFF / 0x1FFF / 0x3FFF) or 2 / 4 fraction bits -- none gives the later red letters) */
+        pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & 0xFFFF); pv[i].p[3] = (float)(int32_t)q->i[i];
     }
     if (GNPOLY >= MAX_POLYS) return;
     poly *p = &GPOLYS[GNPOLY];
