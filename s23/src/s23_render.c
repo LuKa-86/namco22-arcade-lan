@@ -316,9 +316,11 @@ static void render_immediate(const s23_render_entry *e)
         pv[i].x = s24(q->x[i]) / 16384.f; pv[i].y = s24(q->y[i]) / 16384.f; pv[i].p[0] = s24(q->z[i]) / 16384.f;
         /* u / v: the LOW 16 BITS only (Gunmen Wars' namco logo: 300 triangles whose words carry junk in the high half -- u 79C60A00,
          * v 022A7100 -- read whole they sampled noise all over the texture ROM; masked they read the ball's metallic map, as the arcade.
-         * Tried and ruled out: fewer v bits (0x0FFF / 0x1FFF / 0x3FFF) or 2 / 4 fraction bits -- none gives the later red letters) */
-        pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & 0xFFFF); pv[i].p[3] = (float)(int32_t)q->i[i];
-    }
+         * The ball / letters (3-corner immediates, header 4F2C) reflect a dusk-sky panorama (page 7, around u 0A00 v 7100: S23_TEXDUMP);
+         * the flat letters all read u 0A00 v 7100, the dark sky's edge. The ARCADE turns them a bright even red-orange the moment they
+         * flatten (video 1, 159.6 -> 160.0 s): not found -- ruled out: fewer v bits, 2 / 4 fraction bits, v offsets 0x60 / 0xC0 (brown with
+         * skyline), palette / C404 / text layer / C412-C417 writes (all constant over the logo). Likely a C435 / C404 feature not emulated) */
+        pv[i].p[1] = (float)(q->u[i] & 0xFFFF); pv[i].p[2] = (float)(q->v[i] & 0xFFFF); pv[i].p[3] = (float)(int32_t)q->i[i];    }
     if (GNPOLY >= MAX_POLYS) return;
     poly *p = &GPOLYS[GNPOLY];
     p->n = zclip(ne < 4 ? ne : 4, pv, p->pv, znear());
@@ -664,6 +666,11 @@ void s23_soft_raster(const s23_built *b, uint32_t *rgba)
       static long pal = -2; if (pal == -2) { const char *e = getenv("S23_FXPAL"); pal = e ? strtol(e, NULL, 16) : -1; }   /* + 16 pens of palette <hex> */
       if (a >= 0 && pal >= 0 && (long)rr_frame >= a && (long)rr_frame <= z) { fprintf(stderr, "[PAL] f%u %04lX:", rr_frame, pal << 8);
           for (int k = 0; k < 256; k += 16) fprintf(stderr, " %06X", (unsigned)(b->fs.pens[((pal << 8) + k) & 0x7FFF] & 0xFFFFFF)); fprintf(stderr, "\n"); } }
+    { static long tf = -2; static unsigned tu, tv, tw, th, tp; if (tf == -2) { const char *e = getenv("S23_TEXDUMP"); tf = -1;   /* debug: $S23_TEXDUMP=frame:u,v,w,h,pal -- texture area (8-bit pens) as texdump.ppm */
+          if (e && sscanf(e, "%ld:%x,%x,%x,%x,%x", &tf, &tu, &tv, &tw, &th, &tp) != 6) tf = -1; }
+      extern uint32_t rr_frame;
+      if (tf >= 0 && (long)rr_frame == tf) { FS = &b->fs; FILE *o = fopen("texdump.ppm", "wb");
+          if (o) { fprintf(o, "P6\n%u %u\n255\n", tw, th); for (unsigned y = 0; y < th; y++) for (unsigned x = 0; x < tw; x++) { uint8_t pn; const uint32_t c = tex_lookup(tp << 8, 0, 0xFF, tu + x, tv + y, &pn); const uint8_t px[3] = { (uint8_t)(c >> 16), (uint8_t)(c >> 8), (uint8_t)c }; fwrite(px, 1, 3, o); } fclose(o); } } }
     if (seamtest < 0) { const char *e = getenv("S23_SEAMTEST"); seamtest = e ? atoi(e) : 0; }
     for (int k = 0; k < 640 * 480; k++) rgba[k] = seamtest ? 0xFF00FF : f->bg;
     memset(pri, 0, sizeof pri);
