@@ -181,8 +181,7 @@ static const ss22_input_game gw_input = {
     .actions = gw_actions, .n = (int)(sizeof gw_actions / sizeof *gw_actions),
     .wheel_min = 0x001, .wheel_max = 0x3FF, .wheel_key_span = 0x1FF, .wheel_step = 12,
     .notes = { "Enter, then press the new key (Esc cancels)",
-               "Mouse: the cursor aims (the lock-on square snaps to the nearest enemy); push it to a screen side to turn - further out = faster",
-               "FPS layout (Options page): the mouse turns, W A S D move, left button fires, right button = enter",
+               "Mouse (Options > Controls): FPS = the mouse turns, left button fires, right button = enter; Cursor = push to a side to turn",
                "Pad: left stick moves, right stick turns, RT / A / RB fire, LT / B / Start enter, Back coin" },
     .send = gw_send_inputs, .test_bit = 0x0008, .service_bit = 0x0004,
     .light_gun = true, .aim_right_stick = true, .mounted_gun = true,   /* the mouse / RIGHT stick drive the aim cursor (g_ss22_gun_x); the left stick moves */
