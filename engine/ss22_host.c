@@ -89,7 +89,7 @@ bool ss22_host_open(const ss22_host_game *g, int scale, bool fs)      /* scale <
     SDL_SetWindowMinimumSize(win, 320, 240);
     game->input_init();                            /* after the cfg: the key bindings */
     eng_ui_add_page(game->input_page());
-    eng_ui_add_page(&network_page);                /* link play: this cabinet's number and the cabinets' addresses (link.cfg) */
+    if (!game->no_link) eng_ui_add_page(&network_page);   /* link play: this cabinet's number and the cabinets' addresses (link.cfg) */
     if (game->extra_page) { const eng_ui_page *xp = game->extra_page(); if (xp) eng_ui_add_page(xp); }   /* (NULL: not this run) */
     if (!eng_ui_init(win, game->title)) fprintf(stderr, "[HOST] menu: Nuklear init failed\n");
     else if (eng_pad_present()) eng_ui_set_hint(ENG_PAD_MENU_HINT, 60 * 8);         /* a pad has no Esc: say how to reach the menu */

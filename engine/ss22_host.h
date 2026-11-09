@@ -25,6 +25,7 @@ typedef struct {
     const eng_ui_page *(*extra_page)(void);  /* the game's own menu page after Controls (Time Crisis: Stages); NULL = none */
     void (*paused_tick)(void);               /* called while the game is stopped (P / the menu), ~every 10-16 ms: online keepalive
                                                 (eng_net_poll_paused, docs/NETPLAY.md); NULL = none */
+    bool no_link;                            /* a single-cabinet game (no link play): the menu has no Network page */
 } ss22_host_game;
 
 bool ss22_host_open(const ss22_host_game *g, int scale, bool fullscreen);   /* a real window; scale <= 0 = the saved window size */

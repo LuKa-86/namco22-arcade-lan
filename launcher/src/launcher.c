@@ -102,7 +102,7 @@ static const game_t games[] = {
         M_PARTY2K("roms"), M_PARTY2P("roms"), M_PARTY4K("roms"), M_PARTY4P("roms") } },
     { "airco22", "Air Combat 22", "1995", "Air Combat 22", "AirCombat22-ArcadeLAN.exe",
       "Jet-fighter missions for a single cabinet. New in this package.",
-      "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows fly  \xC2\xB7  W / S throttle  \xC2\xB7  Space gun  \xC2\xB7  Alt missile  \xC2\xB7  Esc menu", NULL,
+      "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows fly  \xC2\xB7  W boost  \xC2\xB7  S brake  \xC2\xB7  Space gun  \xC2\xB7  Alt missile  \xC2\xB7  Esc menu", NULL,
       2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
     { "alpiner", "Alpine Racer", "1995", "Alpine Racer", "AlpineRacer-ArcadeLAN.exe",
       "Downhill skiing for a single cabinet. New in this package.",

@@ -506,6 +506,7 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
                                   ss22_input_neutral, ss22_snd_set_output, g->out_gain,
                                   g->input && g->input->light_gun ? ss22_input_aim : NULL, g->menu_page };
     host_game.paused_tick = g->paused_tick;
+    host_game.no_link = g->link_id_byte < 0;    /* (the cabinet number's EEPROM byte is how a game links: none, no link play) */
     const char *rom_dir = "extracted";
     const char *rd_dir = NULL, *rd_out = NULL; int rd_frame = 0, frames_given = 0;
     if (argc == 1) win_scale = -1;                      /* started with no arguments (a double-click, the Windows how-to): play, in a window */

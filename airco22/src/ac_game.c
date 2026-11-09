@@ -61,7 +61,14 @@ static const ss22_board_cfg ac_board = { "AC", 0, 0, ac_load_program, ac_load_ee
 #define IN_MISSILE 0x0010
 #define IN_GUN     0x0020
 #define IN_START   0x0040
-/* the stick's Y and the throttle are read in ac_send (below) from the arrows / W S / the pad; X is the engine's wheel axis */
+/* Pitch and the throttle swing both ways, which the engine's key "pedals" (0..max) cannot: their rows press these spare
+ * INPUTS bits, which ac_send turns into the stick's Y (ADC 1) and the throttle (ADC 2) and clears before the board sees them.
+ * The throttle lever springs back to the middle (MAME); forward (A-D up) = afterburner, back = air brake. X is the wheel axis. */
+#define IN_V_PITCH_UP   0x1000
+#define IN_V_PITCH_DOWN 0x2000
+#define IN_V_THR_FWD    0x4000
+#define IN_V_THR_BACK   0x8000
+#define IN_VIRTUAL      0xF000
 static const ss22_action actions[] = {
     { "Insert coin",      "coin",      SDL_SCANCODE_5,      SDL_SCANCODE_6,        IN_COIN,    0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_BACK) },
     { "Start / view",     "start",     SDL_SCANCODE_RETURN, SDL_SCANCODE_KP_ENTER, IN_START,   0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_START) | SS22_PAD(SDL_CONTROLLER_BUTTON_Y) },
@@ -71,14 +78,18 @@ static const ss22_action actions[] = {
     { "Test",             "test",      SDL_SCANCODE_F2,     SDL_SCANCODE_UNKNOWN,  IN_TEST,    0,                   0 },
     { "Stick left",       "left",      SDL_SCANCODE_LEFT,   SDL_SCANCODE_UNKNOWN,  0,          SS22_AX_WHEEL_LEFT,  0 },
     { "Stick right",      "right",     SDL_SCANCODE_RIGHT,  SDL_SCANCODE_UNKNOWN,  0,          SS22_AX_WHEEL_RIGHT, 0 },
+    { "Nose down (stick fwd)", "pitchdown", SDL_SCANCODE_UP, SDL_SCANCODE_UNKNOWN, IN_V_PITCH_DOWN, 0,              0 },
+    { "Nose up (stick back)",      "pitchup",   SDL_SCANCODE_DOWN, SDL_SCANCODE_UNKNOWN, IN_V_PITCH_UP, 0,              0 },
+    { "Throttle up (boost)", "accel", SDL_SCANCODE_W, SDL_SCANCODE_LSHIFT, IN_V_THR_FWD,  0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) },
+    { "Throttle down (brake)",      "brake", SDL_SCANCODE_S, SDL_SCANCODE_Z,      IN_V_THR_BACK, 0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) },
 };
 static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2);
 static const ss22_input_game input = {
     actions, (int)(sizeof actions / sizeof *actions),
     0x100, 0x300, 0x100, 12,
     { 0x100, 0x100 }, 16,
-    { "Enter, then press the new key (Esc cancels)", "Stick: arrows (up / down pitch); throttle: W / S (springs back)",
-      "Pad: left stick flies, right stick up / down throttle, A gun, B missile" },
+    { "Enter, then press the new key (Esc cancels)", "The throttle springs back to the middle, like the cabinet's lever",
+      "Pad: left stick flies; right trigger / RB afterburner, left trigger / LB brake (or right stick); A gun, B missile" },
     ac_send,
     IN_TEST, IN_SERVICE,
 };
@@ -115,6 +126,7 @@ static void autoplay(long n, uint16_t *p, unsigned *wheel, unsigned *pedal1, uns
     auto_pitch = ((n / 200) % 2 == 0) ? 0x60 : -0x60;
     auto_throttle = 0x80;
     *pedal1 = clamp_adc(0x200 + auto_pitch); *pedal2 = clamp_adc(0x200 + auto_throttle);
+    { const char *e = getenv("AC_THROTTLE"); if (e) *pedal2 = (unsigned)strtol(e, NULL, 0); }   /* TEST: hold the throttle at this A-D value */
 }
 
 uint8_t g_lift_cov[0x200000];                /* gen/: which instructions have run (LIFT_LAST_PC) */
@@ -154,14 +166,15 @@ static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2
 {
     (void)pedal1; (void)pedal2;
     int y = 0, t = 0;
-    const Uint8 *k = SDL_GetKeyboardState(NULL);
-    if (k[SDL_SCANCODE_UP]) y -= 0x100;
-    if (k[SDL_SCANCODE_DOWN]) y += 0x100;
-    if (k[SDL_SCANCODE_W]) t += 0x100;
-    if (k[SDL_SCANCODE_S]) t -= 0x100;
+    if (p & IN_V_PITCH_DOWN) y -= 0x100;
+    if (p & IN_V_PITCH_UP) y += 0x100;
+    if (p & IN_V_THR_FWD) t += 0x100;
+    if (p & IN_V_THR_BACK) t -= 0x100;
     y += ac_axis(SDL_CONTROLLER_AXIS_LEFTY) / 128;
     t -= ac_axis(SDL_CONTROLLER_AXIS_RIGHTY) / 128;
-    ss22_snd_inputs(p, wheel, clamp_adc(0x200 + y), clamp_adc(0x200 + t));
+    t += ac_axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 128;
+    t -= ac_axis(SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 128;
+    ss22_snd_inputs((uint16_t)(p & ~IN_VIRTUAL), wheel, clamp_adc(0x200 + y), clamp_adc(0x200 + t));
 }
 
 static const ss22_game game = {
