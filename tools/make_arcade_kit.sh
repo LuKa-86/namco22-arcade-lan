@@ -40,9 +40,9 @@ GAMES=(
   "Gunmen Wars|GunmenWars-ArcadeLAN.exe|gunwars/build/gunwars.exe|gunwars.zip namco_asca5.zip|gunwars"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|crszone/build/crszone.exe|crszone.zip|crszone"
-  "Dirt Dash|DirtDash.exe|@DirtDash.exe|dirtdash.zip|dirtdash"
-  "Prop Cycle|PropCycle.exe|@PropCycle.exe|propcycl.zip|propcycl"
-  "Time Crisis|TimeCrisis.exe|@TimeCrisis.exe|timecris.zip|timecris"
+  "Dirt Dash|DirtDash.exe|dirtdash/build/dd.exe|dirtdash.zip|dirtdash"
+  "Prop Cycle|PropCycle.exe|build/propcycl.exe|propcycl.zip|propcycl"
+  "Time Crisis|TimeCrisis.exe|timecris/build/tc.exe|timecris.zip|timecris"
 )
 AUTHOR_RELEASE="${AUTHOR_RELEASE:-$ROOT/../download-0.9.3/windows-release}"   # windows-release-<ver>.zip from github.com/spacestate1/namco22-decompile
 for g in "${GAMES[@]}"; do
@@ -51,8 +51,8 @@ for g in "${GAMES[@]}"; do
     if [ ! -f "$src" ]; then echo "  $folder: no $src (left out)"; continue; fi
     d="$KIT/games/$folder"; mkdir -p "$d"
     cp "$src" "$d/$exe"; [ -n "$STRIP" ] && [ "$src" = "$ROOT/$build" ] && "$STRIP" "$d/$exe"   # (ours: the debug symbols are 5-8x the program)
-    [ "$folder" = "Prop Cycle" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
-    [ "$folder" = "Crisis Zone" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
+    [ "$folder" = "Prop Cycle" ] && [ -d "$AUTHOR_RELEASE/mesa" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
+    [ "$folder" = "Crisis Zone" ] && [ -d "$AUTHOR_RELEASE/hotr" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
     cp "$ROOT/launcher/pictures/$pic.bmp" "$d/picture.bmp"
     if [ -n "$zips" ]; then mkdir -p "$d/roms"; fi
     have=""

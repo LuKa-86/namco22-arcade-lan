@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sprite_hw.h"
+static uint32_t spr_dbg_frame;                       /* the debug logs' frame count (VICS_LOG): its own -- Prop Cycle has no rr_frame */
+#define rr_frame spr_dbg_frame
 
 /* MAME nthword over a u32 array: halfword i in big-endian order. */
 static inline uint32_t nthword(const uint32_t *w, int i)
@@ -229,7 +231,8 @@ static void build_list_impl(const sprite_state *st)
                    W(0), W(1), sprites_on, base, num); }
     int n = 0;
     static int off = -1; if (off < 0) { const char *e = getenv("SPR_OFF"); off = e ? atoi(e) : 0; }   /* TEST: SPR_OFF bits 1 main list, 2 VICS set 1, 4 set 2 */
-    { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;
+    spr_dbg_frame++;
+    { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL;
       if (lg) fprintf(stderr, "[SPR] f%u main on %d base %d num %d\n", rr_frame, sprites_on, base, num);
       if (lg && st->have_vics) { fprintf(stderr, "[VREG] f%u", rr_frame); for (int i = 0; i < 0x80 / 4; i++) fprintf(stderr, " %08X", st->vicsc[i]); fprintf(stderr, "\n"); } }
     if (sprites_on && num > 0 && num < 0x400 && !(off & 1) && !g_sprite_vics_linked) {   /* (vics_linked: Air Combat 22 never sets this list; its one entry is junk) */
@@ -247,12 +250,12 @@ static void build_list_impl(const sprite_state *st)
         if (g_sprite_vics_linked) { const int h0 = (int)(st->vicsc[cregs[0]/4] & 0xFFFF) / 4;
             const unsigned flag = VD(h0) >> 16;
             linked_n = flag == 6 ? (int)(VD(h0 + 1) >> 16) + 1 : 0;
-            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;
+            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL;
               if (lg) { fprintf(stderr, "[VLINK] f%u hdr@%X:", rr_frame, h0 * 4); for (int i = 0; i < 8; i++) fprintf(stderr, " %08X", VD(h0 + i)); fprintf(stderr, " -> n %d\n", linked_n); } } }
         for (int b = 0; b < 2 && v_on; b++) {
             if (off & (2 << b)) continue;
             if (linked_n >= 0 && b == 0) continue;   /* (the header: not drawn) */
-            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;   /* the set's first entries (source words, attribute words) */
+            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL;   /* the set's first entries (source words, attribute words) */
               if (lg) { const int s0 = (int)(st->vicsc[cregs[b]/4] & 0xFFFF) / 4, a0 = (int)(st->vicsc[aregs[b]/4] & 0xFFFF) / 4;
                   fprintf(stderr, "[VSET] f%u set %d n %d:", rr_frame, b + 1, (int)((st->vicsc[nregs[b]/4] >> 4) & 0x1FF));
                   for (int i = 0, ne = getenv("VICS_N") ? atoi(getenv("VICS_N")) : 10; i < ne; i++) fprintf(stderr, " [%08X %08X %08X %08X|%08X %08X]", VD(s0 + i * 4), VD(s0 + i * 4 + 1), VD(s0 + i * 4 + 2), VD(s0 + i * 4 + 3), VD(a0 + i * 2), VD(a0 + i * 2 + 1));
@@ -266,7 +269,7 @@ static void build_list_impl(const sprite_state *st)
             /* MAME: "where do the games store the number of sprites to be processed by vics???" -- Dirt Dash's list starts at xxx4 and its
              * count minus one is the byte at xxx0 (the 0x4000 bit of the list base names the bank); set #2 is unused there. */
             { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL;   /* VICS_LOG=1: the sprite set's registers and the list's count word, per frame */
-              extern uint32_t rr_frame;
+             
               if (lg && b == 0) fprintf(stderr, "[VICS] f%u ctl30 %08X n40 %08X n60 %08X c48 %08X c68 %08X a58 %08X | list[0] %08X [1] %08X | reg-n %d list-n %d\n", rr_frame,
                   st->vicsc[0x30/4], st->vicsc[0x40/4], st->vicsc[0x60/4], st->vicsc[0x48/4], st->vicsc[0x68/4], st->vicsc[0x58/4],
                   VD((st->vicsc[cregs[0]/4] & 0x4000) / 4), VD((st->vicsc[cregs[0]/4] & 0x4000) / 4 + 1), n2, (int)(VD((st->vicsc[cregs[0]/4] & 0x4000) / 4) & 0xFF) + 1);
