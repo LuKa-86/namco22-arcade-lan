@@ -94,7 +94,7 @@ const s23_game_t s23_game = {
     .speech_bank_lo = 0xDB, .speech_bank_hi = 0xFF,   /* the call-outs (0xDB/0xDC/0xE1, centred) and the shouts (0xFD, panned): voices 30/31, and 17 doubling 0xFD */
     .zip_help = "MAME's crszone.zip (Crisis Zone, World CSZO4 Ver. B)",
     .zips = zips, .nzips = 2, .chips = chips, .nchips = (int)(sizeof chips / sizeof chips[0]),
-    .evo2 = 1, .text_xscroll_from = 448, .over_text = csz_over_text, .hud_wide_ok = csz_hud_wide_ok, .wide_pillar = csz_wide_pillar, .list_hook = csz_list_hook,
+    .evo2 = 1, .text_xscroll_from = 428,   /* (rowscroll row i = screen row i + 4: the ticker band is screen rows 432-463) */ .over_text = csz_over_text, .hud_wide_ok = csz_hud_wide_ok, .wide_pillar = csz_wide_pillar, .list_hook = csz_list_hook,
     .clock = 203212800u,                          /* BUSCLOCK * 6 */
     .px_num = 500, .px_den = 3969,                /* 25.6 MHz / 203.2128 MHz */
     .sub_div = 12,                                /* 16.9344 MHz */

@@ -80,7 +80,9 @@ bool ss22_host_pointer(float *nx, float *ny, bool *inside)
       if (s23_guns_state(&sx, &sy, &on, &b, &mv)) {
           SDL_GL_GetDrawableSize(win, &dw, &dh);
           *nx = (sx * dw - pic_r.x) / pic_r.w; *ny = (sy * dh - pic_r.y) / pic_r.h;
-          *inside = on && *nx >= 0 && *nx <= 1 && *ny >= 0 && *ny <= 1;
+          { const float gx = gpu ? (float)s23_gl_wide() / 640.f : 0.f;   /* the side strips: the nearest 4:3 edge (below) */
+            const bool st = *nx >= -gx && *nx <= 1 + gx; if (st) { if (*nx < 0) *nx = 0; if (*nx > 1) *nx = 1; }
+            *inside = on && st && *ny >= 0 && *ny <= 1; }
           return true;
       } }
     int mx, my, ww, wh, dw, dh;
@@ -88,7 +90,12 @@ bool ss22_host_pointer(float *nx, float *ny, bool *inside)
     const float px = (float)mx * dw / (ww ? ww : 1), py = (float)my * dh / (wh ? wh : 1);
     *nx = (px - pic_r.x) / pic_r.w; *ny = (py - pic_r.y) / pic_r.h;
     const bool edge = mx <= 0 || my <= 0 || mx >= ww - 1 || my >= wh - 1;
-    *inside = !edge && *nx >= 0 && *nx <= 1 && *ny >= 0 && *ny <= 1 && (SDL_GetWindowFlags(win) & SDL_WINDOW_MOUSE_FOCUS);
+    /* widescreen: the side strips are picture the game never had -- a shot there is a shot at the 4:3 screen's nearest edge, not an
+     * off-screen one (Crisis Zone reloaded on it: the user, "shots go funny"); the window's outermost pixel stays off-screen */
+    const float sx = gpu ? (float)s23_gl_wide() / 640.f : 0.f;
+    const bool in_strip = *nx >= -sx && *nx <= 1 + sx;
+    if (in_strip) { if (*nx < 0) *nx = 0; if (*nx > 1) *nx = 1; }
+    *inside = !edge && in_strip && *ny >= 0 && *ny <= 1 && (SDL_GetWindowFlags(win) & SDL_WINDOW_MOUSE_FOCUS);
     return true;
 }
 
