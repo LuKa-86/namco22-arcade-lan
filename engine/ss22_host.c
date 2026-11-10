@@ -41,6 +41,9 @@ static const ss22_host_game *game;
 static SDL_Window *win;
 static SDL_GLContext glc;
 static bool paused, shot_pending, capture_pending, headless_open, restart_req;
+/* F9's recording copy and the frame number, from engine/ss22_run.c (NULL: a host without them -- Cyber Sled: the picture only) */
+bool (*g_ss22_capture_rec)(const char *dst);
+const uint32_t *g_ss22_capture_frame;
 static eng_vsync vs;                               /* the frame pacer (engine/eng_vsync.h) */
 
 static uint64_t now_ns(void)                     /* split the scaling: counter * 1e9 overflows 64 bits (and this works on Windows too) */
@@ -155,18 +158,19 @@ static void present(void)
                  tm.tm_hour, tm.tm_min, tm.tm_sec, n++);
         if (eng_gl_write_ppm(p, vw, vh)) fprintf(stderr, "[HOST] saved %s\n", p);
     }
-    { static long at = -2; extern uint32_t rr_frame;   /* tests: SS22_CAPTURE_AT=<frame> presses F9 then */
+    static uint32_t own_frame; own_frame++;            /* a host without the lifted runtime (Cyber Sled) counts its own frames */
+    const uint32_t rr_frame = g_ss22_capture_frame ? *g_ss22_capture_frame : own_frame;
+    { static long at = -2;                           /* tests: SS22_CAPTURE_AT=<frame> presses F9 then */
       if (at == -2) { const char *e = getenv("SS22_CAPTURE_AT"); at = e ? atol(e) : -1; }
       if (at >= 0 && rr_frame == (uint32_t)at) { capture_pending = true; at = -1; } }
     if (capture_pending) {                           /* F9, A GLITCH CAPTURE: the picture and this session's recording up to now (replayed with
                                                       * --replay it reaches this frame exactly) -- captures/capture_<frame>.ppm / .rec */
         capture_pending = false;
-        extern uint32_t rr_frame; bool ss22_rec_copy(const char *dst);
         char p[96], r[96]; static char h[128];
         mkdir("captures", 0755);
         snprintf(p, sizeof p, "captures/capture_%06u.ppm", rr_frame);
         snprintf(r, sizeof r, "captures/capture_%06u.rec", rr_frame);
-        const bool pic = eng_gl_write_ppm(p, vw, vh), rec = ss22_rec_copy(r);
+        const bool pic = eng_gl_write_ppm(p, vw, vh), rec = g_ss22_capture_rec && g_ss22_capture_rec(r);
         if (rec) snprintf(h, sizeof h, "GLITCH CAPTURED (F9): captures/capture_%06u", rr_frame);
         else snprintf(h, sizeof h, "PICTURE SAVED (F9), NO RECORDING: session recording is off (launcher Settings)");
         eng_ui_set_hint(h, 60 * 4);

@@ -620,6 +620,8 @@ int ss22_main(int argc, char **argv, const ss22_game *g)
     }
     if (link_spec && !ss22_link_setup(link_spec, g->tag)) return 2;   /* the author's cabinet link: after the EEPROM is final (it sets the cabinet id there) */
     rr_fatal_hook = on_fatal;
+    { extern bool (*g_ss22_capture_rec)(const char *); extern const uint32_t *g_ss22_capture_frame;
+      g_ss22_capture_rec = ss22_rec_copy; g_ss22_capture_frame = &rr_frame; }   /* F9 (engine/ss22_host.c) */
     if (link_host_on() && (link_host_take_id_reset() || !nv_loaded)) {   /* a cabinet's first run, or its number changed on the Network page:
                                                           * its ID from that; otherwise the test menu's (GAME OPTIONS) */
         uint8_t *b = &g_ss22.eeprom[g->link_id_byte];
