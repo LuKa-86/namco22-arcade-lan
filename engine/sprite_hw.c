@@ -246,14 +246,16 @@ static void build_list_impl(const sprite_state *st)
         int linked_n = -1;                    /* vics_linked: set 2's count from set 1's header (-1 = not this game) */
         if (g_sprite_vics_linked) { const int h0 = (int)(st->vicsc[cregs[0]/4] & 0xFFFF) / 4;
             const unsigned flag = VD(h0) >> 16;
-            linked_n = flag == 6 ? (int)(VD(h0 + 1) >> 16) + 1 : 0; }
+            linked_n = flag == 6 ? (int)(VD(h0 + 1) >> 16) + 1 : 0;
+            { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;
+              if (lg) { fprintf(stderr, "[VLINK] f%u hdr@%X:", rr_frame, h0 * 4); for (int i = 0; i < 8; i++) fprintf(stderr, " %08X", VD(h0 + i)); fprintf(stderr, " -> n %d\n", linked_n); } } }
         for (int b = 0; b < 2 && v_on; b++) {
             if (off & (2 << b)) continue;
             if (linked_n >= 0 && b == 0) continue;   /* (the header: not drawn) */
             { static int lg = -1; if (lg < 0) lg = getenv("VICS_LOG") != NULL; extern uint32_t rr_frame;   /* the set's first entries (source words, attribute words) */
               if (lg) { const int s0 = (int)(st->vicsc[cregs[b]/4] & 0xFFFF) / 4, a0 = (int)(st->vicsc[aregs[b]/4] & 0xFFFF) / 4;
                   fprintf(stderr, "[VSET] f%u set %d n %d:", rr_frame, b + 1, (int)((st->vicsc[nregs[b]/4] >> 4) & 0x1FF));
-                  for (int i = 0; i < 10; i++) fprintf(stderr, " [%08X %08X %08X %08X|%08X %08X]", VD(s0 + i * 4), VD(s0 + i * 4 + 1), VD(s0 + i * 4 + 2), VD(s0 + i * 4 + 3), VD(a0 + i * 2), VD(a0 + i * 2 + 1));
+                  for (int i = 0, ne = getenv("VICS_N") ? atoi(getenv("VICS_N")) : 10; i < ne; i++) fprintf(stderr, " [%08X %08X %08X %08X|%08X %08X]", VD(s0 + i * 4), VD(s0 + i * 4 + 1), VD(s0 + i * 4 + 2), VD(s0 + i * 4 + 3), VD(a0 + i * 2), VD(a0 + i * 2 + 1));
                   fprintf(stderr, "\n[VHDR] f%u set %d base %X attr %X before:", rr_frame, b + 1, s0 * 4, a0 * 4);
                   for (int i = 16; i >= 1; i--) fprintf(stderr, " %08X", VD(s0 - i));
                   fprintf(stderr, " | attr-before:"); for (int i = 4; i >= 1; i--) fprintf(stderr, " %08X", VD(a0 - i));

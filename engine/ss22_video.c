@@ -52,7 +52,7 @@ bool ss22_video_init(const char *dir)
     }
     g_sprite_tiles = tiles; g_sprite_tiles_size = tiles ? region : 0;
     g_sprite_vics_count_in_list = c->vics_count_in_list;
-    g_sprite_vics_linked = c->vics_linked;
+    g_sprite_vics_linked = c->vics_linked && !getenv("VICS_UNLINKED");   /* (TEST VICS_UNLINKED=1: draw both sets as MAME does) */
 
     g_eng_pointrom = g_ss22_pointrom; g_eng_pointrom_n = g_ss22_pointrom_words;
     return g_eng_pointrom != NULL;

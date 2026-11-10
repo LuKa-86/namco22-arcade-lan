@@ -78,7 +78,7 @@ static sprite_item     items[1024];
 static int             ni;
 static uint8_t         cgbuf[0x20000];
 static bool            text_off, spr_off;
-static uint8_t         prio_mask[SPR_W * SPR_H];   /* pixels a sprite drawn over the text layer covers this frame */
+static uint8_t         prio_mask[SPR_W * SPR_H];   /* how much a sprite drawn over the text layer covers each pixel this frame (its opacity, 255 = all) */
 static bool            prio_any;
 static const uint16_t *spot_src;             /* the text layer's spot RAM this frame, for the cache key */
 static bool            spot_on;
@@ -234,7 +234,10 @@ static void draw_sprite(const sprite_item *it)
     if (it->prioverchar) {                    /* the text layer shows nothing under this sprite's pixels */
         for (int y = 0; y < it->h; y++)
             for (int x = 0; x < it->w; x++)
-                if (spr_buf[((size_t)y * it->w + x) * 4 + 3]) prio_mask[(size_t)(it->y0 + y) * SPR_W + it->x0 + x] = 1;
+                {   /* a TRANSLUCENT one (Air Combat 22's name-entry cursor box, alpha 0x82) covers the text only by its opacity: the letter under it shows through */
+                    const uint8_t a = spr_buf[((size_t)y * it->w + x) * 4 + 3]; uint8_t *m = &prio_mask[(size_t)(it->y0 + y) * SPR_W + it->x0 + x];
+                    if (a > *m) *m = a;
+                }
         prio_any = true;
     }
     if (!spr_tex) tex_alloc(&spr_tex); else glBindTexture(GL_TEXTURE_2D, spr_tex);
@@ -412,7 +415,7 @@ static void draw_text(void)
             if (!masked && !(masked = malloc((size_t)SPR_W * SPR_H * 4))) masked = NULL;
             if (masked) {
                 memcpy(masked, src, (size_t)SPR_W * SPR_H * 4);
-                for (long i = 0; i < (long)SPR_W * SPR_H; i++) if (prio_mask[i]) masked[i * 4 + 3] = 0;
+                for (long i = 0; i < (long)SPR_W * SPR_H; i++) if (prio_mask[i]) masked[i * 4 + 3] = (uint8_t)(masked[i * 4 + 3] * (255 - prio_mask[i]) / 255);
                 src = masked;
             }
             /* the shade gets NO such hole while the HUD moves: it stays put, and the sprite (and the text piece its hole belongs to) has gone out to its side --
@@ -487,7 +490,7 @@ void ss22_draw(int vw, int vh)
                 }
             }
             int a = (int)(xl + 0.5f), b = (int)(xr + 0.5f); if (a < 0) a = 0; if (b > SPR_W) b = SPR_W;
-            for (int x = a; x < b; x++) prio_mask[(size_t)y * SPR_W + x] = 1;
+            for (int x = a; x < b; x++) prio_mask[(size_t)y * SPR_W + x] = 255;
             if (a < b) prio_any = true;
         }
     }
