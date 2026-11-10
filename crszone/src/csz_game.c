@@ -52,12 +52,42 @@ static int rom_io(const char *dir, uint8_t *dst, size_t n)
 /* the HUD's bullet (9011) and life (9012) icons: over the green bar (text palettes 5-6), as on the arcade -- not dimmed under it */
 static int csz_over_text(int model) { return model == 9011 || model == 9012; }
 
+/* THE WIDESCREEN HUD (in play: the bullet / life icons are up). The bars are TEXT (the C361 layer): their two ends go to the screen's
+ * edges and the plain stretch of bar between is widened to meet them -- the score's bar (rows 0-47), the bottom bar (rows 396-479:
+ * bullets and the count left of x 215, the timer right of 440, the lives between). The bullet icons follow the left end: all of them
+ * move left by the extra width (the engine slid only those past 160 pixels out, which split the row), so the spares the arcade keeps
+ * off its left edge stay off the wider picture's (the user's report: they showed in the side strip). */
+#include <math.h>
+#include "../../s23/src/s23_c435.h"
+static int csz_hud_up(const s23_render_list *l)
+{
+    for (int i = 0; i < l->count; i++) if (l->e[i].type == S23_RE_MODEL && (l->e[i].model == 9011 || l->e[i].model == 9012)) return 1;
+    return 0;
+}
+static int csz_hud_wide_ok(const void *lv) { return csz_hud_up((const s23_render_list *)lv); }
+static void csz_list_hook(void *lv)
+{
+    s23_render_list *l = (s23_render_list *)lv;
+    int s23_gl_wide(void); extern int g_eng_hud_edges_on;
+    const int ex = s23_gl_wide();
+    if (ex <= 0 || !g_eng_hud_edges_on || !csz_hud_up(l)) return;
+    static const int16_t st[2][4] = { { 0, 48, 200, 440 }, { 396, 480, 215, 440 } };
+    memcpy(l->tstretch, st, sizeof st); l->ntstretch = 2;
+    for (int i = 0; i < l->count; i++) {
+        s23_render_entry *e = &l->e[i];
+        if (e->type != S23_RE_MODEL || e->model != 9011 || e->vp_fov <= 0.f || e->v[2] == 0) continue;
+        const float z = (float)e->v[2], sx = (float)e->v[0] * e->vp_fov / z;
+        const int slid = z >= e->vp_fov - 8.f && z <= e->vp_fov + 8.f && fabsf(sx) >= 160.f;   /* the engine's own rule (src/s23_render.c) */
+        if (!slid) e->v[0] -= (int32_t)((float)ex * z / e->vp_fov + 0.5f);
+    }
+}
+
 const s23_game_t s23_game = {
     .title = "Crisis Zone", .tag = "crszone", .window_title = "Crisis Zone", .mame_set = "crszone", .io_analog_out = 1, .recoil_hold = 1,
     .speech_bank_lo = 0xDB, .speech_bank_hi = 0xFF,   /* the call-outs (0xDB/0xDC/0xE1, centred) and the shouts (0xFD, panned): voices 30/31, and 17 doubling 0xFD */
     .zip_help = "MAME's crszone.zip (Crisis Zone, World CSZO4 Ver. B)",
     .zips = zips, .nzips = 2, .chips = chips, .nchips = (int)(sizeof chips / sizeof chips[0]),
-    .evo2 = 1, .over_text = csz_over_text,
+    .evo2 = 1, .over_text = csz_over_text, .hud_wide_ok = csz_hud_wide_ok, .list_hook = csz_list_hook,
     .clock = 203212800u,                          /* BUSCLOCK * 6 */
     .px_num = 500, .px_den = 3969,                /* 25.6 MHz / 203.2128 MHz */
     .sub_div = 12,                                /* 16.9344 MHz */

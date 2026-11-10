@@ -138,8 +138,14 @@ static const char *fs_text =
     "uniform ivec3 u_fcol;\n"
     "uniform int u_nts, u_td0, u_td1; uniform ivec4 u_ts0, u_ts1;\n"   /* text-layer shifts (widescreen HUD): rect x0,y0,x1,y1 moved by td */
     "bool in_ts(ivec2 p, ivec4 r) { return p.x >= r.x && p.x < r.z && p.y >= r.y && p.y < r.w; }\n"
+    "uniform int u_nst; uniform ivec4 u_st0, u_st1;\n"   /* stretch bands (widescreen HUD): rows y0..y1, the part left of L to the left
+                                                          * edge, right of R to the right edge, L..R stretched between (Crisis Zone's bars) */
+    "int st_x(int x, ivec4 s) { if (x < s.z - u_ex) return x + u_ex; if (x >= s.w + u_ex) return x - u_ex;\n"
+    "  return s.z + (x - (s.z - u_ex)) * (s.w - s.z) / (s.w - s.z + 2 * u_ex); }\n"
     "void main() {\n"
     "  ivec2 px = ivec2(int(gl_FragCoord.x) / u_scale - u_ex, int(gl_FragCoord.y) / u_scale);\n"
+    "  if (u_nst > 0 && px.y >= u_st0.x && px.y < u_st0.y) px.x = st_x(px.x, u_st0);\n"
+    "  else if (u_nst > 1 && px.y >= u_st1.x && px.y < u_st1.y) px.x = st_x(px.x, u_st1);\n"
     "  if (u_nts > 0) {\n"
     "    ivec2 a = ivec2(px.x - u_td0, px.y), b = ivec2(px.x - u_td1, px.y);\n"
     "    if (in_ts(a, u_ts0)) px = a; else if (u_nts > 1 && in_ts(b, u_ts1)) px = b;\n"
@@ -176,7 +182,7 @@ static int ok, scale = 1, ex, fbw, fbh;                  /* ex: widescreen margi
 static GLuint prog_poly, prog_text, prog_gamma, vbo, quad_vbo, t_out, fbo_out, t_lut;
 static GLint ug[2];
 static GLuint t_band, t_rom, t_map, t_pal, t_sten, t_mix, t_col, t_prio, fbo_col, fbo_prio;
-static GLint up[21], ut[20];
+static GLint up[21], ut[23];
 static GLuint t_near, t_nearz, fbo_near;
 static GLuint t_photo; static int photo_gen_up = -1;   /* the photo page (s23_photo_tex) and the version uploaded */          /* the exact-depth pre-pass target: nearest object / band (colour), its 1/z (depth) */
 enum { A_POS, A_UVS, A_PAR, A_CLIP, A_EXT };
@@ -286,8 +292,8 @@ int s23_gl_init(void)
                                 "t_near", "t_nearz", "u_near", "u_depth", "u_keep", "t_photo", "u_photo" };
     for (int i = 0; i < 21; i++) up[i] = p_glGetUniformLocation(prog_poly, pn[i]);
     static const char *tn[] = { "t_mix", "t_pal", "t_prio", "u_scale", "u_h", "u_pass", "u_fade", "u_ff", "u_alpha", "u_amask", "u_c12", "u_c13", "u_fcol", "u_ex", "t_band",
-                                "u_nts", "u_ts0", "u_ts1", "u_td0", "u_td1" };
-    for (int i = 0; i < 20; i++) ut[i] = p_glGetUniformLocation(prog_text, tn[i]);
+                                "u_nts", "u_ts0", "u_ts1", "u_td0", "u_td1", "u_nst", "u_st0", "u_st1" };
+    for (int i = 0; i < 23; i++) ut[i] = p_glGetUniformLocation(prog_text, tn[i]);
 
     const uint8_t *texrom; const uint32_t *tm; const uint8_t *tattr;
     s23_render_assets(&texrom, &tm, &tattr);
@@ -387,7 +393,11 @@ static void text_pass(const s23_built *b, int pass)
     { const s23_render_list *l = &fs->list; const int n = ex > 0 ? (l->ntshift < 2 ? l->ntshift : 2) : 0;   /* the text-layer shifts */
       p_glUniform1i(ut[15], n);
       if (n > 0) { p_glUniform4i(ut[16], l->tshift[0][0], l->tshift[0][1], l->tshift[0][2], l->tshift[0][3]); p_glUniform1i(ut[18], l->tshift[0][4]); }
-      if (n > 1) { p_glUniform4i(ut[17], l->tshift[1][0], l->tshift[1][1], l->tshift[1][2], l->tshift[1][3]); p_glUniform1i(ut[19], l->tshift[1][4]); } }
+      if (n > 1) { p_glUniform4i(ut[17], l->tshift[1][0], l->tshift[1][1], l->tshift[1][2], l->tshift[1][3]); p_glUniform1i(ut[19], l->tshift[1][4]); }
+      const int ns = ex > 0 ? (l->ntstretch < 2 ? l->ntstretch : 2) : 0;   /* the stretch bands */
+      p_glUniform1i(ut[20], ns);
+      if (ns > 0) p_glUniform4i(ut[21], l->tstretch[0][0], l->tstretch[0][1], l->tstretch[0][2], l->tstretch[0][3]);
+      if (ns > 1) p_glUniform4i(ut[22], l->tstretch[1][0], l->tstretch[1][1], l->tstretch[1][2], l->tstretch[1][3]); }
 #undef C4
     bind_tex(0, t_mix); bind_tex(1, t_pal); bind_tex(2, t_prio); bind_tex(3, t_band);
     draw_quad();

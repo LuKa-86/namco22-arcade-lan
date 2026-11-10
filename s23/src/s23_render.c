@@ -933,7 +933,7 @@ void s23_render_frame_end(void)
     s23_render_list *l = &s23_render[!s23_render_cur];   /* MAME draws the list filled the frame BEFORE (one frame behind) */
     snap->list.count = l->count;
     memcpy(snap->list.e, l->e, sizeof l->e[0] * (size_t)l->count);
-    snap->list.nrect = 0; snap->list.img_on = 0; snap->list.nmask = 0; snap->list.ntshift = 0;
+    snap->list.nrect = 0; snap->list.img_on = 0; snap->list.nmask = 0; snap->list.ntshift = 0; snap->list.ntstretch = 0;
     if (s23_game.model_fov_max && s23_c435_fov_max > 0.f)   /* models drawn with the frame's narrowest view (Gunmen Wars: include/s23_game.h) */
         for (int i = 0; i < snap->list.count; i++) if (snap->list.e[i].type == S23_RE_MODEL) {
             s23_render_entry *e = &snap->list.e[i]; e->vp_fov = s23_c435_fov_max; e->vp_size_x = s23_c435_fov_vx; e->vp_size_y = s23_c435_fov_vy; }
