@@ -550,6 +550,22 @@ unsigned s23_gl_draw(const s23_built *b)
         bind_tex(0, t_col); bind_tex(1, t_lut);
         draw_quad();
     }
+    /* 7. the 4:3 bars fading in / out over the side strips (s23_render.c: list.pillar_fade) */
+    if (ex > 0 && b->fs.list.pillar_fade) {
+        p_glUseProgram(0); p_glBindBuffer(GL_ARRAY_BUFFER, 0); for (int u = 3; u >= 0; u--) bind_tex(u, 0);
+        glViewport(0, 0, fbw, fbh);
+        glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, fbw, 0, fbh, -1, 1);
+        glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4f(0, 0, 0, b->fs.list.pillar_fade / 255.0f);
+        const float w = (float)(ex * scale);
+        glBegin(GL_QUADS);
+        glVertex2f(0, 0); glVertex2f(w, 0); glVertex2f(w, (float)fbh); glVertex2f(0, (float)fbh);
+        glVertex2f((float)fbw - w, 0); glVertex2f((float)fbw, 0); glVertex2f((float)fbw, (float)fbh); glVertex2f((float)fbw - w, (float)fbh);
+        glEnd();
+        glColor4f(1, 1, 1, 1);
+        glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW); glPopMatrix();
+    }
     /* back to the state the window and the menu expect */
     glDisable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     p_glUseProgram(0); p_glBindBuffer(GL_ARRAY_BUFFER, 0); p_glBindFramebuffer(GL_FRAMEBUFFER, 0);

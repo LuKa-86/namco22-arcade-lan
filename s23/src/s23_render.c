@@ -933,7 +933,7 @@ void s23_render_frame_end(void)
     s23_render_list *l = &s23_render[!s23_render_cur];   /* MAME draws the list filled the frame BEFORE (one frame behind) */
     snap->list.count = l->count;
     memcpy(snap->list.e, l->e, sizeof l->e[0] * (size_t)l->count);
-    snap->list.nrect = 0; snap->list.img_on = 0; snap->list.nmask = 0; snap->list.ntshift = 0; snap->list.ntstretch = 0;
+    snap->list.nrect = 0; snap->list.img_on = 0; snap->list.nmask = 0; snap->list.ntshift = 0; snap->list.ntstretch = 0; snap->list.pillar_fade = 0;
     if (s23_game.model_fov_max && s23_c435_fov_max > 0.f)   /* models drawn with the frame's narrowest view (Gunmen Wars: include/s23_game.h) */
         for (int i = 0; i < snap->list.count; i++) if (snap->list.e[i].type == S23_RE_MODEL) {
             s23_render_entry *e = &snap->list.e[i]; e->vp_fov = s23_c435_fov_max; e->vp_size_x = s23_c435_fov_vx; e->vp_size_y = s23_c435_fov_vy; }
@@ -945,12 +945,18 @@ void s23_render_frame_end(void)
        * pieces move left and the right ones right by the extra width each side; the world (other depths) stays */
       extern int g_eng_hud_edges_on; int s23_gl_wide(void); const int ex = s23_gl_wide();
       for (int i = 0; i < snap->list.count; i++) snap->list.e[i].clip43 = 0;
+      /* THE BARS FADE (the user: "less jarring"): going to 4:3 the wide picture stays and black comes up over the side strips over ~1/3 s,
+       * then the 4:3 cut; leaving it, the wide picture is back at once under bars that fade out (s23_gl.c draws them, list.pillar_fade) */
+      static int fade;                                              /* 0..20 */
+      const int pillar = ex > 0 && s23_game.hud_wide_ok && !s23_game.hud_wide_ok(&snap->list) && s23_game.wide_pillar && s23_game.wide_pillar();
+      fade = pillar ? (fade < 20 ? fade + 1 : 20) : (fade > 0 ? fade - 1 : 0);
+      snap->list.pillar_fade = (uint8_t)(fade * 255 / 20);
       if (ex > 0 && s23_game.hud_wide_ok && !s23_game.hud_wide_ok(&snap->list)) {   /* not the in-game HUD (select screens ...): their flat
            * pieces stay inside the 4:3 picture -- pieces sliding off its edges (the unpicked level buttons) would show in the side margins */
           for (int i = 0; i < snap->list.count; i++) {
               s23_render_entry *e = &snap->list.e[i];
               if (e->type == S23_RE_IMMEDIATE) e->clip43 = 1;   /* the flat quads (the select screen's buttons and banners) */
-              if (s23_game.wide_pillar && s23_game.wide_pillar()) e->clip43 = 1;   /* the game's option: everything in 4:3 outside a match */
+              if (s23_game.wide_pillar && s23_game.wide_pillar() && fade >= 20) e->clip43 = 1;   /* the game's option: everything in 4:3 outside a match */
               if (e->type == S23_RE_MODEL && e->vp_fov > 0.f && (float)e->v[2] >= e->vp_fov - 8.f && (float)e->v[2] <= e->vp_fov + 8.f) e->clip43 = 1;
           } }
       else if (g_eng_hud_edges_on && ex > 0)
