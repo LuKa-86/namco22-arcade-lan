@@ -55,6 +55,9 @@ static bool gl_ok;                             /* a GL context and the video ROM
 /* --perf: per-frame emulation time (68K + DSP + render, host sleep excluded) and
  * render time, reported as percentiles at exit. Quote these, never one run's fps. */
 #include <time.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "tex_bake.h"
 #include "link_host.h"
 #include "rr_ui.h"
@@ -426,6 +429,51 @@ static bool unknown_jump(uint32_t at, uint32_t t, const char *what)
     return g->supp_jump && g->supp_jump(t, at);
 }
 
+/* THE LAST WORD (our fork, engine/lift_cpu.c rr_fatal_hook): the lifted program reached code it does not have and must stop -- or the
+ * program itself crashed (a signal). Keep what is needed to find it -- this session's recording (it replays the crash) and the log, as
+ * captures/crash_<date>_<time>.rec / .log, since the next start overwrites both -- save the EEPROM, and in a window say so instead of
+ * just vanishing. */
+const uint32_t *g_rr_last_pc;                  /* a game built with LIFT_LAST_PC points this at g_lift_pc (Victory Lap): the crash message names it */
+static char fatal_log[64], fatal_title[64];
+static int fatal_windowed;
+static void copy_into(const char *src, const char *dst)
+{
+    FILE *in = fopen(src, "rb"); if (!in) return;
+    FILE *out = fopen(dst, "wb"); if (!out) { fclose(in); return; }
+    char b[65536]; size_t n;
+    while ((n = fread(b, 1, sizeof b, in)) > 0) fwrite(b, 1, n, out);
+    fclose(in); fclose(out);
+}
+static void on_fatal(const char *why)
+{
+    fflush(stderr);
+    rr_hw_eeprom_save();
+    char stamp[32]; const time_t t = time(NULL); strftime(stamp, sizeof stamp, "%Y%m%d_%H%M%S", localtime(&t));
+    char r[80], l[80], kept[200] = "";
+    snprintf(r, sizeof r, "captures/crash_%s.rec", stamp); snprintf(l, sizeof l, "captures/crash_%s.log", stamp);
+    mkdir("captures", 0777);
+    if (rr_input_record_copy(r)) {
+        fprintf(stderr, "[RR] keeping the crash: %s\n", r); fflush(stderr);
+        snprintf(kept, sizeof kept, "%s and %s", r, l);
+    }
+    if (fatal_log[0]) copy_into(fatal_log, l);
+    if (!fatal_windowed) return;
+    char msg[1024];
+    snprintf(msg, sizeof msg, "%s stopped.\n\n%s\n\nPlease report it with %s -- they replay this session up to the crash.",
+             fatal_title, why, kept[0] ? kept : (fatal_log[0] ? fatal_log : "the log file beside the program"));
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, fatal_title, msg, NULL);
+}
+static void on_signal(int sig)
+{
+    char why[160];
+    if (g_rr_last_pc) snprintf(why, sizeof why, "The program crashed (signal %d) at frame %u, near instruction 0x%06X.", sig, rr_frame, *g_rr_last_pc);
+    else snprintf(why, sizeof why, "The program crashed (signal %d) at frame %u.", sig, rr_frame);
+    fprintf(stderr, "[RR] %s\n", why);
+    signal(sig, SIG_DFL);
+    if (rr_fatal_hook) { void (*h)(const char *) = rr_fatal_hook; rr_fatal_hook = NULL; h(why); }
+    _exit(6);
+}
+
 int main(int argc, char **argv)
 {
     int frames_given = 0;
@@ -523,6 +571,9 @@ int main(int argc, char **argv)
     }
     if (rep_path && !rr_input_replay_open(rep_path)) return 2;
     if (rec_path && !rr_input_record_start(rec_path)) return 2;
+    snprintf(fatal_log, sizeof fatal_log, "%s", logname); snprintf(fatal_title, sizeof fatal_title, "%s", title); fatal_windowed = windowed != 0;
+    rr_fatal_hook = on_fatal;                         /* our fork: keep a crash's recording + log, and say so (on_fatal) */
+    signal(SIGSEGV, on_signal); signal(SIGILL, on_signal); signal(SIGFPE, on_signal); signal(SIGABRT, on_signal);
     g_rr_gl = use_gl < 0 ? (windowed != 0) : use_gl;
     if (windowed) {
         if (!rr_host_open(windowed > 0 ? windowed : 0)) return 2;

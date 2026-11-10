@@ -908,7 +908,8 @@ void rr_ui_draw(bool *quit)
             }
         } else if (tab == T_RECORD) {
             labelf(NK_TEXT_LEFT, "Records the cabinet inputs per frame to recordings/;");
-            labelf(NK_TEXT_LEFT, "replay with rr --replay FILE. F9 toggles without the menu.");
+            labelf(NK_TEXT_LEFT, "replay with rr --replay FILE. F9 in the game saves a glitch capture to captures/");
+            labelf(NK_TEXT_LEFT, "(the picture + this session's recording up to that moment) -- send both to report a problem.");
         } else if (tab == T_NETWORK) { link_page_notes(note_line);
         } else if (tab == T_DEBUG) {
             labelf(NK_TEXT_LEFT, "Developer screens left in the program (nothing in the game reaches them).");

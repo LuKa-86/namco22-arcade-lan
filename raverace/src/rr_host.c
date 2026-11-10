@@ -101,6 +101,7 @@ static SDL_GLContext glc;
 static GLuint sw_tex;                  /* RR_RENDER=sw: the oracle's picture, uploaded */
 static int tex_w, tex_h;               /* the picture's size in render pixels */
 static bool shot_pending;              /* F12: saved from the render target, next draw */
+static bool capture_pending;           /* F9, a glitch capture: the picture + this session's recording so far, next draw */
 static void out_size(int *w, int *h)   /* the window's drawable, in pixels */
 {
     *w = 640; *h = 480;
@@ -669,6 +670,21 @@ static void present_picture(void)
                      tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, n++);
             if (rr_gl_write_ppm(p, vw, vh)) fprintf(stderr, "[HOST] saved %s\n", p);
         }
+        if (capture_pending) {                     /* F9, A GLITCH CAPTURE (our fork): captures/capture_<frame>.ppm / .rec -- the recording
+                                                    * replayed (--replay ... --frames <frame+1> --shots DIR <frame>) reaches this frame exactly */
+            capture_pending = false;
+            extern uint32_t rr_frame;
+            mkdir("captures", 0755);
+            char p[96], r[96], h[128];
+            snprintf(p, sizeof p, "captures/capture_%06u.ppm", rr_frame);
+            snprintf(r, sizeof r, "captures/capture_%06u.rec", rr_frame);
+            const bool pic = rr_gl_write_ppm(p, vw, vh), rec = rr_input_record_copy(r);
+            if (rec) snprintf(h, sizeof h, "GLITCH CAPTURED (F9): captures/capture_%06u", rr_frame);
+            else snprintf(h, sizeof h, "Picture saved (F9): %s -- session recording is off", p);
+            rr_ui_set_hint(h, 60 * 4);
+            fprintf(stderr, "[HOST] capture at frame %u: %s%s%s\n", rr_frame, pic ? p : "(no picture)", rec ? " + " : "", rec ? r : " (no recording)");
+            fflush(stderr);
+        }
         SDL_Rect dst = picture_rect_for(rw, rh, false);
         rt_end_rect(win, dst.x, dst.y, dst.w, dst.h, g_cfg_scaling != 0);
         return;
@@ -715,6 +731,9 @@ void rr_host_message(const char *const *lines, int n)
 bool rr_host_frame(void)
 {
     if (!win) return true;
+    { static long at = -2; extern uint32_t rr_frame;          /* RR_CAPTURE_AT=<frame>: a glitch capture at that frame (tests F9) */
+      if (at == -2) { const char *e = getenv("RR_CAPTURE_AT"); at = e ? atol(e) : -1; }
+      if (at >= 0 && rr_frame == (uint32_t)at) { capture_pending = true; at = -1; } }
     /* RR_KEYS_TEST=<frame>:<key>[+<frame>:<key>...]: push REAL key events
      * (down, and up a few frames later) into SDL's queue, so the keyboard path
      * -- opening the menu, moving in it, closing it, and the game's own keys --
@@ -763,7 +782,7 @@ bool rr_host_frame(void)
         }
         if (pressed(&e, RR_TEST)) rr_host_set_test(!g_test_sw);
         if (pressed(&e, RR_SCREENSHOT)) screenshot();
-        if (pressed(&e, RR_RECORD)) toggle_record();
+        if (pressed(&e, RR_RECORD)) capture_pending = true;   /* our fork: F9 = a glitch capture (the menu's Record page still toggles a recording) */
         if (pressed(&e, RR_PAUSE)) {
             if (link_host_on()) fprintf(stderr, "[HOST] no pause while linked: the other cabinets would drop this one\n");
             else { paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); }

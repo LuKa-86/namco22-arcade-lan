@@ -67,3 +67,9 @@ static const rr_game_t vl = {
     .ram_code_at = 0x10010000, .ram_code_rom = 0x50000, .ram_code_size = 0x8000,   /* its program 0x50000.. copied to work RAM and run there (measured: 0x10010000..0x10017DF0 = ROM) */
 };
 const rr_game_t *g_rr_game = &vl;
+
+/* gen/ is built with LIFT_LAST_PC: the instruction last started, so a crash message can say where the program was */
+uint8_t g_lift_cov[0x100000];                /* one byte per even address of the 2 MB program: this instruction has run */
+uint32_t g_lift_pc;
+extern const uint32_t *g_rr_last_pc;
+__attribute__((constructor)) static void vl_last_pc(void) { g_rr_last_pc = &g_lift_pc; }

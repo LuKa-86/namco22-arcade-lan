@@ -210,3 +210,5 @@ __pycache__/
 /victlap/*.cfg
 /victlap/*.rec
 /victlap/*.png
+/victlap/captures/
+/victlap/tests/

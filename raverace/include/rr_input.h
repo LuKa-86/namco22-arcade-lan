@@ -54,6 +54,7 @@ void rr_input_record_eeprom(const uint8_t *ee);      /* the boot's EEPROM into t
 bool rr_input_replay_eeprom(uint8_t *ee);            /* a recording's EEPROM, if it has one */
 void rr_input_record_stop(void);
 bool rr_input_recording(void);
+bool rr_input_record_copy(const char *dst);         /* our fork: the recording so far, copied (glitch capture, crash) */
 void rr_input_frame(uint32_t frame);           /* apply replay / log recording */
 
 #endif

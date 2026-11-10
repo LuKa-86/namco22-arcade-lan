@@ -269,6 +269,7 @@ static uint32_t rep_next_frame = UINT32_MAX;
 static unsigned rep_in, rep_st, rep_gas, rep_br;
 static uint16_t last[4];
 static bool rec_first;
+static char rec_name[260];                 /* our fork: the recording's file, for a glitch capture / crash copy */
 
 static void rep_read(void)
 {
@@ -318,6 +319,7 @@ bool rr_input_record_start(const char *path)
     if (!rec_f) { fprintf(stderr, "[INPUT] cannot write %s\n", path); return false; }
     fprintf(rec_f, "# %s input recording: F frame inputs steer gas brake (hex), on change\n", g_rr_game->title);
     rec_first = true;
+    snprintf(rec_name, sizeof rec_name, "%s", path);
     fprintf(stderr, "[INPUT] recording to %s\n", path);
     return true;
 }
@@ -333,6 +335,18 @@ void rr_input_record_stop(void)
     if (rec_f) { fclose(rec_f); rec_f = NULL; fprintf(stderr, "[INPUT] recording stopped\n"); }
 }
 bool rr_input_recording(void) { return rec_f != NULL; }
+/* our fork: this session's recording so far, copied to dst (a glitch capture or a crash: replayed with --replay it reaches the same frame) */
+bool rr_input_record_copy(const char *dst)
+{
+    if (!rec_name[0]) return false;
+    if (rec_f) fflush(rec_f);
+    FILE *in = fopen(rec_name, "rb"); if (!in) return false;
+    FILE *out = fopen(dst, "wb"); if (!out) { fclose(in); return false; }
+    char b[65536]; size_t n;
+    while ((n = fread(b, 1, sizeof b, in)) > 0) fwrite(b, 1, n, out);
+    fclose(in); fclose(out);
+    return true;
+}
 
 /* once per frame, after the host has polled: replay overrides, recorder logs */
 void rr_input_frame(uint32_t frame)
