@@ -54,6 +54,7 @@ static void update_rowscroll(void)
 void s23_text_scroll(uint16_t linexscroll[1024], uint16_t *yscroll)   /* at the frame's end: MAME apply_text_scroll */
 {
     update_rowscroll();
+    for (int i = 0; i < s23_game.text_xscroll_from && i < 480; i++) rowscroll[i] = 0;   /* the game's own: rows above keep still */
     for (int i = 0; i < 480; i++) linexscroll[(i + (c361_yscroll & 0x3FF) + 4) & 0x3FF] = rowscroll[i];
     *yscroll = c361_yscroll;
 }
@@ -145,6 +146,8 @@ int s23_screen_write(uint32_t p, int size, uint32_t v)
         update_rowscroll(); c361_xscroll = (uint16_t)v; return 1; }
     if (p == 0x06820002u) { c361_yscroll = (uint16_t)v; return 1; }
     if (p == 0x06820008u) {                                       /* the raster line: armed for the next time the beam reaches it */
+        { static int lg = -1, lf; if (lg < 0) { const char *e = getenv("S23_SCROLLLOG"); lg = e != NULL; lf = e ? atoi(e) : 0; }   /* the raster line armed */
+          if (lg && rr_frame >= (uint32_t)lf && rr_frame <= (uint32_t)lf + 3) { int vb; fprintf(stderr, "[SCROLL] frame %u line %u: raster line set to %u\n", rr_frame, vpos_now(&vb), (unsigned)(v & 0x1FF)); } }
         c361_line = (uint16_t)(v & 0x1FF);
         const uint64_t now = pix_at(s23_cycles_now());
         uint64_t t = now - now % FRAME_PIX + (uint64_t)c361_line * LINE_PIX;

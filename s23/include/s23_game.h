@@ -42,6 +42,9 @@ typedef struct {
     uint32_t io_rom_size;                         /* how much of the I/O board's program its H8 maps */
     int no_direct_buf;                            /* 1 = the C435 direct buffer (S23 0x0CC00000) is not decoded: Crisis Zone (MAME's crszone map leaves
                                                    * 0x1CC00000 unmapped: a full-screen black quad written there covers the namco / GASHIN logos) */
+    int text_xscroll_from;                        /* optional: the text layer's x scroll only from this screen row down (0 = all rows,
+                                                   * MAME). Crisis Zone 448: the zone select writes its bottom ticker's scroll for the whole
+                                                   * picture (in vblank, no raster split) yet only the ticker moves on the arcade */
     int (*over_text)(int model);                  /* optional: 1 = this model's polygons stay over the text layer (prioverchar 7, as an
                                                    * immediate's cmode 1). Crisis Zone: the HUD's bullet / life icons over the green bar (arcade footage) */
     int (*zbias_scale)(int model);                /* a model's polygons' z-bias word multiplied by this when sorting (NULL / 0 = 1, as MAME). Gunmen Wars:
