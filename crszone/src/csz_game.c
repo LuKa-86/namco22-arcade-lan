@@ -65,6 +65,9 @@ static int csz_hud_up(const s23_render_list *l)
     return 0;
 }
 static int csz_hud_wide_ok(const void *lv) { return csz_hud_up((const s23_render_list *)lv); }
+/* outside play (zone select, CONTINUE, attract): the whole picture 4:3 with black bars -- their text and panels are drawn for 4:3 only
+ * (the user: the zone select's text and panels looked wrong, the CONTINUE panel did not reach the sides). crszone.cfg wide_pillar = 0: full width */
+static int csz_wide_pillar(void) { static int v = -1; int eng_cfg_int(const char *, int); if (v < 0) v = eng_cfg_int("wide_pillar", 1) != 0; return v; }
 static void csz_list_hook(void *lv)
 {
     s23_render_list *l = (s23_render_list *)lv;
@@ -91,7 +94,7 @@ const s23_game_t s23_game = {
     .speech_bank_lo = 0xDB, .speech_bank_hi = 0xFF,   /* the call-outs (0xDB/0xDC/0xE1, centred) and the shouts (0xFD, panned): voices 30/31, and 17 doubling 0xFD */
     .zip_help = "MAME's crszone.zip (Crisis Zone, World CSZO4 Ver. B)",
     .zips = zips, .nzips = 2, .chips = chips, .nchips = (int)(sizeof chips / sizeof chips[0]),
-    .evo2 = 1, .over_text = csz_over_text, .hud_wide_ok = csz_hud_wide_ok, .list_hook = csz_list_hook,
+    .evo2 = 1, .over_text = csz_over_text, .hud_wide_ok = csz_hud_wide_ok, .wide_pillar = csz_wide_pillar, .list_hook = csz_list_hook,
     .clock = 203212800u,                          /* BUSCLOCK * 6 */
     .px_num = 500, .px_den = 3969,                /* 25.6 MHz / 203.2128 MHz */
     .sub_div = 12,                                /* 16.9344 MHz */

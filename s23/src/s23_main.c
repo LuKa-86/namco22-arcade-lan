@@ -213,7 +213,7 @@ static void session_rec(uint32_t frame)
                if (s23_window_active() && !s23_c422_record()) fprintf(stderr, "[REC] session recording off (tc2_link.cfg record=off)\n");
                else if (s23_window_active()) {               /* <tag>_last.rec / <tag>_prev.rec: tc2_..., crszone_... (the game table's tag) */
                    char last[64], prev[64]; snprintf(last, sizeof last, "%s_last.rec", s23_game.tag); snprintf(prev, sizeof prev, "%s_prev.rec", s23_game.tag);
-                   rename(last, prev); rec = fopen(last, "w");
+                   remove(prev); rename(last, prev); rec = fopen(last, "w");   /* (Windows rename does not replace: the last session was lost) */
                    if (rec) { fprintf(rec, "# TC2 session: F frame inputs gunx guny off\n"); fprintf(stderr, "[REC] recording the inputs to %s\n", last); } } }
     }
     if (rep) {
