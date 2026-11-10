@@ -49,12 +49,15 @@ static int rom_io(const char *dir, uint8_t *dst, size_t n)
     return ok;
 }
 
+/* the HUD's bullet (9011) and life (9012) icons: over the green bar (text palettes 5-6), as on the arcade -- not dimmed under it */
+static int csz_over_text(int model) { return model == 9011 || model == 9012; }
+
 const s23_game_t s23_game = {
     .title = "Crisis Zone", .tag = "crszone", .window_title = "Crisis Zone", .mame_set = "crszone", .io_analog_out = 1, .recoil_hold = 1,
     .speech_bank_lo = 0xDB, .speech_bank_hi = 0xFF,   /* the call-outs (0xDB/0xDC/0xE1, centred) and the shouts (0xFD, panned): voices 30/31, and 17 doubling 0xFD */
     .zip_help = "MAME's crszone.zip (Crisis Zone, World CSZO4 Ver. B)",
     .zips = zips, .nzips = 2, .chips = chips, .nchips = (int)(sizeof chips / sizeof chips[0]),
-    .evo2 = 1,
+    .evo2 = 1, .over_text = csz_over_text,
     .clock = 203212800u,                          /* BUSCLOCK * 6 */
     .px_num = 500, .px_den = 3969,                /* 25.6 MHz / 203.2128 MHz */
     .sub_div = 12,                                /* 16.9344 MHz */

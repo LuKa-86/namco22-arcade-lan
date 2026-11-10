@@ -297,6 +297,7 @@ static void render_model(const s23_render_entry *e)
         if (p->n >= 3 && finish(p, e, (int)((h & 0x300) >> 8), polyshift, 17, 0x1FFFF, 0xFFFC0000u)) {
             p->stencil = stencil; p->cmode = cmode; p->tbase = tbase; p->color_base = color << 8; p->boost = 0;
             effects(p, color, (int)((type >> 21) & 1), (int)h);
+            if (s23_game.over_text && s23_game.over_text(e->model)) p->prioverchar = 7;   /* the game's own: over the text layer */
             GNPOLY++;
         }
         if (type & 0x10000) break;

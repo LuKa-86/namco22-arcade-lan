@@ -42,6 +42,8 @@ typedef struct {
     uint32_t io_rom_size;                         /* how much of the I/O board's program its H8 maps */
     int no_direct_buf;                            /* 1 = the C435 direct buffer (S23 0x0CC00000) is not decoded: Crisis Zone (MAME's crszone map leaves
                                                    * 0x1CC00000 unmapped: a full-screen black quad written there covers the namco / GASHIN logos) */
+    int (*over_text)(int model);                  /* optional: 1 = this model's polygons stay over the text layer (prioverchar 7, as an
+                                                   * immediate's cmode 1). Crisis Zone: the HUD's bullet / life icons over the green bar (arcade footage) */
     int (*zbias_scale)(int model);                /* a model's polygons' z-bias word multiplied by this when sorting (NULL / 0 = 1, as MAME). Gunmen Wars:
                                                    * the blue suit-up's cheek plate 0x0AD7 (bias -0x320) sits on the same surface as the dark head layer;
                                                    * at x1 the two near-tie and the plate blinks out (black), x4 holds it as in the arcade footage. NOT global:
