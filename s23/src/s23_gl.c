@@ -73,7 +73,8 @@ static const char *fs_poly =
     "in vec3 v_uvs; flat in vec4 v_par; flat in vec4 v_clip; flat in vec2 v_ext;\n"
     "uint b8(vec4 t, int c) { return uint(t[c] * 255.0 + 0.5); }\n"
     "void main() {\n"
-    "  ivec2 px = ivec2(int(gl_FragCoord.x) / u_scale - u_ex, int(gl_FragCoord.y) / u_scale);\n"
+    "  ivec2 fc = ivec2(gl_FragCoord.xy) * (u_prio != 0 ? u_scale : 1);\n"   /* (the priority target is at board resolution) */
+    "  ivec2 px = ivec2(fc.x / u_scale - u_ex, fc.y / u_scale);\n"
     "  if (px.x < int(v_clip.x) || px.x >= int(v_clip.z) || px.y < int(v_clip.y) || px.y >= int(v_clip.w)) discard;\n"
     "  int fl = int(v_par.w);\n"
     "  uint tx = uint(int(v_uvs.x)), ty = uint(int(v_uvs.y));\n"
@@ -93,7 +94,7 @@ static const char *fs_poly =
     "    gl_FragColor = vec4(float(e & 255) / 255.0, float((e >> 8) & 255) / 255.0, v_ext.y / 255.0, 1.0); return;\n"
     "  }\n"
     "  if (u_depth != 0) {\n"                                             /* hidden if ANOTHER object of this band is clearly nearer here */
-    "    ivec2 fp = ivec2(gl_FragCoord.xy); vec4 nn = texelFetch(t_near, fp, 0);\n"
+    "    ivec2 fp = fc; vec4 nn = texelFetch(t_near, fp, 0);\n"
     "    if (nn.a > 0.5) {\n"
     "      int ne = int(nn.r * 255.0 + 0.5) | (int(nn.g * 255.0 + 0.5) << 8), nb = int(nn.b * 255.0 + 0.5);\n"
     "      if (ne != int(v_ext.x) && nb == int(v_ext.y) && oz < exp2((texelFetch(t_nearz, fp, 0).r - 0.5) * 256.0) * u_keep) discard;\n"
@@ -162,7 +163,7 @@ static const char *fs_text =
     "  }\n"
     "  if ((mv & 0x8000u) == 0u) discard;\n"
     "  if (u_pass == 0) { gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0); return; }\n"       /* the priority target starts as 'text here' */
-    "  if (u_pass == 2) { vec4 p = texelFetch(t_prio, ivec2(gl_FragCoord.xy), 0); if (!(p.r > 0.5 && p.g > 0.5 && p.a < 0.5)) discard; }\n"
+    "  if (u_pass == 2) { vec4 p = texelFetch(t_prio, ivec2(gl_FragCoord.xy) / u_scale, 0); if (!(p.r > 0.5 && p.g > 0.5 && p.a < 0.5)) discard; }\n"
     "  uint pen = mv & 0x7FFFu;\n"
     "  ivec3 col = ivec3(texelFetch(t_pal, ivec2(int(pen & 255u), int(pen >> 8u)), 0).rgb * 255.0 + 0.5);\n"
     "  if (u_fade != 0) col = (col * u_ff + u_fcol * (256 - u_ff)) >> 8;\n"
@@ -229,7 +230,8 @@ static int targets(void)
         glBindTexture(GL_TEXTURE_2D, tt[i]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fbw, fbh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        if (tt[i] == t_prio) glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fbw / scale, 480, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);   /* board pixels */
+        else glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fbw, fbh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         p_glBindFramebuffer(GL_FRAMEBUFFER, ff[i]);
         p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tt[i], 0);
         if (p_glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { fprintf(stderr, "[GPU] render target %dx%d incomplete\n", fbw, fbh); p_glBindFramebuffer(GL_FRAMEBUFFER, 0); return 0; }
@@ -372,7 +374,25 @@ static int fill_vertices(const s23_built *b)
 int s23_depth_on(void); float s23_depth_keep(void);   /* src/s23_render.c: the exact-depth setting */
 static void bind_tex(int unit, GLuint t) { p_glActiveTexture(GL_TEXTURE0 + unit); glBindTexture(GL_TEXTURE_2D, t); }
 static int glfin_on = -1;   /* $S23_GLFINISH (debug): wait for the GPU after each stage, so a driver fault shows at the stage that caused it */
-#define GLFIN(what) do { if (glfin_on < 0) glfin_on = getenv("S23_GLFINISH") != NULL; if (glfin_on) { extern uint32_t rr_frame; fprintf(stderr, "[GLFIN] %u %s\n", rr_frame, what); fflush(stderr); glFinish(); } } while (0)
+#define GLFIN(what) do { if (glfin_on < 0) glfin_on = getenv("S23_GLFINISH") != NULL; if (glfin_on) { extern uint32_t rr_frame; fprintf(stderr, "[GLFIN] %u %s\n", rr_frame, what); fflush(stderr); glFinish(); } gl_time(what); } while (0)
+/* $S23_GLTIME (debug): the GPU time of each stage (glFinish between them), averaged over 120 frames */
+static int gltime_on = -1;
+static void gl_time(const char *what)
+{
+    if (gltime_on < 0) gltime_on = getenv("S23_GLTIME") != NULL;
+    if (!gltime_on) return;
+    static const char *nm[16]; static double acc[16]; static int nn; static uint64_t last; static uint32_t lastf, frames;
+    extern uint32_t rr_frame;
+    glFinish();
+    const uint64_t now = SDL_GetPerformanceCounter();
+    if (rr_frame != lastf) { lastf = rr_frame; if (++frames % 120 == 0) {
+        fprintf(stderr, "[GLTIME] ms/frame:"); for (int i = 0; i < nn; i++) fprintf(stderr, " %s %.2f", nm[i], acc[i] / 120.0); fprintf(stderr, "\n");
+        for (int i = 0; i < nn; i++) acc[i] = 0; } last = now; return; }
+    int i = 0; while (i < nn && nm[i] != what && strcmp(nm[i], what)) i++;
+    if (i == nn && nn < 16) nm[nn++] = what;
+    if (i < 16) acc[i] += (double)(now - last) * 1000.0 / (double)SDL_GetPerformanceFrequency();
+    last = now;
+}
 static void draw_quad(void)
 {
     p_glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
@@ -386,7 +406,7 @@ static void text_pass(const s23_built *b, int pass)
 #define C4(w) (fs->c404[2 * (w) + 1])
     p_glUseProgram(prog_text);
     p_glUniform1i(ut[0], 0); p_glUniform1i(ut[1], 1); p_glUniform1i(ut[2], 2);
-    p_glUniform1i(ut[3], scale); p_glUniform1i(ut[4], fbh); p_glUniform1i(ut[5], pass);
+    p_glUniform1i(ut[3], pass == 0 ? 1 : scale); p_glUniform1i(ut[4], pass == 0 ? 480 : fbh); p_glUniform1i(ut[5], pass);   /* pass 0: the 1x priority target */
     p_glUniform1i(ut[6], (C4(0x1A) & 2) && C4(0x19)); p_glUniform1i(ut[7], 0xFF - C4(0x19));
     p_glUniform1i(ut[8], 0xFF - C4(0x15)); p_glUniform1i(ut[9], C4(0x14)); p_glUniform1i(ut[10], C4(0x12)); p_glUniform1i(ut[11], C4(0x13));
     p_glUniform3i(ut[12], C4(0x16), C4(0x17), C4(0x18)); p_glUniform1i(ut[13], ex); p_glUniform1i(ut[14], 3);
@@ -422,13 +442,18 @@ unsigned s23_gl_draw(const s23_built *b)
     p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col);
     glClearColor((f->bg >> 16 & 0xFF) / 255.0f, (f->bg >> 8 & 0xFF) / 255.0f, (f->bg & 0xFF) / 255.0f, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio);
+    /* THE PRIORITY TARGET IS AT BOARD RESOLUTION (it only says which text pixels -- 640 x 480 data -- go over the polygons): at a high
+     * internal resolution the extra polygon draw and text pass into it were a third of the GPU time (4x: 4-8 ms + most of 12 ms) */
+    p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio); glViewport(0, 0, fbw / scale, 480);
     glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT);
+    glViewport(0, 0, fbw, fbh);
     glEnable(GL_BLEND);
     /* 2. the text layer, under everything (and 'text here' into the priority target) */
     if (f->layers & 4) {
         p_glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_ONE, GL_ZERO);
+        glViewport(0, 0, fbw / scale, 480);
         text_pass(b, 0);
+        glViewport(0, 0, fbw, fbh);
         p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         text_pass(b, 1);
@@ -478,10 +503,11 @@ unsigned s23_gl_draw(const s23_built *b)
         p_glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDrawArrays(GL_TRIANGLES, 0, nv); GLFIN("polygons");
         if (f->layers & 4) {
-            p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio);
+            p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio); glViewport(0, 0, fbw / scale, 480);
             p_glUniform1i(up[6], 1);
             p_glBlendEquationSeparate(GL_MAX, GL_FUNC_ADD); p_glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ZERO);
             glDrawArrays(GL_TRIANGLES, 0, nv); GLFIN("priority");
+            glViewport(0, 0, fbw, fbh);
             p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         }
         for (int a = A_POS; a <= A_EXT; a++) p_glDisableVertexAttribArray((GLuint)a);
