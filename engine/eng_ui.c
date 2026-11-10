@@ -320,7 +320,8 @@ bool eng_ui_event(SDL_Event *e)
         case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: k = K_TABNEXT; break;
         default: break;
         }
-    } else if (e->type == SDL_JOYHATMOTION) {           /* raw sticks: the hat navigates */
+    } else if (e->type == SDL_JOYHATMOTION && !SDL_GameControllerFromInstanceID(e->jhat.which)) {   /* raw sticks: the hat navigates
+                                                         * (a game controller's D-pad is also its joystick's hat: one press, one step) */
         if (e->jhat.value & SDL_HAT_UP) k = K_UP; else if (e->jhat.value & SDL_HAT_DOWN) k = K_DOWN;
         else if (e->jhat.value & SDL_HAT_LEFT) k = K_LEFT; else if (e->jhat.value & SDL_HAT_RIGHT) k = K_RIGHT;
     }
