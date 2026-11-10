@@ -325,6 +325,12 @@ static void render_immediate(const s23_render_entry *e)
     int uvp[3] = { 0, 0, -1 };
     if (s23_game.imm_adjust) { float va = 0.f; s23_game.imm_adjust(q, &va, &boost, uvp);
         for (int i = 0; i < ne && i < 4; i++) { pv[i].p[2] += va; if (boost) pv[i].p[3] *= 2.f; if (uvp[2] >= 0) { pv[i].p[1] = (float)uvp[0]; pv[i].p[2] = (float)uvp[1]; } } }
+    /* ONE TEXEL for the whole polygon (every corner the same u / v: a flat fill, Crisis Zone's tank shadow at u 0x1000 v 0x0607): sample
+     * that texel's centre. On its corner, the rounding of the perspective-correct interpolation picked the neighbours -- cyan, orange,
+     * magenta pens -- instead of the black one (the user's capture, level 1 boss). A textured polygon is unchanged. */
+    if (uvp[2] < 0 && ne >= 3) { int same = 1;
+        for (int i = 1; i < ne && i < 4; i++) same &= pv[i].p[1] == pv[0].p[1] && pv[i].p[2] == pv[0].p[2];
+        if (same) for (int i = 0; i < ne && i < 4; i++) { pv[i].p[1] += 0.5f; pv[i].p[2] += 0.5f; } }
     if (GNPOLY >= MAX_POLYS) return;
     poly *p = &GPOLYS[GNPOLY];
     p->n = zclip(ne < 4 ? ne : 4, pv, p->pv, znear());
