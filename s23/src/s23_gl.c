@@ -69,7 +69,8 @@ static const char *fs_poly =
     "uniform sampler2D t_rom, t_map, t_pal, t_sten, t_near, t_nearz, t_photo;\n"
     "uniform int u_ex, u_scale, u_h, u_prio, u_pfade, u_ff, u_alpha, u_alpha_pen, u_near, u_depth, u_photo;\n"
     "uniform float u_keep;\n"
-    "uniform ivec3 u_pcol, u_fcol;\n"
+    "uniform ivec3 u_pcol, u_fcol, u_fogc;\n"
+    "uniform sampler2D t_fog; uniform int u_fog, u_seam;\n"
     "in vec3 v_uvs; flat in vec4 v_par; flat in vec4 v_clip; flat in vec2 v_ext;\n"
     "uint b8(vec4 t, int c) { return uint(t[c] * 255.0 + 0.5); }\n"
     "void main() {\n"
@@ -84,6 +85,7 @@ static const char *fs_poly =
     "    uint w = b8(s, 0) | (b8(s, 3) << 8u);\n"
     "    if (((w >> ((tx & 15u) ^ 15u)) & 1u) == 0u) discard;\n"
     "  }\n"
+    "  if (u_seam != 0) { float e = v_ext.x; gl_FragColor = vec4(fract(e * 0.137), fract(e * 0.311), fract(e * 0.0731), 1.0); return; }\n"   /* S23_SEAMTEST: coverage */
     "  uint ptx = tx, pty = ty;\n"                                      /* the photo page: page-relative texel */
     "  ty += uint(v_par.z);\n"
     "  float oz = gl_FragCoord.w;\n"                                      /* 1/z: what the software renderer interpolates */
@@ -122,6 +124,11 @@ static const char *fs_poly =
     "  ivec3 col = ivec3(c.rgb * 255.0 + 0.5);\n"
     "  int sh = clamp(int(v_uvs.z), 0, (fl & 64) != 0 ? 127 : 63);\n"
     "  col = min((col * sh) >> 6, ivec3(255));\n"
+    "  if (u_fog != 0 && (fl & 128) != 0) {\n"                          /* the depth fog: the level at z * 64, toward the fog colour */
+    "    int cz = clamp(int(64.0 / max(oz, 1e-30)), 0, 8191);\n"
+    "    int ff = int(texelFetch(t_fog, ivec2(cz & 255, cz >> 8), 0).r * 255.0 + 0.5);\n"
+    "    if (ff != 0) col = (col * (256 - ff) + u_fogc * ff) >> 8;\n"
+    "  }\n"
     "  if (u_pfade != 0) col = (col * u_pcol) >> 8;\n"
     "  if (u_ff != 255) col = (col * u_ff + u_fcol * (256 - u_ff)) >> 8;\n"
     "  bool ua = u_alpha != 255 && ((fl & 4) != 0 || int(pen) == u_alpha_pen);\n"
@@ -182,8 +189,8 @@ static const char *fs_gamma =
 static int ok, scale = 1, ex, fbw, fbh;                  /* ex: widescreen margin each side, in board pixels (0 = 4:3) */
 static GLuint prog_poly, prog_text, prog_gamma, vbo, quad_vbo, t_out, fbo_out, t_lut;
 static GLint ug[2];
-static GLuint t_band, t_rom, t_map, t_pal, t_sten, t_mix, t_col, t_prio, fbo_col, fbo_prio;
-static GLint up[21], ut[23];
+static GLuint t_fog, t_band, t_rom, t_map, t_pal, t_sten, t_mix, t_col, t_prio, fbo_col, fbo_prio;
+static GLint up[25], ut[23];
 static GLuint t_near, t_nearz, fbo_near;
 static GLuint t_photo; static int photo_gen_up = -1;   /* the photo page (s23_photo_tex) and the version uploaded */          /* the exact-depth pre-pass target: nearest object / band (colour), its 1/z (depth) */
 enum { A_POS, A_UVS, A_PAR, A_CLIP, A_EXT };
@@ -291,8 +298,8 @@ int s23_gl_init(void)
     if (!(prog_poly = program(vs_poly, fs_poly)) || !(prog_text = program(vs_text, fs_text)) || !(prog_gamma = program(vs_text, fs_gamma))) return 0;
     ug[0] = p_glGetUniformLocation(prog_gamma, "t_src"); ug[1] = p_glGetUniformLocation(prog_gamma, "t_lut");
     static const char *pn[] = { "t_rom", "t_map", "t_pal", "t_sten", "u_scale", "u_h", "u_prio", "u_pfade", "u_ff", "u_alpha", "u_alpha_pen", "u_pcol", "u_fcol", "u_ex",
-                                "t_near", "t_nearz", "u_near", "u_depth", "u_keep", "t_photo", "u_photo" };
-    for (int i = 0; i < 21; i++) up[i] = p_glGetUniformLocation(prog_poly, pn[i]);
+                                "t_near", "t_nearz", "u_near", "u_depth", "u_keep", "t_photo", "u_photo", "t_fog", "u_fog", "u_fogc", "u_seam" };   /* (the fog: the author's 0.10, after ours) */
+    for (int i = 0; i < 25; i++) up[i] = p_glGetUniformLocation(prog_poly, pn[i]);
     static const char *tn[] = { "t_mix", "t_pal", "t_prio", "u_scale", "u_h", "u_pass", "u_fade", "u_ff", "u_alpha", "u_amask", "u_c12", "u_c13", "u_fcol", "u_ex", "t_band",
                                 "u_nts", "u_ts0", "u_ts1", "u_td0", "u_td1", "u_nst", "u_st0", "u_st1" };
     for (int i = 0; i < 23; i++) ut[i] = p_glGetUniformLocation(prog_text, tn[i]);
@@ -314,6 +321,7 @@ int s23_gl_init(void)
     t_band = texture(GL_LUMINANCE8_ALPHA8, 480, 1, GL_LUMINANCE_ALPHA, NULL);
     t_lut = texture(GL_RGB8, 256, 1, GL_RGB, NULL);
     t_photo = texture(GL_RGBA8, S23_PHOTO_W, 256, GL_BGRA, NULL);
+    t_fog = texture(GL_LUMINANCE8, 256, 32, GL_LUMINANCE, NULL);   /* the depth fog's level table (s23_built.fogtab; texture unit 7) */
     p_glGenBuffers(1, &vbo); p_glGenBuffers(1, &quad_vbo);
     static const float quad[] = { -1, -1, 0, 1,  1, -1, 0, 1,  1, 1, 0, 1,  -1, -1, 0, 1,  1, 1, 0, 1,  -1, 1, 0, 1 };
     p_glBindBuffer(GL_ARRAY_BUFFER, quad_vbo); p_glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
@@ -343,7 +351,7 @@ static int fill_vertices(const s23_built *b)
         /* widescreen (Hor+): a viewport that fills the 4:3 screen fills the wide one -- same camera, more world at the sides */
         const int full = ex && cl <= 0 && cr >= 640 && !p->clip43;
         const int ccl = full ? -ex : cl, ccr = full ? 640 + ex : cr;
-        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3 | (p->boost != 0) << 6);
+        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3 | (p->boost != 0) << 6 | p->fog << 7);   /* bit 7: the author's depth fog (bit 6 is our boost) */
         for (int k = 1; k + 1 < p->n; k++) {
             const int tri[3] = { 0, k, k + 1 };
             /* a triangle with a non-finite or absurd coordinate is dropped: Intel's GL driver crashed on such vertices (Gunmen Wars, in a
@@ -432,6 +440,7 @@ unsigned s23_gl_draw(const s23_built *b)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     bind_tex(0, t_pal); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 128, GL_BGRA, GL_UNSIGNED_BYTE, b->fs.pens);
     bind_tex(0, t_sten); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, b->fs.sram);
+    if (b->fx.fog) { glPixelStorei(GL_UNPACK_ALIGNMENT, 1); bind_tex(0, t_fog); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 32, GL_LUMINANCE, GL_UNSIGNED_BYTE, b->fogtab); }
     if (f->layers & 4) {
         bind_tex(0, t_mix); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, b->mix);
         bind_tex(0, t_band); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 480, 1, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, b->band);
@@ -440,7 +449,8 @@ unsigned s23_gl_draw(const s23_built *b)
     glViewport(0, 0, fbw, fbh);
     /* 1. the background */
     p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col);
-    glClearColor((f->bg >> 16 & 0xFF) / 255.0f, (f->bg >> 8 & 0xFF) / 255.0f, (f->bg & 0xFF) / 255.0f, 1);
+    static int seam = -1; if (seam < 0) { const char *e = getenv("S23_SEAMTEST"); seam = e && *e != '0'; }   /* tests: coverage, magenta = no polygon */
+    if (seam) glClearColor(1, 0, 1, 1); else glClearColor((f->bg >> 16 & 0xFF) / 255.0f, (f->bg >> 8 & 0xFF) / 255.0f, (f->bg & 0xFF) / 255.0f, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     /* THE PRIORITY TARGET IS AT BOARD RESOLUTION (it only says which text pixels -- 640 x 480 data -- go over the polygons): at a high
      * internal resolution the extra polygon draw and text pass into it were a third of the GPU time (4x: 4-8 ms + most of 12 ms) */
@@ -484,6 +494,8 @@ unsigned s23_gl_draw(const s23_built *b)
         if (s23_game.photo_page && photo_gen_up != s23_photo_gen) {   /* the camera board's page, when the game changed it */
             photo_gen_up = s23_photo_gen; bind_tex(6, t_photo); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, S23_PHOTO_W, 256, GL_BGRA, GL_UNSIGNED_BYTE, s23_photo_tex); }
         bind_tex(6, t_photo); p_glUniform1i(up[19], 6); p_glUniform1i(up[20], s23_game.photo_page);
+        p_glUniform1i(up[24], seam);
+        bind_tex(7, t_fog); p_glUniform1i(up[21], 7); p_glUniform1i(up[22], f->fog); p_glUniform3i(up[23], f->cr, f->cg, f->cb);
         p_glUniform1i(up[14], 4); p_glUniform1i(up[15], 5); p_glUniform1i(up[16], 0);
         const int depth = s23_depth_on() && fbo_near;
         p_glUniform1i(up[17], 0); p_glUniform1f(up[18], s23_depth_keep());
@@ -511,7 +523,7 @@ unsigned s23_gl_draw(const s23_built *b)
             p_glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         }
         for (int a = A_POS; a <= A_EXT; a++) p_glDisableVertexAttribArray((GLuint)a);
-        bind_tex(4, 0); bind_tex(5, 0); bind_tex(6, 0); p_glActiveTexture(GL_TEXTURE0);
+        bind_tex(4, 0); bind_tex(5, 0); bind_tex(6, 0); bind_tex(7, 0); p_glActiveTexture(GL_TEXTURE0);
     }
     /* 5. the text the polygons let through again */
     if (f->layers & 4) {

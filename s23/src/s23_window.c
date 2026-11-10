@@ -7,7 +7,7 @@
  *
  * The lifted program owns the C stack (it never returns), so the window runs from the frame callback: s23_window_frame() at the start of
  * every vertical blank presents the frame, handles the window's events and, while the menu is open or the game is paused, stays there
- * (the game does not run). Keys: Esc the menu, P pause, F11 fullscreen, F12 a screenshot (screenshots/tc2_NNNN.ppm), F8 the light gun's
+ * (the game does not run). Keys: Esc the menu, P pause, F11 fullscreen, F12 a screenshot (screenshots/s23_NNNN.ppm), F8 the light gun's
  * border. Display > Crosshair turns the aiming cross on / off.
  * THE PICTURE is drawn on the GPU (src/s23_gl.c) at the internal resolution Display > Resolution chooses (640 x 480 times 1..4); with no
  * GLSL 1.30 (or S23_GPU=0) the software picture (src/s23_render.c) is shown instead.
@@ -30,9 +30,10 @@
 #include "eng/eng_pace.h"
 #include "eng/eng_tile.h"
 #include "eng/ss22_input.h"
+#include "eng/ss22_host.h"
 #include "s23_build.h"
 #include "s23_game.h"
-extern const ss22_input_game s23_input_game;
+extern const ss22_input_game s23_input_game, ak_input_game;
 
 int g_eng_hud_edges_on;                       /* eng_display.c's widescreen-HUD switch: no 2D HUD to move on this board yet */
 void s23_text_render(uint32_t *rgba);
@@ -54,6 +55,7 @@ static const s23_built *smooth_shown;
 static const char *smooth_tag;                                 /* ENG_SWAPLOG: which picture the next swap shows */
 static int smooth_frozen;                                      /* the frame's slot may be rewritten (s23_render_frame_end ran): no more GPU draws from it */
 static SDL_Rect pic_r;                                          /* the GAME's 4:3 area in drawable pixels: the gun aims and the crosshair live here */
+bool s23_pic_rect_win(float *x, float *y, float *w, float *h);
 /* widescreen (Display > Widescreen, GPU only): the picture takes the window's shape, (640 + 2 * ex) x 480 board pixels, Hor+ */
 static int wide_ex(void)
 {
@@ -69,6 +71,16 @@ static SDL_Rect picture_rect(int ex)
     const SDL_Rect r = eng_disp_picture_rect(640 + 2 * ex, 480);
     pic_r.x = r.x + (int)((long)ex * r.w / (640 + 2 * ex)); pic_r.w = (int)(640L * r.w / (640 + 2 * ex)); pic_r.y = r.y; pic_r.h = r.h;
     return r;
+}
+/* the 4:3 game area in WINDOW units (the menu's coordinates; HiDPI: drawable pixels / scale) -- the subtitles (src/s23_subs.c) */
+bool s23_pic_rect_win(float *x, float *y, float *w, float *h)
+{
+    int ww, wh, dw, dh;
+    if (!win || pic_r.w <= 0 || pic_r.h <= 0) return false;
+    SDL_GetWindowSize(win, &ww, &wh); SDL_GL_GetDrawableSize(win, &dw, &dh);
+    const float s = ww > 0 && dw > 0 ? (float)ww / dw : 1.0f;
+    *x = pic_r.x * s; *y = pic_r.y * s; *w = pic_r.w * s; *h = pic_r.h * s;
+    return true;
 }
 
 /* the copied input module asks where the mouse / an absolute-mouse gun points in the picture; the window's outermost pixel = off-screen */
@@ -187,8 +199,9 @@ int s23_window_open(int scale, int fullscreen)
     fprintf(stderr, "[HOST] OpenGL: %s; display %d Hz, %s\n", (const char *)glGetString(GL_RENDERER), vs.hz, eng_vsync_mode(&vs));
     if (!eng_ui_init(win, s23_game.window_title)) fprintf(stderr, "[HOST] no menu\n");
     if (party_hint[0]) { void eng_ui_set_hint(const char *, int); eng_ui_set_hint(party_hint, 60 * 15); }   /* party: whose picture this is */
-    ss22_input_init(s23_game.input ? (const ss22_input_game *)s23_game.input : &s23_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
+    ss22_input_init(s23_game.input ? (const ss22_input_game *)s23_game.input : s23_game.io_asca3 ? &ak_input_game : &s23_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
     eng_ui_add_page(ss22_input_page());
+    { void s23_subs_ui_init(void); s23_subs_ui_init(); }   /* English subtitles (src/s23_subs.c): only a game with a table */
     if (s23_game.menu_pages) s23_game.menu_pages();
     /* (the author's 0.9.1 online link, src/s23_link.c + its pages, is not built in our fork: the twin-cabinet LAN link is ours,
      * src/s23_c422.c, set up in tc2_link.cfg) */
@@ -420,6 +433,9 @@ static int pass(int new_frame)
           static long at = -2; static char path[512]; static long n;
           if (at == -2) { at = -1; const char *e = getenv("S23_WINSHOT"); if (e) { snprintf(path, sizeof path, "%s", e); char *c = strrchr(path, ':'); if (c) { *c = 0; at = atol(c + 1); } } }
           n++;                                                  /* window passes: the menu holds the game, not the window */
+          static long every = -1; static char dir[512];         /* S23_WINSHOTS=dir:every -- the same, every N passes (README pictures) */
+          if (every < 0) { every = 0; const char *e = getenv("S23_WINSHOTS"); if (e) { snprintf(dir, sizeof dir, "%s", e); char *c = strrchr(dir, ':'); if (c) { *c = 0; every = atol(c + 1); } } }
+          if (every > 0 && n % every == 0) { snprintf(path, sizeof path, "%s/w%06ld.ppm", dir, n); at = n; }
           if (at > 0 && n == at) {
               int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
               unsigned char *buf = malloc((size_t)dw * dh * 3);

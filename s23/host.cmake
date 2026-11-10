@@ -8,7 +8,7 @@ set(S23_HOST_SRC ${S23_HOST_DIR}/src/s23_ss_begin.c)   # FIRST: the start of the
 # another process's values crashed: the user's F9 captures, 2026-11-09)
 set(S23_HOST_TAIL ${S23_HOST_DIR}/src/s23_ss_end.c ${S23_HOST_DIR}/src/s23_savestate.c)
 foreach(f src/s23_window.c src/eng/eng_ui.c src/eng/eng_crosshair.c src/eng/eng_cfg.c src/eng/eng_display.c src/eng/ss22_input.c src/eng/eng_ffb.c
-          src/s23_input.c src/s23_gl.c src/s23_audio.c src/s23_out.c src/s23_prof.c)
+          src/s23_input.c src/s23_gl.c src/s23_audio.c src/s23_out.c src/s23_prof.c src/s23_subs.c)
   list(APPEND S23_HOST_TAIL ${S23_HOST_DIR}/${f})
 endforeach()
 foreach(f src/s23_cpu.c src/s23_mem.c src/s23_ctl.c src/s23_chips.c src/s23_screen.c src/s23_text.c src/s23_main.c

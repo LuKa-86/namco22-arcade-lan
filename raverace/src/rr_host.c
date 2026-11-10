@@ -213,6 +213,12 @@ void rr_host_set_volume(int pct)
     rr_audio_set_volume(g_cfg_volume);
     char v[8]; snprintf(v, sizeof v, "%d", g_cfg_volume); save_opt("volume", v);
 }
+void rr_host_set_car(int i)
+{
+    if (!g_rr_game->car_set || i < 0 || i >= g_rr_game->ncars) return;
+    g_rr_game->car_set(i);
+    char v[8]; snprintf(v, sizeof v, "%d", i); save_opt("car", v);
+}
 void rr_host_set_freeplay(bool on)
 {
     rr_hw_set_freeplay(on);
@@ -226,6 +232,8 @@ void rr_host_set_ffb_strength(int pct)
     char v[8]; snprintf(v, sizeof v, "%d", g_cfg_ffb_strength); save_opt("ffb_strength", v);
 }
 void rr_host_set_ffb_invert(bool on) { g_cfg_ffb_invert = on; save_opt("ffb_invert", on ? "1" : "0"); }
+void rr_host_set_ffb_restart(bool on) { eng_ffb_set_restart(on); save_opt("ffb_restart", on ? "1" : "0"); }
+void rr_host_set_ffb_log(bool on) { eng_ffb_set_log(on); save_opt("ffb_log", on ? "1" : "0"); fprintf(stderr, "[FFB] log %s\n", on ? "ON" : "OFF"); }
 void rr_host_set_stick_steer(int level)
 {
     g_cfg_stick_steer = (level % RR_STICK_N + RR_STICK_N) % RR_STICK_N;
@@ -536,7 +544,9 @@ static void wheel_motor(bool hold)
             if (pass == 0 ? bound : pass == 1 ? !bound && capable : !bound && !capable) cand[n++] = js;
         }
     ffb_wheel = eng_ffb_device_from(cand, n);
-    if (ffb_wheel)
+    if (ffb_wheel && g_rr_game->ffb_synth)            /* no motor on this cabinet: the game table builds the force (rr_game.h) */
+        eng_ffb_force_f(hold ? 0.0 : g_rr_game->ffb_synth(), g_cfg_ffb_strength, g_joy_steer.invert != (g_cfg_ffb_invert != 0));
+    else if (ffb_wheel)
         eng_ffb_force(hold ? 0 : motor_hold_off(eng_ffb_decode(rr_hw_motor_byte())), g_cfg_ffb_strength, g_joy_steer.invert != (g_cfg_ffb_invert != 0));
 }
 static bool pad_steer(int *out) { return pad_steer_ex(out, false); }

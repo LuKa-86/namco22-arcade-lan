@@ -1,6 +1,6 @@
 /*
  * s23_rom.c -- THE PLAYER'S ROMS, for whichever game this binary is (the chip list and image rules: include/s23_game.h; Time Crisis II's
- * in src/tc2_game.c, Crisis Zone's in ../crszone/src/csz_game.c) and the program images made from them at start-up.
+ * in src/s23_game.c, Crisis Zone's in ../crszone/src/csz_game.c) and the program images made from them at start-up.
  *   - extracted/ is filled from the player's own MAME zip on the first run (src/eng/romzip.c: by name, size and the zip's own CRC),
  *     found in the current folder, roms/, or beside the executable.
  *   - the boot image, the sub-CPU's program and the I/O board's are made in memory by the game's own rules -- what tools/make_prog.py
@@ -32,7 +32,7 @@ int s23_rom_setup(const char *dir, const char *exe_dir)
     return 0;
 }
 
-/* one ROM file, exactly n bytes (the games' image builders: src/tc2_game.c, ../crszone/src/csz_game.c) */
+/* one ROM file, exactly n bytes (the games' image builders: src/s23_game.c, ../crszone/src/csz_game.c) */
 int s23_rom_read(const char *dir, const char *name, uint8_t *dst, size_t n)
 {
     char p[1024]; snprintf(p, sizeof p, "%s/%s", dir, name);

@@ -127,7 +127,7 @@ uint8_t *s23_vram_ptr(uint32_t p)     /* for the renderers (src/s23_text.c): a b
     return NULL;
 }
 /* THE BACKUP RAM IN A FILE (the board's battery: settings, coin options, rankings). The game keeps them in the first window above
- * (0x06000000-0x0600FFFF); MAME saves it as nvram. Ours: tc2_backup.nv beside tc2.cfg -- "TC2BKUP1", the 64 KB, a BE32 byte sum --
+ * (0x06000000-0x0600FFFF); MAME saves it as nvram. Ours: s23_backup.nv beside tc2.cfg -- "TC2BKUP1", the 64 KB, a BE32 byte sum --
  * loaded at power-on in a WINDOW run only (a headless run starts blank, so every gate stays what it measured, unless $S23_BACKUP names a
  * file), written through a temp file + rename when it changed (checked every 300 frames) and on exit. A file with a bad size or sum is
  * ignored, never trusted. */

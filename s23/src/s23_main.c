@@ -121,12 +121,30 @@ static void scripted_inputs(uint32_t frame)
             g_ss22_gun_x = (uint16_t)(s23_game.gun_x0 + x * s23_game.gun_xw); g_ss22_gun_y = (uint16_t)(s23_game.gun_y0 + y * s23_game.gun_yh); }
         p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
     }
+    /* the ASCA-3 board's inputs (Angler King's rod / arm / reel, src/s23_h8.c): $S23_ANALOG = "ch:value@frame,..." (value hex, MAME's 16-bit
+     * JVS value, held from that frame on); $S23_REEL = "counts@frame+frames,..." (the reel wound by that many counts a frame: s23_reel_wind) */
+    static const char *an, *rl; static int rinit;
+    if (!rinit) { rinit = 1; an = getenv("S23_ANALOG"); rl = getenv("S23_REEL"); }
+    extern uint16_t s23_analog_in[8];
+    for (const char *p = an; p && *p; ) {
+        unsigned ch, v, at; int n = 0;
+        if (sscanf(p, "%u:%x@%u%n", &ch, &v, &at, &n) < 3) break;
+        if (frame == at && ch < 8) s23_analog_in[ch] = (uint16_t)v;
+        p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
+    }
+    for (const char *p = rl; p && *p; ) {
+        int c = 0; unsigned at = 0, len = 1; int n = 0;
+        if (sscanf(p, "%d@%u+%u%n", &c, &at, &len, &n) < 2) break;
+        if (frame >= at && frame < at + len) { void s23_reel_wind(int); s23_reel_wind(c); }
+        p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
+    }
 }
 
 /* THE GPU GATE: $S23_GPU_GATE=dir:every -- a hidden GL context in a headless run; every N frames the same built frame is drawn by the GPU
  * back end (src/s23_gl.c) and by the software one (the oracle), both written as PPMs, and the difference reported */
 #include <SDL2/SDL.h>
 #include "s23_build.h"
+#include "eng/eng_args.h"
 #include "eng/win_gpu.h"   /* Windows: run on the discrete GPU of a two-GPU laptop */
 static void ppm(const char *path, const uint32_t *px)
 {
@@ -183,6 +201,7 @@ static void gpu_gate(uint32_t frame)
         fprintf(stderr, "[GATE]  fog RGB %02X %02X %02X; PCZ %d/512 non-zero:", b->fs.c404[11], b->fs.c404[13], b->fs.c404[15], nz);
         for (int i = 0; i < 0x200; i += 32) fprintf(stderr, " %04X", z[i]);
         fprintf(stderr, "\n");
+        { FILE *f = fopen("work/pcz.txt", "w"); if (f) { for (int i = 0; i < 0x200; i++) fprintf(f, "%d %d\n", i, z[i]); fclose(f); } }   /* the whole table, for study */
     }
     if (getenv("S23_GATE_TEXTMASK")) {                         /* where the text layer is opaque: white */
         for (int i = 0; i < 640 * 480; i++) g[i] = (b->mix[i] & 0x8000) ? (b->fs.pens[b->mix[i] & 0x7FFF] | 0x404040) : 0x000040;
@@ -211,7 +230,7 @@ static void session_rec(uint32_t frame)
         if (r) { rep = fopen(r, "r"); fprintf(stderr, rep ? "[REC] replaying %s\n" : "[REC] cannot read %s\n", r); }
         else { int s23_window_active(void), s23_c422_record(void);
                if (s23_window_active() && !s23_c422_record()) fprintf(stderr, "[REC] session recording off (tc2_link.cfg record=off)\n");
-               else if (s23_window_active()) {               /* <tag>_last.rec / <tag>_prev.rec: tc2_..., crszone_... (the game table's tag) */
+               else if (s23_window_active()) {               /* <tag>_last.rec / <tag>_prev.rec: s23_..., crszone_... (the game table's tag) */
                    char last[64], prev[64]; snprintf(last, sizeof last, "%s_last.rec", s23_game.tag); snprintf(prev, sizeof prev, "%s_prev.rec", s23_game.tag);
                    remove(prev); rename(last, prev); rec = fopen(last, "w");   /* (Windows rename does not replace: the last session was lost) */
                    if (rec) { fprintf(rec, "# TC2 session: F frame inputs gunx guny off\n"); fprintf(stderr, "[REC] recording the inputs to %s\n", last); } } }
@@ -239,6 +258,7 @@ static void session_rec(uint32_t frame)
 void s23_on_vblank(uint32_t frame)
 {
     scripted_inputs(frame);
+    { void s23_subs_frame(uint32_t); s23_subs_frame(frame); }   /* English subtitles: which caption is up (src/s23_subs.c) */
     { static int on = -1; static uint64_t t; if (on < 0) { on = getenv("S23_FRAMETIME") != NULL; t = SDL_GetPerformanceCounter(); }   /* $S23_FRAMETIME: ms per 30 frames */
       if (on && frame % 30 == 0) { const uint64_t n = SDL_GetPerformanceCounter(); fprintf(stderr, "[TIME] f%u %.0f ms / 30 frames\n", frame, (double)(n - t) * 1000.0 / (double)SDL_GetPerformanceFrequency()); t = n; } }
     { static int rt = -1; static uint64_t t0; static double hz;    /* $S23_REALTIME=1 (tests, our fork): a headless run held to the board's 59.906 Hz, as a cabinet;
@@ -311,8 +331,35 @@ const char *s23_instance(void)
     if (!init) { init = 1; const char *e = getenv("S23_INSTANCE"); const int n = e ? atoi(e) : 0; if (n >= 2 && n <= 99) snprintf(suf, sizeof suf, "_%d", n); }
     return suf;
 }
-/* THE OLD SWITCH NAMES: the host's environment switches were TC2_* until it moved out of tc2/ into s23/ (2026-11-01); the launcher's Time
- * Crisis 2 link entries and players' .bat files still set TC2_SIDE, TC2_LINK, ... -- each TC2_X is copied to S23_X unless that is set */
+/* GitHub #85: the command line a launcher needs, taken out of argv before the positional parsing below.
+ *   --set KEY=VALUE        any line of the settings file, for this run only (eng_args.h): --set widescreen=1 --set fullscreen=1
+ *   --host                 host a LAN game at start-up (a twin-cabinet game: Time Crisis II, Crisis Zone)
+ *   --join                 find a LAN game and join it at start-up
+ *   --server ADDR          connect to an online server at start-up
+ *   --name NAME            the player's name online
+ *   --instance N           a second (third...) copy on this computer: its own cfg, backup RAM and log (s23_N.cfg)
+ *   --pos X,Y[,SCALE]      the window at X,Y on the desktop (and its size), e.g. two copies side by side
+ * They map onto the $S23_NET_* / $S23_INSTANCE / $S23_WINDOW variables the runtime already reads. */
+static void cli_args(int *argc, char **argv)
+{
+    eng_args_strip(argc, argv);
+    int o = 1;
+    for (int i = 1; i < *argc; i++) {
+        const char *a = argv[i], *v = i + 1 < *argc ? argv[i + 1] : NULL;
+        if (!strcmp(a, "--host")) eng_args_setenv("S23_NET_HOST", "1");
+        else if (!strcmp(a, "--join")) eng_args_setenv("S23_NET_DISCOVER", "1");
+        else if (!strcmp(a, "--server") && v) { eng_args_setenv("S23_NET_SERVER", v); i++; }
+        else if (!strcmp(a, "--name") && v) { eng_args_setenv("S23_NET_NAME", v); i++; }
+        else if (!strcmp(a, "--instance") && v) { eng_args_setenv("S23_INSTANCE", v); i++; }
+        else if (!strcmp(a, "--pos") && v) { eng_args_setenv("S23_WINDOW", v); i++; }
+        else argv[o++] = argv[i];
+    }
+    argv[o] = NULL; *argc = o;
+    static char *fs_argv[] = { NULL, "--window", "--fullscreen", NULL };      /* "tc2 --fullscreen": play, fullscreen (not a headless run) */
+    if (*argc == 2 && !strcmp(argv[1], "--fullscreen")) { fs_argv[0] = argv[0]; memcpy(argv, fs_argv, sizeof fs_argv); *argc = 3; }
+}
+/* THE OLD SWITCH NAMES: the host's environment switches were S23_* until it moved out of tc2/ into s23/ (2026-11-01); the launcher's Time
+ * Crisis 2 link entries and players' .bat files still set S23_SIDE, S23_LINK, ... -- each S23_X is copied to S23_X unless that is set */
 #ifndef _WIN32
 extern char **environ;
 #endif
@@ -334,6 +381,7 @@ int main(int argc, char **argv)
 {
     { void s23_prof_start(void); s23_prof_start(); }          /* $S23_PROFILE=1: where the time goes (src/s23_prof.c) */
     old_switch_names();
+    cli_args(&argc, argv);                                   /* --set, --fullscreen ... (the author's, GitHub #85) */
 #ifdef _WIN32
     /* Windows: a double-click or a shortcut starts us anywhere -- work in the program's own folder (roms/, extracted/, <tag>.cfg, the
      * backup RAM), and with no console the log goes to <tag>.log beside the .exe (tc2.log, crszone.log, gunwars.log: what the crash

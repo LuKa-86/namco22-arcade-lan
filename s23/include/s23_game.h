@@ -1,5 +1,5 @@
 /* s23_game.h -- ONE GAME = ONE TABLE. The System 23 host in tc2/src is shared by every System 23 / Evolution 2 game (HARD RULE 3: settings and
- * small hooks, never copies). Time Crisis 2 fills it in src/tc2_game.c, Crisis Zone in ../crszone/src/csz_game.c; each binary links one.
+ * small hooks, never copies). Time Crisis 2 fills it in src/s23_game.c, Crisis Zone in ../crszone/src/csz_game.c; each binary links one.
  * Everything a game differs in that the host must know is here: the ROM files, the board (System 23 or Evolution 2), the clocks, which
  * CPU interrupt pin each device drives. */
 #ifndef S23_GAME_H
@@ -15,6 +15,12 @@ enum { S23_SRC_VBLANK, S23_SRC_C361, S23_SRC_SUB, S23_SRC_C435, S23_SRC_C422, S2
 typedef struct {
     const char *title;                            /* "Time Crisis 2": windows, messages */
     const char *tag;                              /* "tc2": the cfg / backup / log file names */
+    int cz_fog;                                   /* 1 = draw the C412 depth fog (CZ flag + PCZ table, Super 22's model: src/s23_render.c). Angler King on;
+                                                   * TC2 asks for it too (frame 3720's forest) but stays off until checked (the author's 0.10) */
+    int uv_edge;                                  /* 1 = model polygons sample their texture range as written (no +0.5 texel, MAME's): Angler King's water seams */
+    const char *subtitles;                        /* NULL, or the English subtitle table beside the game (src/s23_subs.c): Angler King's captions are pictures */
+    int io_asca3;                                 /* 1 = the I/O board is an ASCA-3 / FCA-1 (Angler King: switches 0x6000-3, outputs 0x6004/5, rotary 0x6006/7) */
+    int super23;                                  /* 1 = SUPER System 23 (Angler King): a write to 0x0100005C acknowledges the C361 (raster) interrupt */
     const char *window_title;                     /* "Time Crisis II" */
     const char *mame_set;                         /* "timecrs2": the set name the output protocol announces (recoil hooks key on it) */
     const char *zip_help;                         /* what the player must supply, for the missing-ROM message */

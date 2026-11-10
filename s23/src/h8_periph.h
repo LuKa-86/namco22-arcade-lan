@@ -39,7 +39,6 @@ typedef struct h8p {
     void *ctx;                                  /* the board */
     uint8_t (*port_in)(void *ctx, int port);                      /* the pins of port n (1..0xB) */
     void    (*port_out)(void *ctx, int port, uint8_t data, uint8_t ddr);
-    uint16_t (*adc_in)(void *ctx, int ch);                        /* the A/D inputs (10 bits), NULL = all 0 (System 23's sub-CPU) */
     void    (*sci_tx)(void *ctx, int ch, uint8_t byte, int64_t at);   /* a byte has left (its last bit ends at state `at`) */
     uint8_t (*sci_sync_rx)(void *ctx, int ch);                    /* clocked mode: the 8 bits the device shifts in */
     void    (*sci_sync_tx)(void *ctx, int ch, uint8_t byte);      /* clocked mode: the 8 bits shifted out */
@@ -58,6 +57,9 @@ typedef struct h8p {
     h8p_sci sci[2];
     /* A/D */
     uint8_t adcsr, adcr; uint16_t addr[4]; int64_t adc_done; int adtrg;   /* adtrg: the ADTRG pin level (idle high) */
+    uint16_t (*adc_in)(void *ctx, int ch);      /* the board's analogue input ch (0..7) as a 10-bit value; NULL = all 0 (MAME set_constant(0)).
+                                                 * Set after h8p_init. Single mode converts ADCSR.CH into ADDR[CH & 3]; scan mode the channels of its group
+                                                 * (CH & 4) up to CH into ADDR[0..CH & 3] (MAME h8_adc_3337, the H8/3334's) */
     /* watchdog */
     uint8_t wd_tcsr, wd_tcnt;
     uint8_t reg[256];                           /* every other register: kept as written */

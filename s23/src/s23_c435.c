@@ -362,11 +362,12 @@ int s23_c435_write(uint32_t p, int size, uint32_t v)
     case 0x01000020u: c435.size = v; return 1;
     case 0x01000024u: if (v & 1) dma(); return 1;
     case 0x01000060u: c435.pos = 0; return 1;
+    case 0x0100005Cu: if (!s23_game.super23) return 0; s23_irq_set(S23_SRC_C361, 0); return 1;   /* MAME namcoss23_state::c435_c361_ack_w */
     case 0x02000000u: if (size == 2) { s23_c435_pio((uint16_t)v); return 1; } return 0;
     case 0x0C800010u: c435.state_pos = 0; return 1;
     case 0x0C800016u: state_pio((uint16_t)v); return 1;
     }
     return 0;
 }
-int s23_c435_owns(uint32_t p) { return (p >= 0x0100001Cu && p <= 0x0100002Bu) || p == 0x01000060u || p == 0x0C800010u || p == 0x0C800016u; }
+int s23_c435_owns(uint32_t p) { return (p >= 0x0100001Cu && p <= 0x0100002Bu) || p == 0x01000060u || (s23_game.super23 && p == 0x0100005Cu) || p == 0x0C800010u || p == 0x0C800016u; }
 float s23_c435_fov_now(void) { return clip_data[23]; }   /* debug: the clip set now (S23_FOVLAST) */
