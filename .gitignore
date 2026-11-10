@@ -196,3 +196,17 @@ __pycache__/
 /airco22/*.rec
 /airco22/*.wav
 /airco22/*.png
+
+# Ace Driver: Victory Lap (victlap/): game files, the translation's working files, test output
+/victlap/extracted/
+/victlap/gen/
+/victlap/build/
+/victlap/run*/
+/victlap/*.bin
+/victlap/*.pcode
+/victlap/*.log
+/victlap/*.out
+/victlap/*.nv
+/victlap/*.cfg
+/victlap/*.rec
+/victlap/*.png

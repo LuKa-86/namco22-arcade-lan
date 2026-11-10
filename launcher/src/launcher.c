@@ -92,7 +92,7 @@ typedef struct {
 static const game_t games[] = {
     { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
       "Formula racing for up to 8 linked cabinets. Linked play is new in this package.",
-      "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
+      "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", "link.cfg",
       9, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_TRY4("roms"),
         { "Test: 8 linked cabinets on this PC", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
             { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
@@ -100,6 +100,10 @@ static const game_t games[] = {
             { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } },
         M_PARTY2K("roms"), M_PARTY2P("roms"), M_PARTY4K("roms"), M_PARTY4P("roms") } },
+    { "victlap", "Ace Driver: Victory Lap", "1996", "Ace Driver Victory Lap", "VictoryLap-ArcadeLAN.exe",
+      "Ace Driver's 1996 sequel: a three-round championship for a single cabinet. New in this package.",
+      "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", NULL,
+      2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
     { "airco22", "Air Combat 22", "1995", "Air Combat 22", "AirCombat22-ArcadeLAN.exe",
       "Jet-fighter missions for a single cabinet. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows fly  \xC2\xB7  W boost  \xC2\xB7  S brake  \xC2\xB7  Space gun  \xC2\xB7  Alt missile  \xC2\xB7  Esc menu", NULL,
@@ -166,7 +170,7 @@ static const game_t games[] = {
       1, { { "Play", "Opens the game. Choose full screen or a window in its Esc menu or with F11: it remembers.", true, 1, { { "", NULL } } } } },
     { "raverace", "Rave Racer", "1995", "Rave Racer", "RaveRacer-ArcadeLAN.exe",
       "Racing for up to 4 linked cabinets.",
-      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  A accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
+      "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
     { "timecris", "Time Crisis", "1995", "Time Crisis", "TimeCrisis.exe",
       "Light-gun shooting for a single cabinet. The original project's build.",

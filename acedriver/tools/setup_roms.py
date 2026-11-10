@@ -143,9 +143,9 @@ GAMES = {
 
 OPTIONAL = {"eeprom"}                # a default EEPROM image older MAME sets lack: without it the game starts from a blank EEPROM
 EXTRA = {"c74.bin": 0x4000}          # the sound MCU BIOS, from namcoc74.zip (size only). The DSP BIOS c71.bin is built into the engine.
-MAIN_NAME = {"acedrive": "acedriver_main.bin", "victlap": "victlap_main.bin", "cybrcomm": "../cybrcomm/cybrcomm_main.bin",
+MAIN_NAME = {"acedrive": "acedriver_main.bin", "victlap": "../victlap/victlap_main.bin", "cybrcomm": "../cybrcomm/cybrcomm_main.bin",
              "ridgera2": "../ridgera2/ridgera2_main.bin"}   # <dir>_main.bin: the shared tools find the image by the game directory name
-DEST_NAME = {"acedrive": "extracted", "victlap": "extracted_victlap", "cybrcomm": "../cybrcomm/extracted", "ridgera2": "../ridgera2/extracted"}   # Cyber Commando lives in its own directory
+DEST_NAME = {"acedrive": "extracted", "victlap": "../victlap/extracted", "cybrcomm": "../cybrcomm/extracted", "ridgera2": "../ridgera2/extracted"}   # Cyber Commando lives in its own directory
 TITLE = {"acedrive": "Ace Driver: Racing Evolution (World, AD2)", "victlap": "Ace Driver: Victory Lap (World, ADV2 Ver.B)",
          "cybrcomm": "Cyber Commando (Japan, CY1)",
          "ridgera2": "Ridge Racer 2 (World, RRS2)"}

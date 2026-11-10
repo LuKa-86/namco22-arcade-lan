@@ -26,6 +26,7 @@ GAMES=(
   "Tokyo Wars|TokyoWars-ArcadeLAN.exe|tokyowar/build/tw.exe|tokyowar.zip|tokyowar"
   "Rave Racer|RaveRacer-ArcadeLAN.exe|raverace/build/rr.exe|raverace.zip namcoc74.zip|raverace"
   "Ace Driver|AceDriver-ArcadeLAN.exe|acedriver/build/ad.exe|acedrive.zip namcoc74.zip|acedrive"
+  "Ace Driver Victory Lap|VictoryLap-ArcadeLAN.exe|victlap/build/vl.exe|victlap.zip namcoc74.zip|victlap"
   "Time Crisis II|TimeCrisis2-ArcadeLAN.exe|tc2/build/tc2.exe|timecrs2.zip|timecrs2"
   "Cyber Cycles|CyberCycles-ArcadeLAN.exe|cybrcycc/build/cc.exe|cybrcycc.zip|cybrcycc"
   "Cyber Commando|CyberCommando-ArcadeLAN.exe|cybrcomm/build/cc.exe|cybrcomm.zip namcoc74.zip|cybrcomm"
