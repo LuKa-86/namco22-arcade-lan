@@ -73,6 +73,10 @@ static void csz_list_hook(void *lv)
     if (ex <= 0 || !g_eng_hud_edges_on || !csz_hud_up(l)) return;
     static const int16_t st[2][4] = { { 0, 48, 200, 440 }, { 396, 480, 215, 440 } };
     memcpy(l->tstretch, st, sizeof st); l->ntstretch = 2;
+    /* the hit combo under the score ("5 hit", "+640": rows ~47-82, x < 200) moves with the score's end, whole (the user: it had dropped
+     * a line -- its top rows were in the score's band, the rest stayed) */
+    static const int16_t sh[5] = { 0, 48, 200, 92, 0 };
+    memcpy(l->tshift[0], sh, sizeof sh); l->tshift[0][4] = (int16_t)-ex; l->ntshift = 1;
     for (int i = 0; i < l->count; i++) {
         s23_render_entry *e = &l->e[i];
         if (e->type != S23_RE_MODEL || e->model != 9011 || e->vp_fov <= 0.f || e->v[2] == 0) continue;
