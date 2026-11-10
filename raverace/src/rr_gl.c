@@ -196,6 +196,7 @@ static void direct_quad(const uint16_t *src)
  * 0xFC-0xFE as per-channel multipliers of what is under them. */
 static uint8_t txt_rgba[NW * NH * 4], shd_rgba[NW * NH * 4];
 static GLuint  txt_tex, shd_tex;
+static bool    shd_grey;                       /* every shadow pen this frame scales R, G and B alike (see the shadow pass) */
 
 static bool build_text(int text_palbase, bool shadow_enabled, bool *any_shadow)
 {
@@ -204,7 +205,7 @@ static bool build_text(int text_palbase, bool shadow_enabled, bool *any_shadow)
     const int sx = (a0 - 0x35c) & 0x3ff, sy = a1 & 0x3ff;
     uint8_t mix[3][3];
     for (int k = 0; k < 3; k++) for (int c = 0; c < 3; c++) mix[k][c] = mixer_b(0x08 + k * 3 + c);
-    bool any = false; *any_shadow = false;
+    bool any = false; *any_shadow = false; shd_grey = true;
     static uint8_t occ[NW * NH];                       /* where either layer draws: the widescreen HUD's pieces are found in it */
     memset(occ, 0, sizeof occ);
     memset(shd_rgba, 0xff, sizeof shd_rgba);
@@ -226,8 +227,11 @@ static bool build_text(int text_palbase, bool shadow_enabled, bool *any_shadow)
             if (pix == 0xf) continue;
             const uint8_t p8 = (uint8_t)((w >> 12) << 4 | pix);
             if (shadow_enabled && p8 >= 0xfc && p8 <= 0xfe) {
-                sd[0] = mix[p8 - 0xfc][0]; sd[1] = mix[p8 - 0xfc][1]; sd[2] = mix[p8 - 0xfc][2];
-                sd[3] = 255; *any_shadow = true;
+                const uint8_t *m = mix[p8 - 0xfc];
+                sd[0] = m[0]; sd[1] = m[1]; sd[2] = m[2];
+                sd[3] = m[0];                          /* our fork: a grey shadow's multiplier, for the prioverchar-aware pass */
+                if (m[0] != m[1] || m[0] != m[2]) shd_grey = false;
+                *any_shadow = true;
                 occ[(size_t)y * NW + x] = 1;
                 continue;
             }
@@ -382,8 +386,13 @@ void rr_gl_prepare(bool slave_active)
                         if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
                     }
                     if (qbuf[i].nrv && x0 >= bx0 && x1 <= bx1 && y0 >= by0 && y1 <= by1)
-                        fprintf(stderr, "[BOXQ] pick %d  direct %d  band %d  clip %d..%d  x %d..%d  y %d..%d  zsort %06X nrv %d\n", qbuf[i].pick_code, qbuf[i].direct,
-                                (qbuf[i].zsort >> 21) & 7, qbuf[i].clip[0], qbuf[i].clip[1], x0, x1, y0, y1, qbuf[i].zsort & 0xffffff, qbuf[i].nrv);
+                        fprintf(stderr, "[BOXQ] #%d cmode %d grey %d  pick %d  direct %d  band %d  clip %d..%d  x %d..%d  y %d..%d  zsort %06X nrv %d\n", i, qbuf[i].cmode,
+                                (int)shd_grey, qbuf[i].pick_code, qbuf[i].direct, (qbuf[i].zsort >> 21) & 7, qbuf[i].clip[0], qbuf[i].clip[1], x0, x1, y0, y1, qbuf[i].zsort & 0xffffff, qbuf[i].nrv);
+                    if (qbuf[i].nrv && x0 >= bx0 && x1 <= bx1 && y0 >= by0 && y1 <= by1) {      /* its corners, in drawing order */
+                        fprintf(stderr, "        ");
+                        for (int k = 0; k < qbuf[i].nrv; k++) fprintf(stderr, " (%.2f,%.2f)", qbuf[i].rv[k].sx16 / 16.0, qbuf[i].rv[k].sy16 / 16.0);
+                        fprintf(stderr, "\n");
+                    }
                 } }
       }
       if (want && ++n == want) {
@@ -476,21 +485,52 @@ void rr_gl_draw(int vw, int vh)
     { static int no = -1; if (no < 0) { const char *e = getenv("RR_NO_TEXT"); no = e && *e == '1'; }     /* dev: the picture without the text layer */
       if (no || seamtest) { any_text = false; any_shadow = false; } }
     glEnable(GL_BLEND);
-    if (any_shadow) {                                   /* rgb *= mix/256 */
-        { static uint8_t *last; upload(&shd_tex, shd_rgba, NW, NH, &last); }
-        glDisable(GL_ALPHA_TEST);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
-        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
-        draw_layer(shd_tex);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glEnable(GL_ALPHA_TEST);
-    }
+    /* (text and shadow pens never share a pixel, so the order of the two passes is free: the text goes first, while the destination
+     * alpha is still the prioverchar mark both of them need) */
     if (any_text) {
         { static uint8_t *last; upload(&txt_tex, txt_rgba, NW, NH, &last); }
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
         glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA);
         draw_layer(txt_tex);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    }
+    if (any_shadow) {                                   /* rgb *= mix/256 */
+        { static uint8_t *last; upload(&shd_tex, shd_rgba, NW, NH, &last); }
+        glDisable(GL_ALPHA_TEST);
+        /* MAME namcos22_mix_text_layer: a shadow pen darkens the pixel only where the TEXT is over the polygons (pri 2) -- not where
+         * the last polygon set prioverchar (Victory Lap's rev needle over its gauge's dark face). So: keep the frame as it is, darken
+         * it all, then put the kept pixels back where the destination alpha (the prioverchar mark) is 1. */
+        static GLuint pre_tex; static int pre_w, pre_h;
+        if (!pre_tex || pre_w != vw || pre_h != vh) {
+            if (!pre_tex) glGenTextures(1, &pre_tex);
+            glBindTexture(GL_TEXTURE_2D, pre_tex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vw, vh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            pre_w = vw; pre_h = vh;
+        }
+        glBindTexture(GL_TEXTURE_2D, pre_tex);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, vw, vh);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+        draw_layer(shd_tex);
+        glBlendFunc(GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA);          /* the marked pixels back */
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, pre_tex);
+        glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, 1, 0, 1, -1, 1);
+        glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
+        glColor4f(1, 1, 1, 1);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(0, 0); glTexCoord2f(1, 0); glVertex2f(1, 0);
+        glTexCoord2f(1, 1); glVertex2f(1, 1); glTexCoord2f(0, 1); glVertex2f(0, 1);
+        glEnd();
+        glMatrixMode(GL_PROJECTION); glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);  glPopMatrix();
+        glDisable(GL_TEXTURE_2D);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glEnable(GL_ALPHA_TEST);
     }
     glDisable(GL_BLEND);
     glDisable(GL_ALPHA_TEST);
