@@ -107,12 +107,30 @@ static void scripted_inputs(uint32_t frame)
             g_ss22_gun_x = (uint16_t)(tc2_game.gun_x0 + x * tc2_game.gun_xw); g_ss22_gun_y = (uint16_t)(tc2_game.gun_y0 + y * tc2_game.gun_yh); }
         p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
     }
+    /* the ASCA-3 board's inputs (Angler King's rod / arm / reel, src/tc2_h8.c): $TC2_ANALOG = "ch:value@frame,..." (value hex, MAME's 16-bit
+     * JVS value, held from that frame on); $TC2_REEL = "counts@frame+frames,..." (the reel wound by that many counts a frame: tc2_reel_wind) */
+    static const char *an, *rl; static int rinit;
+    if (!rinit) { rinit = 1; an = getenv("TC2_ANALOG"); rl = getenv("TC2_REEL"); }
+    extern uint16_t tc2_analog_in[8];
+    for (const char *p = an; p && *p; ) {
+        unsigned ch, v, at; int n = 0;
+        if (sscanf(p, "%u:%x@%u%n", &ch, &v, &at, &n) < 3) break;
+        if (frame == at && ch < 8) tc2_analog_in[ch] = (uint16_t)v;
+        p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
+    }
+    for (const char *p = rl; p && *p; ) {
+        int c = 0; unsigned at = 0, len = 1; int n = 0;
+        if (sscanf(p, "%d@%u+%u%n", &c, &at, &len, &n) < 2) break;
+        if (frame >= at && frame < at + len) { void tc2_reel_wind(int); tc2_reel_wind(c); }
+        p += n ? n : 1; while (*p && *p != ',') p++; if (*p == ',') p++;
+    }
 }
 
 /* THE GPU GATE: $TC2_GPU_GATE=dir:every -- a hidden GL context in a headless run; every N frames the same built frame is drawn by the GPU
  * back end (src/tc2_gl.c) and by the software one (the oracle), both written as PPMs, and the difference reported */
 #include <SDL2/SDL.h>
 #include "tc2_build.h"
+#include "eng/eng_args.h"
 #include "eng/win_gpu.h"   /* Windows: run on the discrete GPU of a two-GPU laptop */
 static void ppm(const char *path, const uint32_t *px)
 {
@@ -168,6 +186,7 @@ static void gpu_gate(uint32_t frame)
         fprintf(stderr, "[GATE]  fog RGB %02X %02X %02X; PCZ %d/512 non-zero:", b->fs.c404[11], b->fs.c404[13], b->fs.c404[15], nz);
         for (int i = 0; i < 0x200; i += 32) fprintf(stderr, " %04X", z[i]);
         fprintf(stderr, "\n");
+        { FILE *f = fopen("work/pcz.txt", "w"); if (f) { for (int i = 0; i < 0x200; i++) fprintf(f, "%d %d\n", i, z[i]); fclose(f); } }   /* the whole table, for study */
     }
     if (getenv("TC2_GATE_TEXTMASK")) {                         /* where the text layer is opaque: white */
         for (int i = 0; i < 640 * 480; i++) g[i] = (b->mix[i] & 0x8000) ? (b->fs.pens[b->mix[i] & 0x7FFF] | 0x404040) : 0x000040;
@@ -224,6 +243,7 @@ static void session_rec(uint32_t frame)
 void tc2_on_vblank(uint32_t frame)
 {
     scripted_inputs(frame);
+    { void tc2_subs_frame(uint32_t); tc2_subs_frame(frame); }   /* English subtitles: which caption is up (src/tc2_subs.c) */
     { static int tf = -2; static const char *tp; if (tf == -2) { const char *e = getenv("TC2_TEXTDUMP"); tf = -1; if (e) { tf = atoi(e); tp = strchr(e, ':'); if (tp) tp++; } }
       if (tf >= 0 && (int)frame == tf && tp) {   /* $TC2_TEXTDUMP=frame:file -- the C361 character RAM + tile map (0x06800000-0x0681FFFF), big-endian */
           uint8_t *tc2_vram_ptr(uint32_t); FILE *f = fopen(tp, "wb"); if (f) { fwrite(tc2_vram_ptr(0x06800000u), 1, 0x20000, f); fclose(f); } } }
@@ -283,8 +303,36 @@ const char *tc2_instance(void)
     if (!init) { init = 1; const char *e = getenv("TC2_INSTANCE"); const int n = e ? atoi(e) : 0; if (n >= 2 && n <= 99) snprintf(suf, sizeof suf, "_%d", n); }
     return suf;
 }
+/* GitHub #85: the command line a launcher needs, taken out of argv before the positional parsing below.
+ *   --set KEY=VALUE        any line of the settings file, for this run only (eng_args.h): --set widescreen=1 --set fullscreen=1
+ *   --host                 host a LAN game at start-up (a twin-cabinet game: Time Crisis II, Crisis Zone)
+ *   --join                 find a LAN game and join it at start-up
+ *   --server ADDR          connect to an online server at start-up
+ *   --name NAME            the player's name online
+ *   --instance N           a second (third...) copy on this computer: its own cfg, backup RAM and log (tc2_N.cfg)
+ *   --pos X,Y[,SCALE]      the window at X,Y on the desktop (and its size), e.g. two copies side by side
+ * They map onto the $TC2_NET_* / $TC2_INSTANCE / $TC2_WINDOW variables the runtime already reads. */
+static void cli_args(int *argc, char **argv)
+{
+    eng_args_strip(argc, argv);
+    int o = 1;
+    for (int i = 1; i < *argc; i++) {
+        const char *a = argv[i], *v = i + 1 < *argc ? argv[i + 1] : NULL;
+        if (!strcmp(a, "--host")) eng_args_setenv("TC2_NET_HOST", "1");
+        else if (!strcmp(a, "--join")) eng_args_setenv("TC2_NET_DISCOVER", "1");
+        else if (!strcmp(a, "--server") && v) { eng_args_setenv("TC2_NET_SERVER", v); i++; }
+        else if (!strcmp(a, "--name") && v) { eng_args_setenv("TC2_NET_NAME", v); i++; }
+        else if (!strcmp(a, "--instance") && v) { eng_args_setenv("TC2_INSTANCE", v); i++; }
+        else if (!strcmp(a, "--pos") && v) { eng_args_setenv("TC2_WINDOW", v); i++; }
+        else argv[o++] = argv[i];
+    }
+    argv[o] = NULL; *argc = o;
+    static char *fs_argv[] = { NULL, "--window", "--fullscreen", NULL };      /* "tc2 --fullscreen": play, fullscreen (not a headless run) */
+    if (*argc == 2 && !strcmp(argv[1], "--fullscreen")) { fs_argv[0] = argv[0]; memcpy(argv, fs_argv, sizeof fs_argv); *argc = 3; }
+}
 int main(int argc, char **argv)
 {
+    cli_args(&argc, argv);
 #ifdef _WIN32
     /* Windows: a double-click or a shortcut starts us anywhere -- work in the program's own folder (roms/, extracted/, tc2.cfg, the
      * backup RAM), and with no console the log goes to tc2.log beside the .exe (what the crash message points at) */

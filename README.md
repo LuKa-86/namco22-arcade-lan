@@ -18,6 +18,7 @@ where a MAME set has since renamed one (see [docs/ROM_CHECKSUMS.md](docs/ROM_CHE
 | **Time Crisis** | 1995 | Playable; mouse or light gun | no | `timecris.zip` | yes | yes |
 | **Ace Driver** | 1994 | Playable; force feedback, developer screens | no | `acedrive.zip` + `namcoc74.zip` | yes | yes |
 | **Cyber Commando** | 1994 | Playable; Japanese version | no | `cybrcomm.zip` + `namcoc74.zip` | yes | yes |
+| **Ridge Racer 2** | 1994 | Playable; widescreen, developer screens | no | `ridgera2.zip` + `namcoc74.zip` | yes | yes |
 
 ### System 21
 
@@ -31,6 +32,7 @@ where a MAME set has since renamed one (see [docs/ROM_CHECKSUMS.md](docs/ROM_CHE
 |---|---|---|---|---|---|---|
 | **Time Crisis II** | 1997 | Playable; mouse or light gun, gun recoil output, play either character ([its own README](tc2/README.md)) | **yes**, 2 players, LINK PLAY ([how](#playing-online)) | `timecrs2.zip` | yes | yes |
 | **Crisis Zone** | 1999 | Playable; mouse or light gun, gun recoil output ([its own README](crszone/README.md)) | no | `crszone.zip` | yes | yes |
+| **Angler King** | 1998 | Playable (Super System 23); English subtitles, a working reel, depth fog ([its own README](aking/README.md)) | no | `aking.zip` | yes | yes |
 
 **Are you running the same ROMs as the authors?** The checksums of every ROM file the games use are in
 [docs/ROM_CHECKSUMS.md](docs/ROM_CHECKSUMS.md), with a list in `md5sum` format for each game.
@@ -63,6 +65,10 @@ Cyber Commando:
 
 ![Cyber Commando: a battle in widescreen](docs/images/cybrcomm-gameplay.png)
 
+Ridge Racer 2:
+
+![Ridge Racer 2: the start line, in widescreen](docs/images/ridgera2-gameplay.png)
+
 Cyber Sled:
 
 ![Cyber Sled: a battle, in widescreen](docs/images/cybsled-widescreen.png)
@@ -70,6 +76,14 @@ Cyber Sled:
 Time Crisis II:
 
 ![Time Crisis II: the first stage's street, in widescreen](docs/images/timecrisis2-gameplay.png)
+
+Crisis Zone:
+
+![Crisis Zone: an office firefight, in widescreen](docs/images/crszone-gameplay.png)
+
+Angler King:
+
+![Angler King: fighting a fish, in widescreen, with the English subtitles](docs/images/aking-attract.png)
 
 Prop Cycle:
 
@@ -88,10 +102,10 @@ Each release on the [Releases page](https://github.com/spacestate1/namco22-decom
 | Package | For | How to install |
 |---|---|---|
 | `namco-2x-systems_VERSION_amd64.deb` | Ubuntu 22.04 or newer, Linux Mint 21 or newer, LMDE 6, Debian 12 or newer | `sudo apt install ./namco-2x-systems_*_amd64.deb` |
-| `PropCycle-x86_64.AppImage`, `RaveRacer-...`, `TokyoWars-...`, `DirtDash-...`, `ArmadilloRacing-...`, `TimeCrisis-...`, `AceDriver-...`, `CyberCommando-...`, `CyberSled-...`, `TimeCrisis2-...`, `CrisisZone-...` | **The Steam Deck**, and any 64-bit Linux without installing anything | `chmod +x` the file and run it (on a Deck: Desktop Mode, right-click it > Add to Steam) |
+| `PropCycle-x86_64.AppImage`, `RaveRacer-...`, `TokyoWars-...`, `DirtDash-...`, `ArmadilloRacing-...`, `TimeCrisis-...`, `AceDriver-...`, `CyberCommando-...`, `RidgeRacer2-...`, `CyberSled-...`, `TimeCrisis2-...`, `CrisisZone-...`, `AnglerKing-...` | **The Steam Deck**, and any 64-bit Linux without installing anything | `chmod +x` the file and run it (on a Deck: Desktop Mode, right-click it > Add to Steam) |
 | `windows-release-VERSION.zip` | Windows 10 or 11, 64-bit | Unzip it anywhere, put the game zips in its `roms` folder, double-click the game's `.exe` |
 
-On Linux, start a game from the applications menu (or type `propcycle`, `raveracer`, `tokyowars`, `dirtdash`, `armadilloracing`, `timecrisis`, `acedriver`, `cybercommando`, `cybersled`, `timecrisis2` or `crisiszone`). The first time, it makes the folder
+On Linux, start a game from the applications menu (or type `propcycle`, `raveracer`, `tokyowars`, `dirtdash`, `armadilloracing`, `timecrisis`, `acedriver`, `cybercommando`, `ridgeracer2`, `cybersled`, `timecrisis2`, `crisiszone` or `anglerking`). The first time, it makes the folder
 `~/.local/share/namco-2x-systems/<game>/roms`, tells you which zip is missing and copies any it finds in `~/Downloads`. To uninstall: `sudo apt remove namco-2x-systems`
 your game files, settings and scores stay in `~/.local/share/namco-2x-systems/`.
 **Upgrading from 0.6 or older:** the package was called `namco22`; the new one replaces it, and the games keep using your old
@@ -149,6 +163,11 @@ and checked, piece by piece, against the arcade machine running in
 - **Cyber Commando**: the Rave Racer board again, one table (`cybrcomm/src/cc_game.c`) plus a twin-stick mode in the shared
   code; its program (`cybrcomm/gen/rr_lifted.c`) was checked instruction by instruction against MAME over a whole played game
   (162 million instructions), and its DSP and sound translations against the interpreters they were made from.
+- **Ridge Racer 2**: the Rave Racer board again, one table (`ridgera2/src/r2_game.c`); its program (`ridgera2/gen/rr_lifted.c`) was
+  checked instruction by instruction against MAME over the first 300 attract frames, and its DSP and sound translations against the
+  interpreters they were made from (attract, a race and the test-mode pages, byte-identical). The **Debug** page of its menu launches
+  the developer menu left in the game (SELECT MODE: object viewer, colour bars, switch / RAM / area / sound tests) and the hidden
+  ADJUSTMENT screen. Force feedback and link play are not done yet.
 - **Cyber Sled**: a Namco **System 21** board (two 68000s, five C67 DSPs for the 3D, a 6809 sound CPU, a C68 I/O controller).
   Both 68000 programs are translated by the same tool (`cybsled/gen/cm_lifted.c`, `cs_lifted.c`) and were checked
   instruction by instruction against MAME's; the five DSP programs, the sound program and the I/O program are turned into
@@ -161,6 +180,9 @@ and checked, piece by piece, against the arcade machine running in
 - **Crisis Zone**: a Namco **System 23 Evolution 2** board, run on the same System 23 code as Time Crisis II. Its MIPS program is
   translated to C the same way (`crszone/gen/crszone_lifted_*.c`) and its two H8 programs are turned into C when you build
   (`crszone/`: see [crszone/README.md](crszone/README.md)).
+- **Angler King**: a Namco **Super System 23** board, on the same System 23 code again. Its MIPS program is translated to C
+  (`aking/gen/aking_lifted_*.c`), its two H8 programs (the sub CPU and the FCA-1 I/O board that reads the rod and reel) are turned
+  into C when you build (`aking/`: see [aking/README.md](aking/README.md)).
 - The sound programs of all the games are turned into C when you build,
   from your own copy of the game files.
 
@@ -201,13 +223,15 @@ adillor/build.sh ~/Downloads/adillor.zip                                   # Arm
 timecris/build.sh ~/Downloads/timecris.zip                                 # Time Crisis
 acedriver/build.sh ~/Downloads/acedrive.zip ~/Downloads/namcoc74.zip       # Ace Driver
 cybrcomm/build.sh ~/Downloads/cybrcomm.zip ~/Downloads/namcoc74.zip        # Cyber Commando
+ridgera2/build.sh ~/Downloads/ridgera2.zip ~/Downloads/namcoc74.zip        # Ridge Racer 2
 cybsled/build.sh ~/Downloads/cybsled.zip ~/Downloads/namcoc67.zip ~/Downloads/namcoc68.zip   # Cyber Sled
 tc2/build.sh ~/Downloads/timecrs2.zip                                                    # Time Crisis 2 (then tc2/launch.sh)
 crszone/build.sh ~/Downloads/crszone.zip                                                 # Crisis Zone (then crszone/launch.sh)
+aking/build.sh ~/Downloads/aking.zip                                                     # Angler King (then aking/launch.sh)
 ```
 
-Rave Racer's, Tokyo Wars', Dirt Dash's, Armadillo Racing's, Time Crisis', Ace Driver's, Cyber Commando's and Cyber Sled's first builds take a few minutes
-(Cyber Commando's needs about 4.5 GB of free memory).
+Rave Racer's, Tokyo Wars', Dirt Dash's, Armadillo Racing's, Time Crisis', Ace Driver's, Cyber Commando's, Ridge Racer 2's and Cyber Sled's first builds take a few minutes
+(Cyber Commando's needs about 4.5 GB of free memory; give Ridge Racer 2 the same, or build it with `JOBS=1`).
 
 Then play:
 
@@ -220,6 +244,7 @@ Then play:
 ./launch.sh tc        # Time Crisis (the mouse is the gun)
 ./launch.sh ad        # Ace Driver
 ./launch.sh cc        # Cyber Commando
+./launch.sh r2        # Ridge Racer 2
 ./launch.sh cs        # Cyber Sled
 ./launch.sh           # the list of games and options
 ```
@@ -235,8 +260,8 @@ All the games run on Windows. The Windows version is built from Linux. Type:
 This makes a `windows-release` folder. Copy it to the Windows computer.
 Put the game files in its `roms` folder: `propcycl.zip` for Prop Cycle,
 `raverace.zip` and `namcoc74.zip` for Rave Racer, `tokyowar.zip` for Tokyo
-Wars, `dirtdash.zip` for Dirt Dash, `adillor.zip` for Armadillo Racing, `timecris.zip` for Time Crisis, `acedrive.zip` and `namcoc74.zip` for Ace Driver, `cybrcomm.zip` and `namcoc74.zip` for Cyber Commando, `cybsled.zip`, `namcoc67.zip` and `namcoc68.zip` for Cyber Sled, `timecrs2.zip` for Time Crisis II, `crszone.zip` for Crisis Zone.
-Then double-click **PropCycle.exe**, **RaveRacer.exe**, **TokyoWars.exe**, **DirtDash.exe**, **ArmadilloRacing.exe**, **TimeCrisis.exe**, **AceDriver.exe**, **CyberCommando.exe**, **CyberSled.exe**, **TimeCrisis2.exe** or **CrisisZone.exe**.
+Wars, `dirtdash.zip` for Dirt Dash, `adillor.zip` for Armadillo Racing, `timecris.zip` for Time Crisis, `acedrive.zip` and `namcoc74.zip` for Ace Driver, `cybrcomm.zip` and `namcoc74.zip` for Cyber Commando, `ridgera2.zip` and `namcoc74.zip` for Ridge Racer 2, `cybsled.zip`, `namcoc67.zip` and `namcoc68.zip` for Cyber Sled, `timecrs2.zip` for Time Crisis II, `crszone.zip` for Crisis Zone, `aking.zip` for Angler King.
+Then double-click **PropCycle.exe**, **RaveRacer.exe**, **TokyoWars.exe**, **DirtDash.exe**, **ArmadilloRacing.exe**, **TimeCrisis.exe**, **AceDriver.exe**, **CyberCommando.exe**, **RidgeRacer2.exe**, **CyberSled.exe**, **TimeCrisis2.exe**, **CrisisZone.exe** or **AnglerKing.exe**.
 
 Building on Windows itself, and what in the code is there for Windows only:
 [docs/WINDOWS.md](docs/WINDOWS.md).
@@ -351,6 +376,17 @@ drive (both sticks: Up / Down forward / back, Left / Right turn, Shift + Left / 
 pad the two sticks are the cabinet's two sticks, A / RT gun, B / LT missile, Y view. Everything can be changed in the menu
 (**Controls**, see [Two sticks](#two-sticks-cyber-sled-and-cyber-commando)); settings live in `cybrcomm/cc_controls.cfg`.
 
+**Ridge Racer 2.** `5` coin (a game costs three), `X` / Up gas -- it also confirms in the menus, as the cabinet has no Start
+button -- `Z` / Down brake, Left / Right steer, `A` / `S` shift down / up, `F2` test mode (a switch: press again to leave), `9` service,
+`Esc` menu (**Display** incl. widescreen, **Audio**, **Controls**, and **Debug**: the game's developer screens), `F12` screenshot. On a
+pad: left stick steer, A gas, B brake, the shoulders shift, Back coin, Start or R3 the menu. Settings live in
+`ridgera2/r2_controls.cfg`, the operator settings and records in `ridgera2/r2_eeprom.nv`.
+
+**Angler King.** A fishing game. `5` coin, the mouse (or the arrow keys, or either pad stick) aims the rod, left button / `Space` /
+`Enter` casts and selects -- it also starts a game -- and holding `R` / Left Shift (pad: B or the right trigger) reels the line in.
+`W` / `S` move through the game's menus, `F2` test mode, `9` service, `Esc` menu (**Subtitles** puts English under the Japanese captions;
+**Controls** rebinds everything). See [aking/README.md](aking/README.md).
+
 **Cyber Sled.** A tank battle with two levers. `5` coin, `1` / Enter start, the arrow keys drive (both levers: Up / Down
 forward / back, Left / Right turn on the spot, Shift + Left / Right strafe), `E` / `D` / `S` / `F` and `I` / `K` / `J` / `L` move the
 left and right lever on their own, `Z` gun, `X` missile, `C` view, `F2` test mode, `Esc` menu. On a pad the two sticks are the two
@@ -400,7 +436,7 @@ the coins are put in and the choices made for you, then the gun is yours. It wor
 **No crosshair:** *Esc > Display > Crosshair* turns the red aiming
 cross off (a real light gun needs none).
 
-**Your own crosshair** (Time Crisis, Time Crisis II, Crisis Zone): put PNG pictures in a `crosshairs` folder beside the game (or one
+**Your own crosshair** (Time Crisis, Time Crisis II, Crisis Zone): put PNG pictures in a `crosshairs` folder beside the game `.exe` files (or one
 named `crosshair.png`), then pick one in *Esc > Display > Crosshair image*; "built-in" is the game's own cross. The picture: 8 bits per
 channel (grey, RGB, RGBA or a palette; transparency is kept), not interlaced, at most 256 x 256 pixels. It is drawn at its own size on a
 1080-line screen and scales with the window, so 64 x 64 is about the size of the built-in cross. The choice is saved.
@@ -426,7 +462,7 @@ screen says which controls choose, enter and change a value), turn it off from
 the menu to leave. A hint on the screen says how to open the menu for the first
 few seconds after the game starts, when a pad is connected.
 
-## Screen settings (Prop Cycle, Tokyo Wars, Dirt Dash, Time Crisis, Time Crisis II and Crisis Zone)
+## Screen settings (Prop Cycle, Tokyo Wars, Dirt Dash, Time Crisis, Time Crisis II, Crisis Zone and Angler King)
 
 Press `Esc` and open **Display**. Your choices are saved by themselves.
 
@@ -446,13 +482,32 @@ Press `Esc` and open **Display**. Your choices are saved by themselves.
   driver's vsync setting is: a lower number shows fewer pictures, a higher one
   shows each picture more than once for a smoother picture on a fast monitor.
 
+## Starting a game with settings (command line)
+
+Every game takes its settings on the command line too, for a launcher or a shortcut. They hold for that run only: the settings
+file is not changed (unless you change the same thing in the menu).
+
+- `--set KEY=VALUE`: any line of the game's settings file (the `.cfg` beside the game), as many times as needed, e.g.
+  `--set widescreen=1 --set volume=50 --set frame_rate=60 --set fullscreen=1`. Look in the `.cfg` file for the names.
+- `--fullscreen`: start full screen. A number (`2`, `3`, ...) is the window size, as before.
+
+Time Crisis II and Crisis Zone also take, for a LAN game set up from a script (two copies on one PC, or two PCs):
+
+- `--host` host a LAN game, `--join` find one on the LAN and join it, `--server ADDR` connect to an online server
+- `--name NAME` your name online, `--instance 2` a second copy on the same PC (its own settings and backup files),
+  `--pos X,Y[,SIZE]` where its window goes (and its size)
+
+Linux, installed package or AppImage: `namco-2x-launch tc2 --host --pos 0,0` and, in a second terminal,
+`namco-2x-launch tc2 --instance 2 --join --pos 960,0`. Windows: the same options after the program's name in a shortcut,
+e.g. `TimeCrisis2.exe --set widescreen=1 --fullscreen`.
+
 ## If it does not work
 
 - **"not installed"**: run `./install-deps.sh` again.
 - **"can't be used"**: the zip is the wrong game or version (compare your files with
   [docs/ROM_CHECKSUMS.md](docs/ROM_CHECKSUMS.md)). Prop Cycle
   needs the one called `propcycl`; Rave Racer needs `raverace` and
-  `namcoc74`; Tokyo Wars needs `tokyowar`; Dirt Dash needs `dirtdash`; Armadillo Racing needs `adillor` (World, AM2 Ver.A); Time Crisis needs `timecris` (World, TS2 Ver.B); Ace Driver needs `acedrive` (World, AD2) and `namcoc74`; Cyber Commando needs `cybrcomm` (Japan, CY1) and `namcoc74`; Cyber Sled needs `cybsled` (World, CY2), `namcoc67` and `namcoc68`; Time Crisis II needs `timecrs2` (US, TSS3 Ver.B); Crisis Zone needs `crszone` (World, CSZO4 Ver.B).
+  `namcoc74`; Tokyo Wars needs `tokyowar`; Dirt Dash needs `dirtdash`; Armadillo Racing needs `adillor` (World, AM2 Ver.A); Time Crisis needs `timecris` (World, TS2 Ver.B); Ace Driver needs `acedrive` (World, AD2) and `namcoc74`; Cyber Commando needs `cybrcomm` (Japan, CY1) and `namcoc74`; Ridge Racer 2 needs `ridgera2` (World, RRS2) and `namcoc74`; Cyber Sled needs `cybsled` (World, CY2), `namcoc67` and `namcoc68`; Time Crisis II needs `timecrs2` (US, TSS3 Ver.B); Crisis Zone needs `crszone` (World, CSZO4 Ver.B); Angler King needs `aking` (Japan, AG1 Ver.A).
 - **"still missing dt2vera.1"** (Dirt Dash): the program chips `dt2vera.1` and `dt2vera.2` were not found
   in `dirtdash.zip`. They can be at the top of the zip, in a `dirtdasha/` folder or in any other folder, or
   in a separate `dirtdasha.zip` beside it. If the message says the chip "cannot be used", it says why (wrong
@@ -460,7 +515,7 @@ Press `Esc` and open **Display**. Your choices are saved by themselves.
 - **"c71.bin is missing"**: that message is from an older version. The DSP's BIOS is built in now, so
   `c71.bin` and `namcoc71.zip` are not needed; update to a current build.
 - **Black or white screen**: update your graphics driver.
-- **Slow, or the picture stutters.** Open the game's log (`raveracer.log`, `tokyowar.log`, `dirtdash.log`, `adillor.log`, `timecris.log`, `acedriver.log`, `cybrcomm.log`, `tc2.log`, `crszone.log`,
+- **Slow, or the picture stutters.** Open the game's log (`raveracer.log`, `tokyowar.log`, `dirtdash.log`, `adillor.log`, `timecris.log`, `acedriver.log`, `cybrcomm.log`, `ridgeracer2.log`, `tc2.log` (on Windows also Crisis Zone's and Angler King's), `crszone.log`, `aking.log`,
   `propcycl.log` beside the `.exe` on Windows; the terminal window on Linux) and look at these lines:
   - `[HOST] OpenGL: ...` (Prop Cycle: `OpenGL: ...`) names the graphics chip the game is using. It should be
     your graphics card, for example *NVIDIA GeForce RTX 3050 Ti*. If a laptop with **two** graphics chips shows the
@@ -478,6 +533,19 @@ Press `Esc` and open **Display**. Your choices are saved by themselves.
     arcade's 60 Hz, which looks uneven; a 60 Hz screen mode is smoothest. A lower *Esc > Display > Resolution* also helps.
 
 More about the game files: [docs/ROM_SETUP.md](docs/ROM_SETUP.md)
+
+## Thanks
+
+People who sent changes that are in the games:
+
+- **Endprodukt**: wheel force feedback (Rave Racer, Dirt Dash, the shared engine module), wheel / pedal / shifter
+  bindings, Dirt Dash's road speaker, Rave Racer's EEPROM kept between sessions.
+- **TheSaltTrader**: widescreen for Cyber Sled and Cyber Commando, twin-stick controls, Tokyo Wars' tank controls and
+  far chase view, the Tokyo Wars attract-mode cuts, Cyber Commando on older ROM sets.
+- **OctopusButtons**: README fixes (where the crosshairs go).
+- **svera**: README fixes (the ROM zips after unpacking).
+
+And everyone who reported a bug with a log, a recording or a screenshot.
 
 ## License
 

@@ -35,8 +35,11 @@ void rr_host_set_wide_169(int on);       /* widescreen's shape: 0 the window's, 
 void rr_host_set_scaling(int s);         /* 0 smooth, 1 sharp, 2 integer */
 void rr_host_set_volume(int percent);
 void rr_host_set_freeplay(bool on);
+void rr_host_set_car(int i);                /* the game's car option (rr_game_t.cars), saved as `car` */
 void rr_host_set_ffb_strength(int pct);    /* 0-100, 0 = off; also the game's STEERING MOTOR option */
 void rr_host_set_ffb_invert(bool on);
+void rr_host_set_ffb_restart(bool on);   /* engine/eng_ffb.h: re-start the force every second (GitHub #73) */
+void rr_host_set_ffb_log(bool on);       /* engine/eng_ffb.h: one [FFB] line a second in the log */
 void rr_host_set_stick_steer(int level);   /* Controls > Stick steering, saved as stick_steering */
 bool rr_host_ffb_wheel(void);              /* a force-feedback wheel is bound to steering */
 void rr_host_set_net_server(const char *s);  /* the Online page's server address, saved + resolved */

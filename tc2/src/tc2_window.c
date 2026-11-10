@@ -30,7 +30,7 @@
 #include "eng/eng_rawptr.h"
 #include "tc2_build.h"
 #include "tc2_game.h"
-extern const ss22_input_game tc2_input_game;
+extern const ss22_input_game tc2_input_game, ak_input_game;
 
 int g_eng_hud_edges_on;                       /* eng_display.c's widescreen-HUD switch: no 2D HUD to move on this board yet */
 void tc2_text_render(uint32_t *rgba);
@@ -50,6 +50,7 @@ static const tc2_built *smooth_shown;
 static const char *smooth_tag;                                 /* ENG_SWAPLOG: which picture the next swap shows */
 static int smooth_frozen;                                      /* the frame's slot may be rewritten (tc2_render_frame_end ran): no more GPU draws from it */
 static SDL_Rect pic_r;                                          /* the GAME's 4:3 area in drawable pixels: the gun aims and the crosshair live here */
+bool tc2_pic_rect_win(float *x, float *y, float *w, float *h);
 /* widescreen (Display > Widescreen, GPU only): the picture takes the window's shape, (640 + 2 * ex) x 480 board pixels, Hor+ */
 static int wide_ex(void)
 {
@@ -65,6 +66,16 @@ static SDL_Rect picture_rect(int ex)
     const SDL_Rect r = eng_disp_picture_rect(640 + 2 * ex, 480);
     pic_r.x = r.x + (int)((long)ex * r.w / (640 + 2 * ex)); pic_r.w = (int)(640L * r.w / (640 + 2 * ex)); pic_r.y = r.y; pic_r.h = r.h;
     return r;
+}
+/* the 4:3 game area in WINDOW units (the menu's coordinates; HiDPI: drawable pixels / scale) -- the subtitles (src/tc2_subs.c) */
+bool tc2_pic_rect_win(float *x, float *y, float *w, float *h)
+{
+    int ww, wh, dw, dh;
+    if (!win || pic_r.w <= 0 || pic_r.h <= 0) return false;
+    SDL_GetWindowSize(win, &ww, &wh); SDL_GL_GetDrawableSize(win, &dw, &dh);
+    const float s = ww > 0 && dw > 0 ? (float)ww / dw : 1.0f;
+    *x = pic_r.x * s; *y = pic_r.y * s; *w = pic_r.w * s; *h = pic_r.h * s;
+    return true;
 }
 
 /* the copied input module asks where the mouse / an absolute-mouse gun points in the picture; the window's outermost pixel = off-screen */
@@ -224,10 +235,11 @@ int tc2_window_open(int scale, int fullscreen)
     tc2_smooth_set(eng_cfg_int("motion_smooth", 0));
     eng_pace_reset(&pace);
     fprintf(stderr, "[HOST] OpenGL: %s; display %d Hz, %s\n", (const char *)glGetString(GL_RENDERER), vs.hz, eng_vsync_mode(&vs));
-    if (!eng_ui_init(win, "Time Crisis II")) fprintf(stderr, "[HOST] no menu\n");
-    ss22_input_init(&tc2_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
+    if (!eng_ui_init(win, tc2_game.window_title)) fprintf(stderr, "[HOST] no menu\n");
+    ss22_input_init(tc2_game.io_asca3 ? &ak_input_game : &tc2_input_game);   /* the controls (keys, mouse, light gun / rod, pads) and the menu's Controls page */
     eng_rawptr_attach(win);                              /* the gun on its own device: Windows raw input to this window (src/eng/eng_rawptr.c) */
     eng_ui_add_page(ss22_input_page());
+    { void tc2_subs_ui_init(void); tc2_subs_ui_init(); }   /* English subtitles (src/tc2_subs.c): only a game with a table */
     if (tc2_game.twin) {                                 /* the twin cabinet: which side this is, and online play (src/tc2_link.c) */
         void tc2_link_init(void); const eng_ui_page *tc2_link_page(void);
         tc2_link_init();
@@ -403,7 +415,9 @@ static int pass(int new_frame)
         if (e.type == SDL_KEYDOWN && !e.key.repeat) {
             switch (e.key.keysym.scancode) {
             case SDL_SCANCODE_ESCAPE: eng_ui_set_open(true); ss22_input_neutral(); break;
-            case SDL_SCANCODE_P: paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); break;
+            case SDL_SCANCODE_P: { int tc2_link_in_session(void);
+                if (tc2_link_in_session()) { void eng_ui_set_hint(const char *, int); eng_ui_set_hint("A linked game cannot be paused (your partner is playing)", 180); paused = 0; break; }
+                paused = !paused; fprintf(stderr, "[HOST] %s\n", paused ? "paused" : "running"); } break;
             case SDL_SCANCODE_F11: eng_disp_toggle_fullscreen(); break;
             case SDL_SCANCODE_F12: screenshot(); break;
             case SDL_SCANCODE_F6: { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
@@ -448,6 +462,9 @@ static int pass(int new_frame)
           static long at = -2; static char path[512]; static long n;
           if (at == -2) { at = -1; const char *e = getenv("TC2_WINSHOT"); if (e) { snprintf(path, sizeof path, "%s", e); char *c = strrchr(path, ':'); if (c) { *c = 0; at = atol(c + 1); } } }
           n++;                                                  /* window passes: the menu holds the game, not the window */
+          static long every = -1; static char dir[512];         /* TC2_WINSHOTS=dir:every -- the same, every N passes (README pictures) */
+          if (every < 0) { every = 0; const char *e = getenv("TC2_WINSHOTS"); if (e) { snprintf(dir, sizeof dir, "%s", e); char *c = strrchr(dir, ':'); if (c) { *c = 0; every = atol(c + 1); } } }
+          if (every > 0 && n % every == 0) { snprintf(path, sizeof path, "%s/w%06ld.ppm", dir, n); at = n; }
           if (at > 0 && n == at) {
               int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
               unsigned char *buf = malloc((size_t)dw * dh * 3);
@@ -467,11 +484,16 @@ static int pass(int new_frame)
     return !(quit || eng_ui_quit_requested());
 }
 
-/* the frame callback (the start of vertical blank): present it; hold here while the menu is open or the game is paused */
+/* the frame callback (the start of vertical blank): present it; hold here while the menu is open or the game is paused -- EXCEPT in an
+ * online session: the partner's cabinet keeps running, so ours must too (a held game sends nothing; measured on zonesync 2026-10-25, sessions
+ * where a player sat in the menu ran 10-40 fps for BOTH, and the partner then ran on alone after the 1 s stall timeout and lost the link) --
+ * the menu is drawn over the running game, the controls neutral */
 void tc2_window_frame(void)
 {
     if (!win) return;
     int ok = pass(1);
-    while (ok && (eng_ui_is_open() || paused)) { { void tc2_link_paused(void); tc2_link_paused(); } ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
+    int tc2_link_in_session(void);
+    if (tc2_link_in_session()) paused = 0;
+    while (ok && (eng_ui_is_open() || paused) && !tc2_link_in_session()) { { void tc2_link_paused(void); tc2_link_paused(); } ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
     if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }
