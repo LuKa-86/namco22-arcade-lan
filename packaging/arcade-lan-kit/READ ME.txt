@@ -111,6 +111,8 @@ The ways to play:
 4. The first time, Windows Firewall asks whether the game may use the network: tick "Private
    networks" and click Allow. If it does not ask and the cabinets cannot see each other, that
    permission is the first thing to check.
+5. To TEST the link across real PCs first, use the "LAN test" folder (see "About the LAN test.txt"):
+   every PC runs the game as its own cabinet and sends its logs to one folder on the main PC.
 
 How the link behaves (the same rule as the real boards):
  - A cabinet started after the others are already playing (late, or after a crash) is not let
