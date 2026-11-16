@@ -15,6 +15,7 @@ WHAT IS IN THIS FOLDER
   READ ME.txt               this file
   games\                    one folder per game: its program, its roms\ and its settings
      Ace Driver\            up to 8 linked cabinets (linked play new in this package)
+     Ace Driver Victory Lap\ up to 8 linked cabinets (new in this package)
      Alpine Racer\          one cabinet (new in this package)
      Alpine Racer 2\        2 linked cabinets race head to head (new in this package)
      Alpine Surfer\         one cabinet (new in this package)
@@ -76,7 +77,7 @@ The ways to play:
    Linked cabinet - full screen          this PC is one cabinet in a linked set (the normal choice)
    Linked cabinet - window               the same in a window, for setting up and testing
    Test: 2 / 4 linked cabinets on this PC  linked copies in windows, to see the link working
-                                         (Ace Driver also has Test: 8)
+                                         (Ace Driver and Victory Lap also have Test: 8)
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
                                          (Gunmen Wars and Time Crisis II: 2 players, keyboard and
                                          mouse + a controller, or 2 controllers)

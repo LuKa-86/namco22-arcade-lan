@@ -109,6 +109,7 @@ typedef struct {
      * start-up, so the number must be in the EEPROM before it boots -- and on a blank EEPROM the game would start over). */
     uint32_t link_cab_addr;
     int link_ee_block[2], link_ee_byte, link_ee_sum8;
+    int link_ee_shift;                                /* the number's 3 bits sit at this bit of link_ee_byte (Victory Lap: 5, bits 7..5); 0 = the whole byte */
     const struct rr_ee_init { uint16_t at; uint8_t b[32]; } *link_ee_init; int nlink_ee_init;
     /* CODE RUN FROM A COPY IN WORK RAM (our fork): the game copies ram_code_size bytes of its program from ram_code_rom to ram_code_at
      * at start-up and jumps there (Ace Driver's linked race: the other cars' tasks). A jump into the copy goes to the same translated

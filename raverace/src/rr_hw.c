@@ -228,7 +228,8 @@ static bool eeprom_block_set8(uint32_t blk, int byte, uint8_t v)
     unsigned sum = 0;
     for (int i = 0; i < n; i++) sum += b[i];
     if ((uint8_t)(plain ? sum : ~sum) != b[n]) return false;   /* not a valid copy (yet): leave it for the game to write */
-    b[byte] = v;
+    const int sh = g_rr_game->link_ee_shift;          /* Victory Lap: the number shares its byte (bits 7..5) with other settings */
+    b[byte] = sh ? (uint8_t)((b[byte] & ~(7u << sh)) | ((v & 7u) << sh)) : v;
     sum = 0;
     for (int i = 0; i < n; i++) sum += b[i];
     b[n] = (uint8_t)(plain ? sum : ~sum);

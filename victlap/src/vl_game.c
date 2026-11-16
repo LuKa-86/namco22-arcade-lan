@@ -43,6 +43,15 @@ static const eng_rom_t vl_roms[] = {
     { "c74.bin", 0x4000, NULL, NULL },        /* the sound MCU BIOS: namcoc74.zip */
 };
 
+/* what the game writes on a blank EEPROM's first start (measured 2026-11-16: a window run from no vl_eeprom.nv), for the link to put
+ * the cabinet number in before the game boots -- the same scheme as Ace Driver: block 0x000 valid, settings block 0x100 (magic 0x0156),
+ * 8-bit ~sum of bytes 0..30 in byte 31 */
+static const struct rr_ee_init vl_ee_init[2] = {
+    { 0x000, { [31] = 0xFF } },
+    { 0x100, { 0x01, 0x56, 0x10, 0x00, 0x03, 0xE0, 0x0B, 0xC0, 0x28, 0x28, 0x20, 0x22, 0x00, 0x13, 0x13, 0x13,
+               0x13, 0x13, 0x13, 0x13, 0x13, 0x13, 0x13, 0x13, 0x13, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x08 } },
+};
+
 static const rr_game_t vl = {
     .name = "victlap", .title = "Ace Driver: Victory Lap", .cfg_file = "vl_controls.cfg", .nv_file = "vl_eeprom.nv", .entry = L_47C,
     .prg = { "adv2_prguub.6d", "adv2_prgumb.8d", "adv2_prglmb.2d", "adv2_prgllb.4d" },      /* ROM_LOAD32_BYTE offsets 0, 1, 2, 3 */
@@ -64,6 +73,10 @@ static const rr_game_t vl = {
     .spin_pc = 0, .spin_op = 0,
     .zips = vl_zips, .nzips = 2, .roms = vl_roms, .nroms = (int)(sizeof vl_roms / sizeof vl_roms[0]),
     .log_file = "victlap.log",
+    /* LINK PLAY (our fork): the cabinet number is A6-0x73FC = 0x10000C04 as in Ace Driver (0x2C64C copies it from the settings'
+     * 0x1000C14A), but packed: the settings parse (0x2C3E0, from the EEPROM block 0x100 copy at A6+0x4030) takes byte 0x0C bits 7..5 */
+    .link_cab_addr = 0x10000C04, .link_ee_block = { 0x100, -1 }, .link_ee_byte = 0x0C, .link_ee_shift = 5, .link_ee_sum8 = 1,
+    .link_ee_init = vl_ee_init, .nlink_ee_init = 2,
     .ram_code_at = 0x10010000, .ram_code_rom = 0x50000, .ram_code_size = 0x8000,   /* its program 0x50000.. copied to work RAM and run there (measured: 0x10010000..0x10017DF0 = ROM) */
 };
 const rr_game_t *g_rr_game = &vl;
