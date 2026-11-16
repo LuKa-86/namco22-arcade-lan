@@ -55,9 +55,10 @@ function Ask($prompt, $default) {
 if ($Share) {
     New-Item -ItemType Directory -Force $LocalResults | Out-Null
     & icacls $LocalResults /grant '*S-1-1-0:(OI)(CI)M' | Out-Null          # Everyone may write (S-1-1-0 = Everyone, in any language)
-    & net share $ShareName /delete /y 2>$null | Out-Null
-    & net share "$ShareName=$LocalResults" '/GRANT:*S-1-1-0,FULL' 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { & net share "$ShareName=$LocalResults" '/GRANT:Everyone,FULL' | Out-Null }
+    # net's messages go through cmd: in Windows PowerShell 5.1 any text a program writes to its error output stops this script
+    & cmd /c "net share $ShareName /delete /y >nul 2>nul"                  # an old share of the same name (usually none)
+    & cmd /c "net share ""$ShareName=$LocalResults"" /GRANT:*S-1-1-0,FULL >nul 2>nul"
+    if ($LASTEXITCODE -ne 0) { & cmd /c "net share ""$ShareName=$LocalResults"" /GRANT:Everyone,FULL >nul 2>nul" }
     if ($LASTEXITCODE -ne 0) { Write-Host "Could not share the folder (run this as administrator)." -ForegroundColor Red; exit 1 }
     $s = Read-Saved; $s['results'] = $LocalResults; Save-Saved $s
     Write-Host ""
