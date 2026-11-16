@@ -77,6 +77,6 @@ else
     echo "  (no launcher build: launcher/build/Namco 22 Arcade LAN.exe)"
 fi
 cp "$ROOT/packaging/arcade-lan-kit/READ ME.txt" "$KIT/"
-mkdir -p "$KIT/LAN test"; cp "$ROOT/packaging/arcade-lan-kit/LAN test"/* "$KIT/LAN test/"   # link tests on several real PCs (copied over: never wipes LAN testesults)
+mkdir -p "$KIT/LAN test"; cp "$ROOT/packaging/arcade-lan-kit/LAN test"/* "$KIT/LAN test/"   # link tests on several real PCs (copied over: never wipes the results folder)
 echo "Package ready: $KIT"
 [ -n "$ZIPS" ] || echo "Put each game's MAME zips in games\\<Game>\\roms (see READ ME.txt)."
