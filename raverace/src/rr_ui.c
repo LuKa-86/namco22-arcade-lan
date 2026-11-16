@@ -801,6 +801,9 @@ static void lobby_window(int ww, int wh)
 
 void rr_ui_draw(bool *quit)
 {
+    { static int done; if (!done && getenv("ENG_UI_DUMP")) { done = 1;   /* ENG_UI_DUMP=1 (tests: menu audits): every tab's rows as text to the log */
+        for (int t = 0; t < T_N; t++) { if (!tab_shown(t)) continue; const int n = nrows(t); fprintf(stderr, "[UIDUMP] == %s (%d rows)\n", tab_name[t], n);
+            for (int r = 0; r < n; r++) { char l[160] = "", v[200] = ""; row_text(t, r, l, sizeof l, v, sizeof v); fprintf(stderr, "[UIDUMP] %s | %s | %s\n", tab_name[t], l, v); } } } }
     if (quit_req) *quit = true;
 
     /* GO armed a race: leave the menu so the player can coin up */

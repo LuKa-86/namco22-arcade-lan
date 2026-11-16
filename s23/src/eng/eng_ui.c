@@ -244,6 +244,17 @@ static bool is_audio(int t) { return pages[t] == &page_audio; }
 
 void eng_ui_add_page(const eng_ui_page *p) { if (npages < MAXPAGES) pages[npages++] = p; }
 
+/* ENG_UI_DUMP=1 (tests: menu audits): every page's rows as text to the log, once, the first time the menu is drawn */
+static void ui_dump(void)
+{
+    static int done; if (done || !getenv("ENG_UI_DUMP")) return; done = 1;
+    for (int t = 0; t < npages; t++) {
+        const int n = pages[t]->nrows ? pages[t]->nrows() : 0;
+        fprintf(stderr, "[UIDUMP] == %s (%d rows)\n", pages[t]->name, n);
+        for (int r = 0; r < n; r++) { char l[160] = "", v[200] = ""; if (pages[t]->text) pages[t]->text(r, l, sizeof l, v, sizeof v); fprintf(stderr, "[UIDUMP] %s | %s | %s\n", pages[t]->name, l, v); }
+    }
+}
+
 bool eng_ui_init(SDL_Window *win, const char *title)
 {
     (void)title;
@@ -512,6 +523,7 @@ void eng_ui_draw(bool *quit)
     nk_end(ctx);
 
     /* the dropdown: sized to its page, under its title, inside the window */
+    ui_dump();
     const eng_ui_page *pg = pages[tab];
     const int n0 = nrows(tab);
     const float rh = pg->row_h > 0 ? pg->row_h : 26;

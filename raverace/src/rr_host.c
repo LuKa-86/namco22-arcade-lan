@@ -804,6 +804,9 @@ bool rr_host_frame(void)
      * (menu_test_<n>.bmp): Controls page, toggle free play, Display page, step
      * the resolution, close. The menu path, testable with no input device. */
     int menu_test_step = -1;
+    { static int tab = -2; static long nfr2;                  /* RR_UI_OPEN=<tab>: the menu open on that tab from frame 60, nothing changed (menu audits) */
+      if (tab == -2) { const char *ev = getenv("RR_UI_OPEN"); tab = ev ? atoi(ev) : -1; }
+      if (tab >= 0 && ++nfr2 == 60) { rr_ui_set_open(true); rr_ui_test_goto(tab, 0); } }
     { static long at = -2; static long nfr;
       if (at == -2) { const char *ev = getenv("RR_MENU_TEST"); at = ev ? atol(ev) : -1; }
       if (at >= 0) {
