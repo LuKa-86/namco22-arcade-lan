@@ -177,15 +177,39 @@ if ($Check) {
                 $text = if ($logs.Count) { ($logs | ForEach-Object { Get-Content $_.FullName -ErrorAction SilentlyContinue }) } else { @() }
                 $linked = @($text | Select-String -SimpleMatch -CaseSensitive -Pattern '[LINK] linked', '[LINK] LINKED:', '[C422] LINKED' | Select-Object -First 1)
                 $alone  = @($text | Select-String -Pattern 'NOT linked', 'plays alone', 'playing solo', 'No other cabinets found' | Select-Object -First 1)
-                $warn   = @($text | Select-String -Pattern 'WARNING', 'DIFFERS', 'LINK LOST', 'lost the link', 'has not answered')
                 $waiting = @($text | Select-String -SimpleMatch -Pattern 'Waiting for', 'WAITING FOR' | Select-Object -First 1)
-                $state = if ($linked.Count) { 'LINKED' } elseif ($alone.Count) { 'NOT LINKED' } elseif ($waiting.Count) { 'CLOSED WHILE WAITING FOR THE OTHERS' } else { 'NO LINK LINES IN THE LOG' }
-                $col = if ($state -eq 'LINKED' -and -not $warn.Count) { 'Green' } elseif ($state -eq 'LINKED') { 'Yellow' } else { 'Red' }
+
+                # "linked" alone is not enough: the game's own lines say whether it really worked (red = it did not, yellow = worth a look)
+                $bad = New-Object System.Collections.Generic.List[string]; $note = New-Object System.Collections.Generic.List[string]
+                $who = @($text | Select-String -CaseSensitive -Pattern '^\[LINK\] frame \d+  (Hears|Hears nobody)')          # who it hears, every 5 s
+                $oneway = @($who | Where-Object { $_.Line -match 'Not heard by' })
+                if ($who.Count -ge 2 -and $oneway.Count * 2 -ge $who.Count) {
+                    $by = [regex]::Match($oneway[-1].Line, 'Not heard by ([\d, ]+)').Groups[1].Value.Trim()
+                    $bad.Add("ONE-WAY: cabinet(s) $by could not hear this PC ($($oneway.Count) of $($who.Count) checks)") }
+                $game = @($text | Select-String -CaseSensitive -Pattern '^\[LINK\] frame \d+  down .*\| game:')            # the game's own view
+                $down = @($game | Where-Object { $_.Line -match 'link down' })
+                if ($game.Count -ge 2 -and $down.Count * 2 -ge $game.Count) { $bad.Add("The game's link stayed DOWN ($($down.Count) of $($game.Count) checks)") }
+                if ($text | Select-String -SimpleMatch -Pattern 'on the network at 0.0.0.0', '(0.0.0.0)' | Select-Object -First 1) { $bad.Add('A cabinet was found at 0.0.0.0: copy the latest package to every PC') }
+                $ranout = @($text | Select-String -SimpleMatch -Pattern '(the wait ran out)' | Select-Object -First 1)
+                if ($ranout.Count) { $note.Add('Started without every cabinet (the wait ran out): ' + (($ranout[0].Line -replace '.*\): ', '') -replace ', session.*', '')) }
+                $lostl = @($text | Select-String -SimpleMatch -Pattern 'lost the link', 'LINK LOST')
+                if ($lostl.Count) { $note.Add("The game lost the link $($lostl.Count) time(s), first: " + ($lostl[0].Line -replace '^\[\w+\] ', '')) }
+                foreach ($w in @($text | Select-String -Pattern 'WARNING', 'DIFFERS', 'has not answered' | Select-Object -First 3)) { $note.Add(($w.Line -replace '^\s+', '')) }
+                $q = @($text | Select-String -CaseSensitive -Pattern 'quality: .*(POOR|fair)')
+                if ($q.Count) { $note.Add("Link quality not 'good' in $($q.Count) check(s), e.g. " + ($q[0].Line -replace '.*quality: ', '')) }
+                $netlost = 0; foreach ($l in $game) { $m = [regex]::Match($l.Line, 'net sent \d+ recv \d+ lost (\d+)'); if ($m.Success) { $netlost = [Math]::Max($netlost, [int]$m.Groups[1].Value) } }
+                foreach ($l in @($text | Select-String -Pattern '(\d+) datagrams lost')) { $netlost = [Math]::Max($netlost, [int][regex]::Match($l.Line, '(\d+) datagrams lost').Groups[1].Value) }
+                if ($netlost -gt 0) { $note.Add("$netlost message(s) lost on the network") }
+                $pace = @($text | Select-String -Pattern '(\d+) over 20 ms') ; $slow = @($pace | Where-Object { [int][regex]::Match($_.Line, '(\d+) over 20 ms').Groups[1].Value -ge 30 })
+                if ($slow.Count) { $note.Add("This PC ran below full speed in $($slow.Count) of $($pace.Count) 10-second stretches (the PC, not the network)") }
+
+                $state = if ($linked.Count -and $bad.Count) { 'LINKED, BUT NOT WORKING' } elseif ($linked.Count) { 'LINKED' } elseif ($alone.Count) { 'NOT LINKED' } elseif ($waiting.Count) { 'CLOSED WHILE WAITING FOR THE OTHERS' } else { 'NO LINK LINES IN THE LOG' }
+                $col = if ($state -eq 'LINKED' -and -not $note.Count) { 'Green' } elseif ($state -eq 'LINKED') { 'Yellow' } else { 'Red' }
                 Write-Host ("  {0,-40} {1}" -f $one.Name, $state) -ForegroundColor $col
                 if ($linked.Count) { Write-Host ("      " + ($linked[0].Line -replace '^\s+', '')) }
                 if ($alone.Count -and -not $linked.Count) { Write-Host ("      " + ($alone[0].Line -replace '^\s+', '')) }
-                foreach ($w in ($warn | Select-Object -First 3)) { Write-Host ("      " + ($w.Line -replace '^\s+', '')) -ForegroundColor Yellow }
-                if ($warn.Count -gt 3) { Write-Host "      (and $($warn.Count - 3) more warnings)" -ForegroundColor Yellow }
+                foreach ($b in $bad) { Write-Host ("      " + $b) -ForegroundColor Red }
+                foreach ($w in $note) { Write-Host ("      " + $w) -ForegroundColor Yellow }
             }
         }
     }
