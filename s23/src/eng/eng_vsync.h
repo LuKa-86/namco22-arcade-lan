@@ -137,6 +137,11 @@ static inline void eng_vsync_init(eng_vsync *v, SDL_Window *win, const char *for
     if (getenv("ENG_DISPLAY_HZ")) v->hz = atoi(getenv("ENG_DISPLAY_HZ"));   /* tests: what Auto would do on another display */
     v->auto_vsync = v->hz >= 59 && v->hz <= 61;
     if (force) v->auto_vsync = atoi(force) != 0;
+    if (!force && getenv("N22_ONE_PC") && v->auto_vsync) {   /* several copies on this PC (the launcher's Test and Party ways): the timer,
+        * as engine/eng_vsync.h (vsync favours the window in front: the others lag) */
+        v->auto_vsync = false;
+        fprintf(stderr, "[HOST] several copies on this PC (N22_ONE_PC): timer-paced, not vsync\n");
+    }
     v->vsync = v->auto_vsync;
     if (v->vsync && SDL_GL_SetSwapInterval(1) != 0) v->vsync = v->auto_vsync = false;
     if (!v->vsync) SDL_GL_SetSwapInterval(0);
