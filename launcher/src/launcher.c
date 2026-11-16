@@ -455,7 +455,7 @@ static int my_addresses(char out[][48], int max)
             const unsigned char *b = (const unsigned char *)&((struct sockaddr_in *)u->Address.lpSockaddr)->sin_addr;
             if (b[0] == 169 && b[1] == 254) continue;                    /* Windows' own address for an adapter with no network: not a LAN */
             char name[32]; WideCharToMultiByte(CP_UTF8, 0, a->FriendlyName, -1, name, sizeof name, NULL, NULL);
-            snprintf(out[n++], 48, "%u.%u.%u.%u  (%.24s)", b[0], b[1], b[2], b[3], name);
+            snprintf(out[n++], 48, "%u.%u.%u.%u (%.24s)", b[0], b[1], b[2], b[3], name);
         }
     }
     free(aa);
@@ -466,9 +466,17 @@ static int my_addresses(char out[][48], int max)
 static struct nk_context *ctx;
 static struct nk_font *f_title, *f_big, *f_mid, *f_small;
 static GLuint pics[NGAMES]; static int pic_w[NGAMES], pic_h[NGAMES];
-static const struct nk_color C_BG = { 14, 14, 18, 255 }, C_PANEL = { 26, 26, 32, 255 }, C_TEXT = { 235, 235, 235, 255 },
-                             C_DIM = { 150, 150, 160, 255 }, C_AMBER = { 255, 176, 0, 255 }, C_DARK = { 12, 12, 14, 255 },
-                             C_SEL = { 58, 46, 14, 255 };
+/* THE LOOK (2026-11-16, an "unslop" polish pass, after unslop by Damir Sokolovsky, @heydamir, CC BY 4.0): a cabinet's service
+ * menu -- one graphite ramp for every surface and three text roles, and the coin-door amber ONLY for what is chosen (the bar beside
+ * the chosen game or setting, the chosen way to play) and the countdown's game. Hierarchy from size and colour, not weight; key
+ * hints are keycaps. */
+static const struct nk_color C_DARK = { 15, 15, 16, 255 },   /* the deepest surface: the title and bottom bars */
+                             C_BG = { 20, 20, 21, 255 },     /* the page */
+                             C_PANEL = { 25, 25, 27, 255 },  /* a row, a button */
+                             C_SEL = { 35, 35, 37, 255 },    /* the chosen / hovered row: one surface step up */
+                             C_LINE = { 237, 237, 237, 20 }, /* a hairline: primary text at 8% */
+                             C_TEXT = { 237, 237, 237, 255 }, C_SEC = { 161, 161, 166, 255 }, C_DIM = { 133, 133, 139, 255 },
+                             C_AMBER = { 255, 176, 0, 255 };
 
 static void load_pictures(void)
 {
@@ -488,16 +496,17 @@ static void fonts(float h)
 {
     struct nk_font_atlas *atlas;
     nk_sdl_font_stash_begin(&atlas);
-    const char *reg = "C:\\Windows\\Fonts\\segoeui.ttf", *bold = "C:\\Windows\\Fonts\\segoeuib.ttf";
-    bool have = GetFileAttributesA(reg) != INVALID_FILE_ATTRIBUTES && GetFileAttributesA(bold) != INVALID_FILE_ATTRIBUTES;
+    const char *reg = "C:\\Windows\\Fonts\\segoeui.ttf", *semi = "C:\\Windows\\Fonts\\seguisb.ttf";   /* Segoe UI 400 and 600 (no bold) */
+    if (GetFileAttributesA(semi) == INVALID_FILE_ATTRIBUTES) semi = reg;
+    bool have = GetFileAttributesA(reg) != INVALID_FILE_ATTRIBUTES;
     const float k = h / 1080.0f;
     if (have) {
-        f_title = nk_font_atlas_add_from_file(atlas, bold, 54 * k, NULL);
-        f_big = nk_font_atlas_add_from_file(atlas, bold, 34 * k, NULL);
+        f_title = nk_font_atlas_add_from_file(atlas, semi, 44 * k, NULL);   /* the product name, the countdown */
+        f_big = nk_font_atlas_add_from_file(atlas, reg, 32 * k, NULL);      /* game names, the Settings title */
         f_mid = nk_font_atlas_add_from_file(atlas, reg, 26 * k, NULL);
         f_small = nk_font_atlas_add_from_file(atlas, reg, 21 * k, NULL);
     } else {
-        f_title = nk_font_atlas_add_default(atlas, 54 * k, NULL); f_big = nk_font_atlas_add_default(atlas, 34 * k, NULL);
+        f_title = nk_font_atlas_add_default(atlas, 44 * k, NULL); f_big = nk_font_atlas_add_default(atlas, 32 * k, NULL);
         f_mid = nk_font_atlas_add_default(atlas, 26 * k, NULL); f_small = nk_font_atlas_add_default(atlas, 21 * k, NULL);
     }
     nk_sdl_font_stash_end();
@@ -509,6 +518,30 @@ static void text(struct nk_command_buffer *cb, struct nk_font *f, float x, float
     nk_draw_text(cb, nk_rect(x, y, tw(f, s) + 4, f->handle.height + 4), s, (int)strlen(s), &f->handle, nk_rgba(0, 0, 0, 0), c);
 }
 static void text_c(struct nk_command_buffer *cb, struct nk_font *f, float cx, float y, const char *s, struct nk_color c) { text(cb, f, cx - tw(f, s) / 2, y, s, c); }
+/* a one-sentence hint without its full stop (longer hints keep theirs) */
+static const char *no_stop(const char *s)
+{
+    static char b[256]; snprintf(b, sizeof b, "%s", s);
+    const size_t n = strlen(b);
+    if (n && b[n - 1] == '.' && !strstr(b, ". ")) b[n - 1] = 0;
+    return b;
+}
+/* KEYCAPS (the launcher's one signature detail): each key in a small raised cap with a hairline, then what it does. keys is
+ * "Enter|A" (caps side by side); returns the x after the label. */
+static float keyhint(struct nk_command_buffer *cb, float x, float y, float k, const char *keys, const char *label)
+{
+    char b[64]; snprintf(b, sizeof b, "%s", keys);
+    const float h = 32 * k;
+    for (char *t = strtok(b, "|"); t; t = strtok(NULL, "|")) {
+        const float w = tw(f_small, t) + 16 * k;
+        nk_fill_rect(cb, nk_rect(x, y, w, h), 6 * k, C_LINE);
+        nk_fill_rect(cb, nk_rect(x + 1, y + 1, w - 2, h - 2), 5 * k, C_PANEL);
+        text(cb, f_small, x + 8 * k, y + 3 * k, t, C_SEC);
+        x += w + 4 * k;
+    }
+    text(cb, f_small, x + 4 * k, y + 3 * k, label, C_DIM);
+    return x + 4 * k + tw(f_small, label) + 28 * k;
+}
 
 /* ---- THE SCREENS ------------------------------------------------------------------------------------------------------ */
 enum { SC_MENU, SC_SETTINGS, SC_COUNTDOWN, SC_RUNNING, SC_RESTART, SC_QUIT };
@@ -584,19 +617,11 @@ static void draw(int W, int H, SDL_Window *win)
     const struct nk_input *in = &ctx->input;
     nk_fill_rect(cb, nk_rect(0, 0, (float)W, (float)H), 0, C_BG);
     /* the title bar */
-    nk_fill_rect(cb, nk_rect(0, 0, (float)W, 120 * k), 0, C_DARK);
-    text(cb, f_title, pad, 26 * k, "NAMCO 22  ARCADE LAN", C_TEXT);
-    text(cb, f_small, pad + tw(f_title, "NAMCO 22  ARCADE LAN") + 30 * k, 58 * k, "Namco System 22 and System 23 games  \xC2\xB7  one PC in each cabinet, linked over a wired network", C_AMBER);
-    {   /* the X: closes the launcher (in a full-screen menu there is no window frame to close it with) */
-        const float s = 64 * k; const struct nk_rect r = nk_rect(W - pad - s, 28 * k, s, s);
-        const bool h = nk_input_is_mouse_hovering_rect(in, r);
-        nk_fill_rect(cb, r, 8 * k, h ? nk_rgb(200, 40, 40) : C_PANEL);
-        const float c = 20 * k, cx = r.x + s / 2, cy = r.y + s / 2;
-        nk_stroke_line(cb, cx - c, cy - c, cx + c, cy + c, 5 * k, C_TEXT);
-        nk_stroke_line(cb, cx - c, cy + c, cx + c, cy - c, 5 * k, C_TEXT);
-        if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r) && screen != SC_RUNNING) want_quit = true;
-    }
-    const float top = 150 * k, bottom = H - 90 * k;
+    nk_fill_rect(cb, nk_rect(0, 0, (float)W, 112 * k), 0, C_DARK);
+    nk_fill_rect(cb, nk_rect(0, 112 * k, (float)W, 1), 0, C_LINE);
+    text(cb, f_title, pad, 28 * k, "Namco 22 Arcade LAN", C_TEXT);     /* (Quit, bottom right, closes it: no second close button) */
+    text(cb, f_small, pad + tw(f_title, "Namco 22 Arcade LAN") + 24 * k, 48 * k, "System 22 and System 23 games, one PC in each cabinet, linked over a wired network", C_SEC);
+    const float top = 144 * k, bottom = H - 96 * k;
 
     if (screen == SC_MENU) {
         /* the games: a list that scrolls (the mouse wheel / two fingers on a touchpad, the bar on its right, or the chosen game kept
@@ -620,7 +645,7 @@ static void draw(int W, int H, SDL_Window *win)
             if (scroll < 0) scroll = 0;
             if (scroll > maxs) scroll = maxs;
             nk_fill_rect(cb, bar, 5 * k, C_PANEL);
-            nk_fill_rect(cb, nk_rect(bar.x, top + scroll / maxs * (lh - th), bar.w, th), 5 * k, dragging ? C_AMBER : C_DIM);
+            nk_fill_rect(cb, nk_rect(bar.x, top + scroll / maxs * (lh - th), bar.w, th), 5 * k, dragging ? C_SEC : C_SEL);
         } else scroll = 0;
         nk_push_scissor(cb, list);
         for (int i = 0; i < NGAMES; i++) {
@@ -630,29 +655,29 @@ static void draw(int W, int H, SDL_Window *win)
             if (in_list && nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) { if (sel_game != i) sel_mode = 0; sel_game = i; shown_sel = i; focus = 0; }
             if (in_list && nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_game = i; shown_sel = i; focus = 1; sel_mode = 0; }
             const bool s = i == sel_game;
-            nk_fill_rect(cb, r, 8 * k, s ? (focus == 0 ? C_SEL : C_PANEL) : C_PANEL);
-            if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
-            text(cb, f_big, r.x + 28 * k, r.y + 6 * k, games[i].name, s ? C_AMBER : C_TEXT);
+            nk_fill_rect(cb, r, 8 * k, s ? C_SEL : C_PANEL);                 /* chosen: one surface step up and the amber bar */
+            if (s) nk_fill_rect(cb, nk_rect(r.x, r.y + 16 * k, 4 * k, r.h - 32 * k), 2 * k, focus == 0 ? C_AMBER : C_DIM);
+            text(cb, f_big, r.x + 24 * k, r.y + 8 * k, games[i].name, s ? C_TEXT : C_SEC);
             char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, cabinets_text(&games[i]));
-            text(cb, f_small, r.x + 28 * k, r.y + 46 * k, sub, C_DIM);
+            text(cb, f_small, r.x + 24 * k, r.y + 44 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
         /* the chosen game: picture, lines, the ways to play */
         const game_t *g = &games[sel_game];
         const float rx = lw + pad, rw = W - rx - pad;
-        float ph = rw * 9 / 16; if (ph > (bottom - top) * 0.42f) ph = (bottom - top) * 0.42f;
-        const float pw = ph * 16 / 9, px = rx + (rw - pw) / 2;
-        nk_fill_rect(cb, nk_rect(px - 3 * k, top - 3 * k, pw + 6 * k, ph + 6 * k), 8 * k, C_PANEL);   /* a thin frame round the picture */
-        nk_fill_rect(cb, nk_rect(px, top, pw, ph), 6 * k, C_DARK);
+        float ph = rw * 9 / 16; if (ph > (bottom - top) * 0.46f) ph = (bottom - top) * 0.46f;
+        const float pw = ph * 16 / 9, px = rx;                              /* the picture: the screen's one bright thing, on the text's edge */
+        nk_fill_rect(cb, nk_rect(px - 1, top - 1, pw + 2, ph + 2), 8 * k, C_LINE);   /* a hairline round it */
+        nk_fill_rect(cb, nk_rect(px, top, pw, ph), 8 * k, C_DARK);
         if (pics[sel_game]) {
             float iw = pw, ih = pw * pic_h[sel_game] / pic_w[sel_game];
             if (ih > ph) { ih = ph; iw = ph * pic_w[sel_game] / pic_h[sel_game]; }
             struct nk_image im = nk_image_id((int)pics[sel_game]);
             nk_draw_image(cb, nk_rect(px + (pw - iw) / 2, top + (ph - ih) / 2, iw, ih), &im, nk_rgb(255, 255, 255));
         } else text_c(cb, f_mid, px + pw / 2, top + ph / 2 - 14 * k, "(no picture)", C_DIM);
-        float y = top + ph + 18 * k;
-        text(cb, f_mid, rx, y, g->line1, C_TEXT); y += 34 * k;
-        text(cb, f_small, rx, y, g->line2, C_DIM); y += 44 * k;
+        float y = top + ph + 20 * k;
+        text(cb, f_mid, rx, y, g->line1, C_TEXT); y += 36 * k;
+        text(cb, f_small, rx, y, g->line2, C_DIM); y += 52 * k;
         /* the ways to play, in groups under a heading each: PLAY (a cabinet), TEST ON THIS PC, PARTY. The left column has PLAY (and the
          * tests when there are Party ways), the right one the Party ways (or the tests); a button shows its label without the group's
          * prefix ("Test: ", "Party: "). The arrows go through them in their own order: down the left column, then the right. */
@@ -662,14 +687,15 @@ static void draw(int W, int H, SDL_Window *win)
             has_party |= kind[i] == 2; has_test |= kind[i] == 1;
         }
         const int two = has_party || has_test;
-        const float mh = 44 * k, gap = 8 * k, headh = 30 * k, cgap = 20 * k, mw = (rw - cgap) / 2;      /* (one column too: the same width as everywhere) */
-        static const char *heads[3] = { "PLAY", "TEST ON THIS PC", "PARTY  \xC2\xB7  SPLIT SCREEN ON THIS PC" };
+        const float mh = 48 * k, gap = 8 * k, headh = 32 * k, cgap = 24 * k,
+                    mw = two ? (rw - cgap) / 2 : pw;                         /* one column: as wide as the picture above it */
+        static const char *heads[3] = { "Play", "Test on this PC", "Party  \xC2\xB7  split screen on this PC" };
         float cy[2] = { y, y }; int last_kind[2] = { -1, -1 }; float lowest = y;
         for (int i = 0; i < g->nmodes; i++) {
             const int col = !two ? 0 : kind[i] == 2 ? 1 : kind[i] == 1 ? (has_party ? 0 : 1) : 0;
-            if (kind[i] != last_kind[col]) {                                 /* a new group: its heading */
-                if (last_kind[col] >= 0) cy[col] += 10 * k;
-                text(cb, f_small, rx + col * (mw + cgap), cy[col] + 2 * k, heads[kind[i]], C_DIM);
+            if (kind[i] != last_kind[col]) {                                 /* a new group: its heading (closer to its buttons than to the group above) */
+                if (last_kind[col] >= 0) cy[col] += 16 * k;
+                text(cb, f_small, rx + col * (mw + cgap), cy[col], heads[kind[i]], C_SEC);
                 cy[col] += headh; last_kind[col] = kind[i];
             }
             struct nk_rect r = nk_rect(rx + col * (mw + cgap), cy[col], mw, mh);
@@ -678,18 +704,19 @@ static void draw(int W, int H, SDL_Window *win)
             if (r.y + r.h > lowest) lowest = r.y + r.h;
             if (nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) { focus = 1; sel_mode = i; }
             const bool s = focus == 1 && i == sel_mode;
-            nk_fill_rect(cb, r, 6 * k, s ? C_AMBER : C_PANEL);
+            if (!s) nk_fill_rect(cb, nk_rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2), 8 * k, C_LINE);
+            nk_fill_rect(cb, r, 8 * k, s ? C_AMBER : C_PANEL);                /* the chosen way: the amber, nothing else is */
             char lab[96];                                                    /* the label under its heading: no "Test: " / "Party: ", no
                                                                               * " on this PC" (the heading says it), a capital first */
             snprintf(lab, sizeof lab, "%s", g->m[i].label + (kind[i] == 2 ? 7 : kind[i] == 1 ? 6 : 0));
             { char *t = strstr(lab, " on this PC"); if (t && kind[i] == 1 && !t[11]) *t = 0; }
             if (lab[0] >= 'a' && lab[0] <= 'z') lab[0] = (char)(lab[0] - 32);
-            text(cb, f_mid, r.x + 18 * k, r.y + 7 * k, lab, s ? C_DARK : C_TEXT);
+            text(cb, f_mid, r.x + 20 * k, r.y + 9 * k, lab, s ? C_DARK : C_TEXT);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_mode = i; focus = 1; start_mode(sel_game, i, false); }
         }
         if (focus == 1) {                                                    /* what the chosen way does, under the buttons */
             const float hy = lowest + 16 * k < bottom - 24 * k ? lowest + 16 * k : bottom - 24 * k;
-            text(cb, f_small, rx, hy, g->m[sel_mode].hint, C_AMBER);
+            text(cb, f_small, rx, hy, no_stop(g->m[sel_mode].hint), C_SEC);
         }
     } else if (screen == SC_SETTINGS) {
         static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
@@ -703,17 +730,18 @@ static void draw(int W, int H, SDL_Window *win)
             "Small lights in a corner of each linked game that show which cabinets it can hear.",
             "Each game keeps its last session's inputs (a few KB) so a problem can be replayed. Off keeps none.",
             "The address to type into the other cabinets' Network page when setting the addresses by hand." };
-        text(cb, f_big, pad, top, "Settings", C_AMBER);
-        float y = top + 70 * k; const float rowh = 62 * k, w = W - 2 * pad;
+        text(cb, f_big, pad, top, "Settings", C_TEXT);
+        float y = top + 64 * k; const float rowh = 60 * k;
+        const float w = W - 2 * pad < 1200 * k ? W - 2 * pad : 1200 * k;   /* a column, so a name and its value are read together */
         static char addrs[4][48]; static int na; static Uint64 addr_at;      /* this PC's addresses, read every 2 s */
         if (SDL_GetTicks64() >= addr_at) { na = my_addresses(addrs, 4); addr_at = SDL_GetTicks64() + 2000; }
         for (int i = 0; i < SET_N; i++) {
             struct nk_rect r = nk_rect(pad, y + i * (rowh + 8 * k), w, rowh);
             if (nk_input_is_mouse_hovering_rect(in, r) && in->mouse.delta.x + in->mouse.delta.y != 0) sel_set = i;
             const bool s = i == sel_set;
-            nk_fill_rect(cb, r, 6 * k, s ? C_SEL : C_PANEL);
-            if (s) nk_fill_rect(cb, nk_rect(r.x, r.y, 8 * k, r.h), 0, C_AMBER);
-            text(cb, f_mid, r.x + 28 * k, r.y + 14 * k, names[i], s ? C_AMBER : C_TEXT);
+            nk_fill_rect(cb, r, 8 * k, s ? C_SEL : C_PANEL);
+            if (s) nk_fill_rect(cb, nk_rect(r.x, r.y + 16 * k, 4 * k, r.h - 32 * k), 2 * k, C_AMBER);
+            text(cb, f_mid, r.x + 24 * k, r.y + 14 * k, names[i], s ? C_TEXT : C_SEC);
             char v[200] = "";
             switch (i) {
             case SET_AUTO: if (S.auto_game < 0) snprintf(v, sizeof v, "Off"); else snprintf(v, sizeof v, "%s: %s", games[S.auto_game].name, games[S.auto_game].m[S.auto_mode].label); break;
@@ -724,10 +752,10 @@ static void draw(int W, int H, SDL_Window *win)
             case SET_RECORD: snprintf(v, sizeof v, "%s", all_on("record", "on") ? "On" : "Off"); break;
             case SET_ADDR: if (na) snprintf(v, sizeof v, "%s%s%s", addrs[0], na > 1 ? "   " : "", na > 1 ? addrs[1] : ""); else snprintf(v, sizeof v, "No network"); break;
             }
-            text(cb, f_mid, r.x + w - tw(f_mid, v) - 28 * k, r.y + 14 * k, v, s ? C_TEXT : C_DIM);
+            text(cb, f_mid, r.x + w - tw(f_mid, v) - 24 * k, r.y + 14 * k, v, s ? C_TEXT : C_DIM);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { sel_set = i; act(SDLK_RETURN, win); }
         }
-        if (hints[sel_set][0]) text(cb, f_small, pad, y + SET_N * (rowh + 8 * k) + 10 * k, hints[sel_set], C_AMBER);   /* under the rows */
+        if (hints[sel_set][0]) text(cb, f_small, pad + 24 * k, y + SET_N * (rowh + 8 * k) + 12 * k, no_stop(hints[sel_set]), C_SEC);   /* under the rows */
     } else if (screen == SC_COUNTDOWN || screen == SC_RESTART) {
         const game_t *g = &games[S.auto_game >= 0 ? S.auto_game : 0];
         const int left = (int)((count_until > SDL_GetTicks64() ? count_until - SDL_GetTicks64() : 0) + 999) / 1000;
@@ -737,29 +765,44 @@ static void draw(int W, int H, SDL_Window *win)
         text_c(cb, f_mid, W / 2.0f, H * 0.62f, "Press any key or button to open the menu", C_DIM);
     } else if (screen == SC_QUIT) {
         text_c(cb, f_big, W / 2.0f, H * 0.40f, "Close the launcher?", C_TEXT);
-        text_c(cb, f_mid, W / 2.0f, H * 0.40f + 60 * k, "Enter / A: quit        Esc / B: cancel", C_DIM);
+        const float kw = 2 * (16 * k + 4 * k) + tw(f_small, "Enter") + tw(f_small, "A") + 8 * k + tw(f_small, "Quit") + 28 * k
+                       + 2 * (16 * k + 4 * k) + tw(f_small, "Esc") + tw(f_small, "B") + 8 * k + tw(f_small, "Cancel");
+        float kx = (W - kw) / 2;
+        kx = keyhint(cb, kx, H * 0.40f + 64 * k, k, "Enter|A", "Quit");
+        keyhint(cb, kx, H * 0.40f + 64 * k, k, "Esc|B", "Cancel");
     }
-    /* the bottom bar */
-    nk_fill_rect(cb, nk_rect(0, H - 60 * k, (float)W, 60 * k), 0, C_DARK);
+    /* the bottom bar: the keys as keycaps, then Settings / Games and Quit */
+    nk_fill_rect(cb, nk_rect(0, H - 64 * k, (float)W, 64 * k), 0, C_DARK);
+    nk_fill_rect(cb, nk_rect(0, H - 64 * k, (float)W, 1), 0, C_LINE);
     if (screen == SC_MENU || screen == SC_SETTINGS) {
-        text(cb, f_small, pad, H - 44 * k, screen == SC_MENU ? "Arrows / D-pad: choose        Enter / A: start        Esc / B: back        S / Y: settings"
-                                                                : "Up / Down: choose        Left / Right / Enter: change        Esc / B: back", C_DIM);
+        const float ky = H - 48 * k;
+        float kx = pad;
+        if (screen == SC_MENU) {
+            kx = keyhint(cb, kx, ky, k, "Arrows|D-pad", "Choose"); kx = keyhint(cb, kx, ky, k, "Enter|A", "Start");
+            kx = keyhint(cb, kx, ky, k, "Esc|B", "Back"); keyhint(cb, kx, ky, k, "S|Y", "Settings");
+        } else {
+            kx = keyhint(cb, kx, ky, k, "Up|Down", "Choose"); kx = keyhint(cb, kx, ky, k, "Left|Right|Enter", "Change");
+            keyhint(cb, kx, ky, k, "Esc|B", "Back");
+        }
         const char *bt[2] = { screen == SC_MENU ? "Settings" : "Games", "Quit" };
         float bx = W - pad;
         for (int i = 1; i >= 0; i--) {
             const float bw = tw(f_mid, bt[i]) + 40 * k; bx -= bw;
-            struct nk_rect r = nk_rect(bx, H - 52 * k, bw, 44 * k);
+            struct nk_rect r = nk_rect(bx, H - 56 * k, bw, 48 * k);
             const bool h = nk_input_is_mouse_hovering_rect(in, r);
-            nk_fill_rect(cb, r, 6 * k, h ? C_AMBER : C_PANEL);
-            text(cb, f_mid, r.x + 20 * k, r.y + 6 * k, bt[i], h ? C_DARK : C_TEXT);
+            nk_fill_rect(cb, nk_rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2), 8 * k, C_LINE);
+            nk_fill_rect(cb, r, 8 * k, h ? C_SEL : C_PANEL);                 /* hover: one surface step up */
+            text(cb, f_mid, r.x + 20 * k, r.y + 9 * k, bt[i], h ? C_TEXT : C_SEC);
             if (nk_input_mouse_clicked(in, NK_BUTTON_LEFT, r)) { if (i == 1) screen = SC_QUIT; else screen = screen == SC_MENU ? SC_SETTINGS : SC_MENU; }
-            bx -= 14 * k;
+            bx -= 12 * k;
         }
     }
-    if (message[0] && SDL_GetTicks64() < message_until) {
-        const float mw = tw(f_mid, message) + 60 * k;
-        nk_fill_rect(cb, nk_rect((W - mw) / 2, H - 140 * k, mw, 50 * k), 8 * k, C_AMBER);
-        text_c(cb, f_mid, W / 2.0f, H - 132 * k, message, C_DARK);
+    if (message[0] && SDL_GetTicks64() < message_until) {                   /* a message: a raised box with a hairline */
+        const float mw = tw(f_mid, message) + 48 * k;
+        const struct nk_rect r = nk_rect((W - mw) / 2, H - 144 * k, mw, 52 * k);
+        nk_fill_rect(cb, nk_rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2), 10 * k, C_LINE);
+        nk_fill_rect(cb, r, 10 * k, C_SEL);
+        text_c(cb, f_mid, W / 2.0f, r.y + 11 * k, message, C_TEXT);
     }
     nk_end(ctx);
 }
