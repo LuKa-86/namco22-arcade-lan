@@ -89,7 +89,7 @@ static inline void lv_prepare(lv_sock s)
 }
 
 /* recvfrom, plus the connection it came in on (*ifx; 0 = not known) */
-static inline int lv_recv(lv_sock s, void *buf, int max, struct sockaddr_in *from, uint32_t *ifx)
+static inline int lv_recv_one(lv_sock s, void *buf, int max, struct sockaddr_in *from, uint32_t *ifx)
 {
     *ifx = 0;
 #ifdef _WIN32
@@ -126,6 +126,17 @@ static inline bool lv_is_mine(uint32_t a)
     return false;
 }
 
+/* recvfrom + the connection; a packet with no sender address (0.0.0.0: a broadcast another PC sent before Windows gave it an address
+ * on that connection) is skipped -- an answer to 0.0.0.0 goes nowhere */
+static inline int lv_recv(lv_sock s, void *buf, int max, struct sockaddr_in *from, uint32_t *ifx)
+{
+    for (;;) {
+        memset(from, 0, sizeof *from);
+        const int r = lv_recv_one(s, buf, max, from, ifx);
+        if (r < 0 || from->sin_addr.s_addr != 0) return r;
+    }
+}
+
 /* sendto, out of connection ifx (0 = wherever Windows chooses; to this PC's own addresses always the usual way) */
 static inline int lv_send(lv_sock s, const void *buf, int len, const struct sockaddr_in *to, uint32_t ifx)
 {
@@ -139,6 +150,9 @@ static inline int lv_send(lv_sock s, const void *buf, int len, const struct sock
         WSACMSGHDR *c = WSA_CMSG_FIRSTHDR(&m);
         c->cmsg_level = IPPROTO_IP; c->cmsg_type = IP_PKTINFO; c->cmsg_len = WSA_CMSG_LEN(sizeof(IN_PKTINFO));
         IN_PKTINFO *pi = (IN_PKTINFO *)WSA_CMSG_DATA(c); pi->ipi_addr.s_addr = 0; pi->ipi_ifindex = ifx;
+        { lv_if f[8]; const int n = lv_ifs(f, 8);                     /* the sender's address: that connection's own (left empty, Windows
+                                                                         * sends a broadcast from 0.0.0.0 and the others can't answer it) */
+          for (int i = 0; i < n; i++) if (f[i].ifx == ifx) { pi->ipi_addr.s_addr = f[i].addr; break; } }
         DWORD sent = 0;
         if (WSASendMsg(s, &m, 0, &sent, NULL, NULL) == 0) return (int)sent;
     }
