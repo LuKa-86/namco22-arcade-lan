@@ -54,6 +54,7 @@ for g in "${GAMES[@]}"; do
     [ "$folder" = "Prop Cycle" ] && [ -d "$AUTHOR_RELEASE/mesa" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
     [ "$folder" = "Crisis Zone" ] && [ -d "$AUTHOR_RELEASE/hotr" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
     cp "$ROOT/launcher/pictures/$pic.bmp" "$d/picture.bmp"
+    [ -f "$ROOT/launcher/pictures/${pic}_logo.bmp" ] && cp "$ROOT/launcher/pictures/${pic}_logo.bmp" "$d/logo.bmp"   # its title logo (32-bit, alpha), beside the picture
     if [ -n "$zips" ]; then mkdir -p "$d/roms"; fi
     have=""
     for z in $zips; do

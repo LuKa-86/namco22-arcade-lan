@@ -64,29 +64,29 @@ typedef struct {
 /* THE WAYS TO PLAY. One wording for every game: a linked cabinet (full screen / window), the tests that run linked copies on this PC,
  * and the split-screen Party modes. Index 0 (and Time Crisis II's first three) are the ones offered for the automatic start: the
  * automatic start is saved as game id + way number, so a new way goes after the others or keeps the numbers of those before it. */
-#define M_NET_FULL(roms) { "Linked cabinet - full screen", "This PC is one cabinet in a linked set. The normal choice for a cabinet.", true, 1, \
+#define M_NET_FULL(roms) { "Full screen", "This PC is one cabinet in a linked set, or plays alone. The normal choice for a cabinet.", true, 1, \
         { { roms " --fullscreen", NULL } } }
-#define M_NET_WIN(roms)  { "Linked cabinet - window", "The same, in a window. Useful while setting up or testing.", false, 1, \
+#define M_NET_WIN(roms)  { "Window", "The same in a window, for setting up and testing.", false, 1, \
         { { roms " --window", NULL } } }
-#define M_TRY2(roms)     { "Test: 2 linked cabinets on this PC", "Opens 2 linked windows side by side. Click a window to play in it.", false, 2, \
+#define M_TRY2(roms)     { "Test: 2 cabinets", "Opens 2 linked windows side by side. Click a window to play in it.", false, 2, \
         { { roms " --window 1 --link 1 --link-cabinets 2", NULL }, { roms " --window 1 --link 2 --link-cabinets 2 --mute", NULL } } }
-#define M_TRY4(roms)     { "Test: 4 linked cabinets on this PC", "Opens 4 linked windows in a grid. Only cabinet 1 has sound.", false, 4, \
+#define M_TRY4(roms)     { "Test: 4 cabinets", "Opens 4 linked windows in a grid. Only cabinet 1 has sound.", false, 4, \
         { { roms " --window 1 --link 1 --link-cabinets 4", NULL }, { roms " --window 1 --link 2 --link-cabinets 4 --mute", NULL }, \
           { roms " --window 1 --link 3 --link-cabinets 4 --mute", NULL }, { roms " --window 1 --link 4 --link-cabinets 4 --mute", NULL } } }
-#define M_PARTY2K(roms)  { "Party: 2 players - keyboard and 1 controller", \
+#define M_PARTY2K(roms)  { "Party: 2 players, keyboard and controller", \
         "Split screen on this PC: player 1 on the keyboard, player 2 on a controller. Connect the controller first.", false, 2, \
         { { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 0", NULL } } }
-#define M_PARTY2P(roms)  { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 2, \
+#define M_PARTY2P(roms)  { "Party: 2 players, 2 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 2, \
         { { roms " --window 1 --link 2 --link-cabinets 2 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 2 --party --pad 1", NULL } } }
-#define M_PARTY4K(roms)  { "Party: 4 players - keyboard and 3 controllers", \
+#define M_PARTY4K(roms)  { "Party: 4 players, keyboard and 3 controllers", \
         "Split screen on this PC: player 1 on the keyboard, players 2 to 4 on controllers. Connect the controllers first.", false, 4, \
         { { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 1 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 2 --mute", NULL }, \
           { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 3 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 0", NULL } } }
-#define M_PARTY4P(roms)  { "Party: 4 players - 4 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 4, \
+#define M_PARTY4P(roms)  { "Party: 4 players, 4 controllers", "Split screen on this PC, one controller each. Connect the controllers first.", false, 4, \
         { { roms " --window 1 --link 2 --link-cabinets 4 --party --pad 2 --mute", NULL }, { roms " --window 1 --link 3 --link-cabinets 4 --party --pad 3 --mute", NULL }, \
           { roms " --window 1 --link 4 --link-cabinets 4 --party --pad 4 --mute", NULL }, { roms " --window 1 --link 1 --link-cabinets 4 --party --pad 1", NULL } } }
 #define M_SOLO_FULL(roms) { "Full screen", "The normal choice for a cabinet.", true, 1, { { roms " --fullscreen", NULL } } }
-#define M_SOLO_WIN(roms, w) { "Window", "The same, in a window.", false, 1, { { roms " --window" w, NULL } } }
+#define M_SOLO_WIN(roms, w) { "Window", "The same in a window.", false, 1, { { roms " --window" w, NULL } } }
 #define NET_MODES(roms) M_NET_FULL(roms), M_NET_WIN(roms), M_TRY2(roms), M_TRY4(roms), M_PARTY2K(roms), M_PARTY2P(roms), M_PARTY4K(roms), M_PARTY4P(roms)
 
 static const game_t games[] = {
@@ -94,7 +94,7 @@ static const game_t games[] = {
       "Formula racing for up to 8 linked cabinets. Linked play is new in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", "link.cfg",
       9, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_TRY4("roms"),
-        { "Test: 8 linked cabinets on this PC", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
+        { "Test: 8 cabinets", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
             { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
@@ -132,7 +132,7 @@ static const game_t games[] = {
       "Light-gun shooting with a riot shield, for a single cabinet. The original project's build.",
       "Controls: mouse or light gun aims and shoots  \xC2\xB7  the pedal takes cover  \xC2\xB7  Esc menu", NULL,
       2, { { "Full screen", "The normal choice for a cabinet.", true, 1, { { "--window --fullscreen", NULL } } },
-           { "Window", "The same, in a window.", false, 1, { { "--window", NULL } } } } },
+           { "Window", "The same in a window.", false, 1, { { "--window", NULL } } } } },
     { "cybrcomm", "Cyber Commando", "1994", "Cyber Commando", "CyberCommando-ArcadeLAN.exe",
       "Robot battles: 2 linked cabinets fight each other. Linked play is new in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows move  \xC2\xB7  Z fire  \xC2\xB7  X missile  \xC2\xB7  C view  \xC2\xB7  Esc menu", "link.cfg",
@@ -155,13 +155,13 @@ static const game_t games[] = {
       5, { { "Full screen", "The normal choice for a cabinet: on its own, or linked with others (set up in the game's Esc menu, Link page).", true, 1,
                { { "--window --fullscreen", NULL } } },
            { "Window", "The same, in a window. Useful while setting up or testing.", false, 1, { { "--window", NULL } } },
-           { "Test: 2 linked cabinets on this PC", "Opens 2 linked windows side by side. Controller 1 plays the left, controller 2 the right; the keyboard and mouse play the window you click.", false, 2, {
+           { "Test: 2 cabinets", "Opens 2 linked windows side by side. Controller 1 plays the left, controller 2 the right; the keyboard and mouse play the window you click.", false, 2, {
                { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PAD=0" },
                { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PAD=1;S23_MUTE=1" } } },
-           { "Party: 2 players - keyboard and 1 controller", "Split screen on this PC: player 1 on the keyboard and mouse (left), player 2 on a controller (right). Connect the controller first.", false, 2, {
+           { "Party: 2 players, keyboard and controller", "Split screen on this PC: player 1 on the keyboard and mouse (left), player 2 on a controller (right). Connect the controller first.", false, 2, {
                { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=none" },
                { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=0;S23_MUTE=1" } } },
-           { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each (controller 1 left, controller 2 right). Connect the controllers first.", false, 2, {
+           { "Party: 2 players, 2 controllers", "Split screen on this PC, one controller each (controller 1 left, controller 2 right). Connect the controllers first.", false, 2, {
                { "--window", "GW_LINK=1:2:23180;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=0" },
                { "--window", "GW_LINK=2:2:23180;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=1;S23_MUTE=1" } } } } },
     { "propcycl", "Prop Cycle", "1996", "Prop Cycle", "PropCycle.exe",
@@ -180,22 +180,22 @@ static const game_t games[] = {
       "The twin light-gun cabinet: the left and right sides link for 2 players.",
       "Controls: mouse or light gun aims and shoots  \xC2\xB7  the pedal takes cover  \xC2\xB7  Esc menu", "tc2_link.cfg",
       8, {
-        { "Left cabinet (red player) - full screen", "This PC is the left side of the twin cabinet. The normal choice for a cabinet.", true, 1,
+        { "Left side (red player), full screen", "This PC is the left side of the twin cabinet. The normal choice for a cabinet.", true, 1,
             { { "--window --fullscreen", "TC2_SIDE=left" } } },
-        { "Right cabinet (blue player) - full screen", "This PC is the right side of the twin cabinet. The normal choice for a cabinet.", true, 1,
+        { "Right side (blue player), full screen", "This PC is the right side of the twin cabinet. The normal choice for a cabinet.", true, 1,
             { { "--window --fullscreen", "TC2_SIDE=right" } } },
-        { "Both sides on one PC - 2 monitors, 2 guns", "One PC runs the whole twin cabinet. The first gun to fire becomes the left player.", true, 2, {
+        { "Both sides on one PC, 2 monitors and 2 guns", "One PC runs the whole twin cabinet. The first gun to fire becomes the left player.", true, 2, {
             { "--window", "TC2_OWN_GUN=1;TC2_LINK=L:23021:127.0.0.1:23022;TC2_CABINET_DIR=screen-left;TC2_MONITOR=1" },
             { "--window", "TC2_OWN_GUN=1;TC2_LINK=R:23022:127.0.0.1:23021;TC2_CABINET_DIR=screen-right;TC2_MONITOR=2" } } },
-        { "Left cabinet (red player) - window", "The left side, in a window.", false, 1, { { "--window", "TC2_SIDE=left" } } },
-        { "Right cabinet (blue player) - window", "The right side, in a window.", false, 1, { { "--window", "TC2_SIDE=right" } } },
-        { "Test: both sides on this PC", "Opens the left and right sides in 2 linked windows.", false, 2, {
+        { "Left side (red player), window", "The left side, in a window.", false, 1, { { "--window", "TC2_SIDE=left" } } },
+        { "Right side (blue player), window", "The right side, in a window.", false, 1, { { "--window", "TC2_SIDE=right" } } },
+        { "Test: both sides", "Opens the left and right sides in 2 linked windows.", false, 2, {
             { "--window", "TC2_LINK=L:23011:127.0.0.1:23012;TC2_CABINET_DIR=try-left;TC2_WINPOS=left" },
             { "--window", "TC2_LINK=R:23012:127.0.0.1:23011;TC2_CABINET_DIR=try-right;TC2_WINPOS=right" } } },
-        { "Party: 2 players - keyboard and 1 controller", "Split screen on this PC: the red player on the mouse and keyboard (left), the blue player on a controller (right). Connect the controller first.", false, 2, {
+        { "Party: 2 players, keyboard and controller", "Split screen on this PC: the red player on the mouse and keyboard (left), the blue player on a controller (right). Connect the controller first.", false, 2, {
             { "--window", "TC2_LINK=L:23031:127.0.0.1:23032;TC2_CABINET_DIR=party-left;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=none" },
             { "--window", "TC2_LINK=R:23032:127.0.0.1:23031;TC2_CABINET_DIR=party-right;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=0;S23_MUTE=1" } } },
-        { "Party: 2 players - 2 controllers", "Split screen on this PC, one controller each: controller 1 the red player (left), controller 2 the blue (right). Connect the controllers first.", false, 2, {
+        { "Party: 2 players, 2 controllers", "Split screen on this PC, one controller each: controller 1 the red player (left), controller 2 the blue (right). Connect the controllers first.", false, 2, {
             { "--window", "TC2_LINK=L:23031:127.0.0.1:23032;TC2_CABINET_DIR=party-left;S23_WINPOS=1/2;S23_PARTY=1;S23_PAD=0" },
             { "--window", "TC2_LINK=R:23032:127.0.0.1:23031;TC2_CABINET_DIR=party-right;S23_WINPOS=2/2;S23_PARTY=1;S23_PAD=1;S23_MUTE=1" } } } } },
     { "tokyowar", "Tokyo Wars", "1996", "Tokyo Wars", "TokyoWars-ArcadeLAN.exe",
@@ -229,7 +229,9 @@ static const char *cabinets_text(const game_t *g)
 static void game_dir(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s", base, g->folder); }
 static void game_exe(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s\\%s", base, g->folder, g->exe); }
 
-static struct { int auto_game, auto_mode, delay, restart, windowed; } S = { -1, 0, 10, 1, 0 };
+static struct { int auto_game, auto_mode, delay, restart, windowed, tests; } S = { -1, 0, 10, 1, 0, 0 };
+/* a way to play the menu shows: the "Test: ..." ways (several linked windows on this PC) only with Settings > Test modes on */
+static bool way_shown(const way_t *m) { return S.tests || strncmp(m->label, "Test: ", 6) != 0; }
 static const int delays[] = { 5, 10, 20, 30, 60 };
 
 static void cfg_load(void)
@@ -249,6 +251,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "auto_delay")) S.delay = atoi(v);
         else if (!strcmp(k, "if_closed")) S.restart = strcmp(v, "menu") != 0;
         else if (!strcmp(k, "screen")) S.windowed = !strcmp(v, "window");
+        else if (!strcmp(k, "test_modes")) S.tests = !strcmp(v, "on");
     }
     fclose(f);
     if (S.delay < 1) S.delay = 10;
@@ -264,6 +267,7 @@ static void cfg_save(void)
     fprintf(f, "# if_closed: restart = start the game again when it closes (automatic start), menu = come back to this menu\nif_closed=%s\n",
             S.restart ? "restart" : "menu");
     fprintf(f, "screen=%s\n", S.windowed ? "window" : "fullscreen");
+    fprintf(f, "# test_modes: show the Test ways (several linked windows on this PC) in the menu\ntest_modes=%s\n", S.tests ? "on" : "off");
     fclose(f);
 }
 
@@ -466,6 +470,7 @@ static int my_addresses(char out[][48], int max)
 static struct nk_context *ctx;
 static struct nk_font *f_title, *f_big, *f_mid, *f_small;
 static GLuint pics[NGAMES]; static int pic_w[NGAMES], pic_h[NGAMES];
+static GLuint logos[NGAMES]; static int logo_w[NGAMES], logo_h[NGAMES];   /* games\<Game>\logo.bmp: the title logo, 32-bit with alpha */
 /* THE LOOK (2026-11-16, an "unslop" polish pass, after unslop by Damir Sokolovsky, @heydamir, CC BY 4.0): a cabinet's service
  * menu -- one graphite ramp for every surface and three text roles, and the coin-door amber ONLY for what is chosen (the bar beside
  * the chosen game or setting, the chosen way to play) and the countdown's game. Hierarchy from size and colour, not weight; key
@@ -478,18 +483,26 @@ static const struct nk_color C_DARK = { 15, 15, 16, 255 },   /* the deepest surf
                              C_TEXT = { 237, 237, 237, 255 }, C_SEC = { 161, 161, 166, 255 }, C_DIM = { 133, 133, 139, 255 },
                              C_AMBER = { 255, 176, 0, 255 };
 
+/* a BMP into a texture (its alpha kept: SDL reads a 32-bit BMP's alpha mask); 0 = none */
+static GLuint load_bmp(const char *p, int *w, int *h)
+{
+    SDL_Surface *s = SDL_LoadBMP(p); if (!s) return 0;
+    SDL_Surface *r = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_ABGR8888, 0); SDL_FreeSurface(s); if (!r) return 0;
+    GLuint t; glGenTextures(1, &t); glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, r->pitch / 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, r->w, r->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, r->pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    *w = r->w; *h = r->h; SDL_FreeSurface(r);
+    return t;
+}
 static void load_pictures(void)
 {
     for (int i = 0; i < NGAMES; i++) {
         char p[MAX_PATH]; snprintf(p, sizeof p, "%sgames\\%s\\picture.bmp", base, games[i].folder);
-        SDL_Surface *s = SDL_LoadBMP(p); if (!s) continue;
-        SDL_Surface *r = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_ABGR8888, 0); SDL_FreeSurface(s); if (!r) continue;
-        glGenTextures(1, &pics[i]); glBindTexture(GL_TEXTURE_2D, pics[i]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, r->pitch / 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, r->w, r->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, r->pixels);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        pic_w[i] = r->w; pic_h[i] = r->h; SDL_FreeSurface(r);
+        pics[i] = load_bmp(p, &pic_w[i], &pic_h[i]);
+        snprintf(p, sizeof p, "%sgames\\%s\\logo.bmp", base, games[i].folder);
+        logos[i] = load_bmp(p, &logo_w[i], &logo_h[i]);
     }
 }
 static void fonts(float h)
@@ -549,7 +562,7 @@ static int screen = SC_MENU, sel_game, sel_mode, focus;     /* focus 0: the game
 static int sel_set; static Uint64 count_until; static char message[160]; static Uint64 message_until;
 static bool auto_session;                                   /* started by Windows (--auto): the watchdog's restart applies */
 static bool want_quit;
-enum { SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_LIGHTS, SET_RECORD, SET_ADDR, SET_N };
+enum { SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_TESTS, SET_LIGHTS, SET_RECORD, SET_ADDR, SET_N };
 
 static void say(const char *m) { snprintf(message, sizeof message, "%s", m); message_until = SDL_GetTicks64() + 4000; }
 
@@ -584,8 +597,8 @@ static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT
             else if (key == SDLK_RIGHT || key == SDLK_RETURN) { focus = 1; sel_mode = 0; }
             else if (key == SDLK_ESCAPE) screen = SC_QUIT;
         } else {
-            if (key == SDLK_UP) sel_mode = (sel_mode + g->nmodes - 1) % g->nmodes;
-            else if (key == SDLK_DOWN) sel_mode = (sel_mode + 1) % g->nmodes;
+            if (key == SDLK_UP) do sel_mode = (sel_mode + g->nmodes - 1) % g->nmodes; while (!way_shown(&g->m[sel_mode]));
+            else if (key == SDLK_DOWN) do sel_mode = (sel_mode + 1) % g->nmodes; while (!way_shown(&g->m[sel_mode]));
             else if (key == SDLK_LEFT || key == SDLK_ESCAPE) focus = 0;
             else if (key == SDLK_RETURN) start_mode(sel_game, sel_mode, false);
         }
@@ -599,6 +612,7 @@ static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT
             case SET_AUTO: auto_next(d); cfg_save(); run_key_set(S.auto_game >= 0); break;
             case SET_DELAY: { int i = 0; while (i < 4 && delays[i] != S.delay) i++; i = (i + d + 5) % 5; S.delay = delays[i]; cfg_save(); break; }
             case SET_CLOSED: S.restart = !S.restart; cfg_save(); break;
+            case SET_TESTS: S.tests = !S.tests; cfg_save(); if (!way_shown(&games[sel_game].m[sel_mode])) sel_mode = 0; break;
             case SET_SCREEN: S.windowed = !S.windowed; cfg_save();
                 SDL_SetWindowFullscreen(win, S.windowed ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP); break;
             case SET_LIGHTS: all_set("lights", !all_on("lights", "bottom-left")); break;
@@ -665,8 +679,8 @@ static void draw(int W, int H, SDL_Window *win)
         /* the chosen game: picture, lines, the ways to play */
         const game_t *g = &games[sel_game];
         const float rx = lw + pad, rw = W - rx - pad;
-        float ph = rw * 9 / 16; if (ph > (bottom - top) * 0.46f) ph = (bottom - top) * 0.46f;
-        const float pw = ph * 16 / 9, px = rx;                              /* the picture: the screen's one bright thing, on the text's edge */
+        float ph = rw * 0.58f * 9 / 16; if (ph > (bottom - top) * 0.46f) ph = (bottom - top) * 0.46f;
+        const float pw = ph * 16 / 9, px = rx;                              /* the picture (16:9, an action shot): the screen's one bright thing */
         nk_fill_rect(cb, nk_rect(px - 1, top - 1, pw + 2, ph + 2), 8 * k, C_LINE);   /* a hairline round it */
         nk_fill_rect(cb, nk_rect(px, top, pw, ph), 8 * k, C_DARK);
         if (pics[sel_game]) {
@@ -675,6 +689,15 @@ static void draw(int W, int H, SDL_Window *win)
             struct nk_image im = nk_image_id((int)pics[sel_game]);
             nk_draw_image(cb, nk_rect(px + (pw - iw) / 2, top + (ph - ih) / 2, iw, ih), &im, nk_rgb(255, 255, 255));
         } else text_c(cb, f_mid, px + pw / 2, top + ph / 2 - 14 * k, "(no picture)", C_DIM);
+        if (logos[sel_game]) {                                              /* the game's own title logo beside it, on the page */
+            const float lx = px + pw + 40 * k, lbw = rx + rw - lx, lbh = ph * 0.8f;
+            if (lbw > 120 * k) {
+                float iw = lbw, ih = lbw * logo_h[sel_game] / logo_w[sel_game];
+                if (ih > lbh) { ih = lbh; iw = lbh * logo_w[sel_game] / logo_h[sel_game]; }
+                struct nk_image im = nk_image_id((int)logos[sel_game]);
+                nk_draw_image(cb, nk_rect(lx + (lbw - iw) / 2, top + (ph - ih) / 2, iw, ih), &im, nk_rgb(255, 255, 255));
+            }
+        }
         float y = top + ph + 20 * k;
         text(cb, f_mid, rx, y, g->line1, C_TEXT); y += 36 * k;
         text(cb, f_small, rx, y, g->line2, C_DIM); y += 52 * k;
@@ -683,6 +706,7 @@ static void draw(int W, int H, SDL_Window *win)
          * prefix ("Test: ", "Party: "). The arrows go through them in their own order: down the left column, then the right. */
         int kind[12], has_party = 0, has_test = 0;
         for (int i = 0; i < g->nmodes; i++) {
+            if (!way_shown(&g->m[i])) { kind[i] = -1; continue; }
             kind[i] = !strncmp(g->m[i].label, "Party: ", 7) ? 2 : !strncmp(g->m[i].label, "Test: ", 6) ? 1 : 0;
             has_party |= kind[i] == 2; has_test |= kind[i] == 1;
         }
@@ -692,6 +716,7 @@ static void draw(int W, int H, SDL_Window *win)
         static const char *heads[3] = { "Play", "Test on this PC", "Party  \xC2\xB7  split screen on this PC" };
         float cy[2] = { y, y }; int last_kind[2] = { -1, -1 }; float lowest = y;
         for (int i = 0; i < g->nmodes; i++) {
+            if (kind[i] < 0) continue;                                       /* a Test way, Test modes off */
             const int col = !two ? 0 : kind[i] == 2 ? 1 : kind[i] == 1 ? (has_party ? 0 : 1) : 0;
             if (kind[i] != last_kind[col]) {                                 /* a new group: its heading (closer to its buttons than to the group above) */
                 if (last_kind[col] >= 0) cy[col] += 16 * k;
@@ -720,13 +745,14 @@ static void draw(int W, int H, SDL_Window *win)
         }
     } else if (screen == SC_SETTINGS) {
         static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
-                                             "Launcher display", "Link status lights (all games)", "Session recordings (all games)",
+                                             "Launcher display", "Test modes", "Link status lights (all games)", "Session recordings (all games)",
                                              "This PC's network address" };
         static const char *hints[SET_N] = {
             "When Windows signs in, the launcher opens, counts down and starts this game. On a cabinet PC, set Windows to sign in automatically.",
             "How long the countdown waits before the game starts. Any key or button during the countdown opens the menu instead.",
             "After an automatic start: restart the game whenever it closes, so the cabinet always returns to attract mode.",
             "Show this launcher full screen or in a window.",
+            "Shows the Test ways to play: several linked windows on this PC, to check the link without a second cabinet.",
             "Small lights in a corner of each linked game that show which cabinets it can hear.",
             "Each game keeps its last session's inputs (a few KB) so a problem can be replayed. Off keeps none.",
             "The address to type into the other cabinets' Network page when setting the addresses by hand." };
@@ -748,6 +774,7 @@ static void draw(int W, int H, SDL_Window *win)
             case SET_DELAY: snprintf(v, sizeof v, "%d seconds", S.delay); break;
             case SET_CLOSED: snprintf(v, sizeof v, "%s", S.restart ? "Restart the game" : "Return to this menu"); break;
             case SET_SCREEN: snprintf(v, sizeof v, "%s", S.windowed ? "Window" : "Full screen"); break;
+            case SET_TESTS: snprintf(v, sizeof v, "%s", S.tests ? "Shown" : "Hidden"); break;
             case SET_LIGHTS: snprintf(v, sizeof v, "%s", all_on("lights", "bottom-left") ? "On" : "Off"); break;
             case SET_RECORD: snprintf(v, sizeof v, "%s", all_on("record", "on") ? "On" : "Off"); break;
             case SET_ADDR: if (na) snprintf(v, sizeof v, "%s%s%s", addrs[0], na > 1 ? "   " : "", na > 1 ? addrs[1] : ""); else snprintf(v, sizeof v, "No network"); break;

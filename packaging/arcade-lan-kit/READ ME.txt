@@ -74,24 +74,25 @@ back. In the games: Esc opens the game's own menu (display, sound, controls, Net
 File > Exit or Alt+F4 closes the game.
 
 The ways to play:
-   Linked cabinet - full screen          this PC is one cabinet in a linked set (the normal choice)
-   Linked cabinet - window               the same in a window, for setting up and testing
-   Test: 2 / 4 linked cabinets on this PC  linked copies in windows, to see the link working
-                                         (Ace Driver also has Test: 8)
+   Full screen                           this PC is one cabinet in a linked set, or plays alone
+                                         (the normal choice)
+   Window                                the same in a window, for setting up and testing
+   Test: 2 / 4 cabinets                  linked copies in windows on this PC, to see the link
+                                         working (Ace Driver also has Test: 8). Hidden until
+                                         Settings > Test modes is set to Shown
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
                                          (Gunmen Wars and Time Crisis II: 2 players, keyboard and
                                          mouse + a controller, or 2 controllers)
-   Full screen / Window                  the single-cabinet games, and Gunmen Wars (its link is set
-                                         up in the game's own Esc menu, Link page)
-   Time Crisis II                        Left or Right cabinet, Both sides on one PC (2 monitors,
-                                         2 guns), Test: both sides on this PC, or Party
+   (Gunmen Wars' link is set up in the game's own Esc menu, Link page)
+   Time Crisis II                        Left side or Right side, Both sides on one PC (2 monitors
+                                         and 2 guns), Test: both sides, or Party
 
 
 3. LINKING THE CABINETS (once per set)
 -------------------------------------
 1. Copy this whole folder to every cabinet PC, connect the PCs to one network switch with
    cables, and give each PC a fixed address (in Windows, or reserved in the router).
-2. On EVERY PC start the game with "Linked cabinet - full screen".
+2. On EVERY PC start the game with "Full screen".
 3. On each PC press Esc, open the Network page and choose "Find cabinets". After a moment it
    lists the PCs running the game ("Found 3: 192.168.1.11 CABINET-1 (this PC), ..."). Choose
    "Use the N found": the address list is filled in, the same on every PC, with "This cabinet"
@@ -124,7 +125,7 @@ How the link behaves (the same rule as the real boards):
 ---------------------------------------
 For a cabinet, the PC should start the game by itself when it is switched on, with no keyboard:
 1. In the launcher: Settings > "Start a game when Windows starts" > choose the game and the way
-   to play (for a linked cabinet: "Linked cabinet - full screen"; for Time Crisis II: the Left
+   to play (for a linked cabinet: "Full screen"; for Time Crisis II: the Left
    or Right cabinet). "Countdown before the game starts" sets the delay (10 s); a key or
    button during the countdown opens the menu instead.
 2. "When the game closes": "Restart the game" (the default) starts it again a few seconds after
@@ -158,6 +159,9 @@ To stop it starting by itself: launcher > Settings > "Start a game when Windows 
    Countdown before the game starts   5 - 60 seconds
    When the game closes               restart the game (automatic start) / return to this menu
    Launcher display                   full screen / window
+   Test modes                         Shown / Hidden: the Test ways to play (several linked
+                                      windows on this PC, to check the link without a second
+                                      cabinet). Hidden at first
    Link status lights (all games)     small lights in a corner showing the link's activity
    Session recordings (all games)     each game keeps the last session's inputs so a problem
                                       can be replayed (a few KB each); Off keeps none
@@ -170,7 +174,7 @@ cabinet; grey = not in this set.
 
 7. GUNMEN WARS
 --------------
- - Ways to play: Full screen, Window, Test: 2 linked cabinets on this PC, and Party: 2 players
+ - Ways to play: Full screen, Window, Test: 2 cabinets (Settings > Test modes), and Party: 2 players
    (split screen: keyboard and mouse + a controller, or 2 controllers). Linked cabinets: set them up on the game's own Esc menu > Link page
    ("Find cabinets", then "Use found" on every PC); 2 or 3 cabinets, 4 is experimental.
  - Link page > Network: LAN (cables, the default), Wi-Fi, Slow network or Internet. A slower
