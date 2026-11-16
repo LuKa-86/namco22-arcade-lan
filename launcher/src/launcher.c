@@ -354,6 +354,7 @@ static bool launch(int gi, int mi)
     game_dir(g, dir, sizeof dir); game_exe(g, exe, sizeof exe);
     if (GetFileAttributesA(exe) == INVALID_FILE_ATTRIBUTES) { logm("cannot start %s: %s is missing", g->name, exe); return false; }
     nprocs = 0;
+    if (m->n > 1) SetEnvironmentVariableA("N22_ONE_PC", "1");   /* copies on one PC: the games pace by timer, not vsync (engine/eng_vsync.h) */
     for (int c = 0; c < m->n; c++) {
         char cmd[1024]; snprintf(cmd, sizeof cmd, "\"%s\" %s", exe, m->c[c].args);
         char envs[512] = "";                       /* the copy's own settings: set for the child, cleared again after */
@@ -368,6 +369,7 @@ static bool launch(int gi, int mi)
         logm("started %s - %s: %s", g->name, m->label, cmd);
         if (c + 1 < m->n) Sleep(300);
     }
+    SetEnvironmentVariableA("N22_ONE_PC", NULL);
     if (!nprocs) return false;
     run_game = gi; run_mode = mi;
     return true;
@@ -417,6 +419,7 @@ static void write_advanced(const char *dir)
             fprintf(f, "@echo off\r\n%srem  %s - %s\r\nrem  %s\r\nrem\r\nrem  This does the same as the button in " APP_NAME ".exe.\r\n"
                        "rem  (Written by \"" APP_NAME ".exe --write-advanced\".)\r\n%s", rule, g->name, m->label, m->hint, rule);
             fprintf(f, "setlocal\r\ncd /d \"%%~dp0..\\games\\%s\"\r\n", g->folder);
+            if (m->n > 1) fprintf(f, "rem Several copies on one PC: they pace by timer, not vsync (vsync favours the window in front)\r\nset \"N22_ONE_PC=1\"\r\n");
             for (int c = 0; c < m->n; c++) {
                 if (m->n > 1) fprintf(f, "\r\nrem Window %d of %d\r\n", c + 1, m->n); else fprintf(f, "\r\n");
                 if (m->c[c].env) { char e[512]; snprintf(e, sizeof e, "%s", m->c[c].env);

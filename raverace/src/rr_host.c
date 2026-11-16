@@ -939,7 +939,7 @@ bool rr_host_frame(void)
     eng_pace_before_swap(&pace_log);
     eng_vsync_want(&vs, g_cfg_fps);                  /* Display > Frame rate: a lock shows only some frames, or each one again */
     if (eng_vsync_show(&vs)) { eng_vsync_capture(&vs, win); SDL_GL_SwapWindow(win); }
-    if (phlog) { const uint64_t ph2 = eng_pace_ns(); fprintf(stderr, "[PHASE] draw %.2f swap %.2f quads %d\n", (ph1 - ph0) / 1e6, (ph2 - ph1) / 1e6, rr_gl_quads()); }
+    if (phlog) { const uint64_t ph2 = eng_pace_ns(); static uint64_t phprev; fprintf(stderr, "[PHASE] draw %.2f swap %.2f quads %d gap %.2f\n", (ph1 - ph0) / 1e6, (ph2 - ph1) / 1e6, rr_gl_quads(), phprev ? (ph2 - phprev) / 1e6 : 0.0); phprev = ph2; }   /* gap: since the last swap ended */
 
     /* pacing (engine/eng_vsync.h): vsync only while it BLOCKS -- re-measured every 50 frames, not only the first 60 (a window
      * minimised later, or the driver's vsync turned off, swaps at once: GitHub #26) -- otherwise sleep to the board's 59.906 Hz */
