@@ -355,6 +355,9 @@ void rr_tick(void)
              * others): without it the server dropped a player whose menu was open for 5 s */
             if (rr_host_paused()) rr_net_poll_paused();
         } while (rr_host_paused());
+        for (int c = 0; c < n_test_coins; c++)         /* the scripted --coin / --gas in a window too (the window's own inputs replace them above) */
+            if (frame >= (uint32_t)test_coins[c] && frame < (uint32_t)test_coins[c] + 6) g_hw.inputs &= (uint16_t)~0x1000;
+        if (test_gas >= 0 && frame >= (uint32_t)test_gas) g_hw.gas = (uint16_t)g_rr_game->gas_max;
     }
     if (!windowed) {                               /* RR_PACE=1: a headless run at the real 59.9 Hz (network tests: jitter in ms means frames) */
         static int pace = -1; static uint32_t t0;

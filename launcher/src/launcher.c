@@ -101,15 +101,9 @@ static const game_t games[] = {
             { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } },
         M_PARTY2K("roms"), M_PARTY2P("roms"), M_PARTY4K("roms"), M_PARTY4P("roms") } },
     { "victlap", "Ace Driver: Victory Lap", "1996", "Ace Driver Victory Lap", "VictoryLap-ArcadeLAN.exe",
-      "Ace Driver's 1996 sequel: a three-round championship for up to 8 linked cabinets. New in this package.",
+      "Ace Driver's 1996 sequel: a three-round championship for up to 4 linked cabinets. New in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", "link.cfg",
-      9, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_TRY4("roms"),
-        { "Test: 8 linked cabinets on this PC", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
-            { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
-            { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
-            { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
-            { "roms --window 1 --link 7 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 8 --link-cabinets 8 --mute", NULL } } },
-        M_PARTY2K("roms"), M_PARTY2P("roms"), M_PARTY4K("roms"), M_PARTY4P("roms") } },
+      8, { NET_MODES("roms") } },   /* (8 cabinets link, but the user's 8-window test was all over the place: left out for now) */
     { "airco22", "Air Combat 22", "1995", "Air Combat 22", "AirCombat22-ArcadeLAN.exe",
       "Jet-fighter missions for a single cabinet. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows fly  \xC2\xB7  W boost  \xC2\xB7  S brake  \xC2\xB7  Space gun  \xC2\xB7  Alt missile  \xC2\xB7  Esc menu", NULL,
@@ -226,7 +220,7 @@ static void logm(const char *fmt, ...)
 static const char *cabinets_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
-        { "acedrive", "Up to 8 linked cabinets" }, { "victlap", "Up to 8 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
+        { "acedrive", "Up to 8 linked cabinets" }, { "victlap", "Up to 4 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
         { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" }, { "alpinr2", "2 linked cabinets" },
         { "raverace", "Up to 4 linked cabinets" }, { "timecrs2", "Twin cabinet, 2 players" }, { "tokyowar", "Up to 4 linked cabinets" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;

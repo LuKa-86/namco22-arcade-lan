@@ -77,6 +77,7 @@ static const rr_game_t vl = {
      * 0x1000C14A), but packed: the settings parse (0x2C3E0, from the EEPROM block 0x100 copy at A6+0x4030) takes byte 0x0C bits 7..5 */
     .link_cab_addr = 0x10000C04, .link_ee_block = { 0x100, -1 }, .link_ee_byte = 0x0C, .link_ee_shift = 5, .link_ee_sum8 = 1,
     .link_ee_init = vl_ee_init, .nlink_ee_init = 2,
+    .link_max_cabinets = 4,                           /* the game numbers 8, but 8 linked windows were all over the place in the user's test (2026-11-16): 4 for now */
     .ram_code_at = 0x10010000, .ram_code_rom = 0x50000, .ram_code_size = 0x8000,   /* its program 0x50000.. copied to work RAM and run there (measured: 0x10010000..0x10017DF0 = ROM) */
 };
 const rr_game_t *g_rr_game = &vl;
@@ -86,3 +87,9 @@ uint8_t g_lift_cov[0x100000];                /* one byte per even address of the
 uint32_t g_lift_pc;
 extern const uint32_t *g_rr_last_pc;
 __attribute__((constructor)) static void vl_last_pc(void) { g_rr_last_pc = &g_lift_pc; }
+/* TEXTURE PAGES 8192 (not the engine's 4096): all of Victory Lap's 16 MB of texture then fits one page, so a run of quads is never
+ * split by a page change (a race: 274588 page breaks -> 0 over 2600 frames; draw 4.7 -> 3.9 ms a frame in a window on Iris Xe, and
+ * the start line of a 4-window linked test mostly back under 16.7 ms). Pictures identical but for ~10 texel-edge pixels.
+ * ENG_ATLAS_DIM set by the user still wins. */
+#include <stdlib.h>
+__attribute__((constructor)) static void vl_atlas(void) { if (!getenv("ENG_ATLAS_DIM")) setenv("ENG_ATLAS_DIM", "8192", 0); }
