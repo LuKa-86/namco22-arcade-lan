@@ -32,7 +32,7 @@
 /* the Esc menu's Network page (engine/link_host.c: the rows, link.cfg); an address row is typed key by key through the menu's key capture */
 static void net_key(SDL_Scancode sc, void *u) { if (link_page_type(sc)) eng_ui_capture_key(net_key, u); }
 static void net_change(int row, int dir) { link_page_change(row, dir); if (link_page_editing() && !eng_ui_capturing()) eng_ui_capture_key(net_key, NULL); }
-static const eng_ui_page network_page = { "Network", 480, 210, 24, link_page_rows, link_page_has_value, NULL, link_page_text, net_change, link_page_notes, 190 };
+static const eng_ui_page network_page = { "Network", 560, 210, 24, link_page_rows, link_page_has_value, NULL, link_page_text, net_change, link_page_notes, 190 };
 #include "eng_ffb.h"
 #include "gl_warn.h"
 

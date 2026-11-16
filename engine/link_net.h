@@ -63,6 +63,7 @@ const lnk_stats *lnk_get_stats(void);
 bool     lnk_peer_found(int n);                       /* cabinet n's address is known (typed, or found on the network) */
 bool     lnk_twin(char addr[16]);                     /* another PC (addr) is set up with this cabinet's number too */
 int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addresses (not 127.x), for the menu: how many */
+int      lnk_local_named(char out[][48], int max);       /* the same, each with its connection's name: "192.168.1.66 (WiFi)" */
 /* the diagnostics: who this cabinet hears (within the last second) and from which address; who hears it (their hellos say) */
 bool     lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts);   /* false = cabinet n never heard since this start */
 uint32_t lnk_hear_mask(void);                         /* bit n = cabinet n+1 heard in the last second */

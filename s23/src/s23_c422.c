@@ -56,6 +56,7 @@ typedef int sock_t;
 #include <SDL2/SDL.h>
 #include "s23_host.h"
 #include "s23_game.h"
+#include "../../engine/lan_via.h"         /* out of the connection the other cabinet was heard on (a VPN on 169.254.x.x) */
 
 uint8_t *s23_vram_ptr(uint32_t p);
 uint64_t s23_cycles_now(void);
@@ -83,6 +84,7 @@ static sock_t sk = BAD_SOCK;
 static struct sockaddr_in peer;           /* the other cabinet (learned from its hello when the address is "auto") */
 static int peer_known, auto_addr, loopback;
 static uint32_t tx_seq, rx_seq_last = 0xFFFFFFFFu;
+static uint32_t peer_via, last_ifx;                         /* the connection the other cabinet is heard on (engine/lan_via.h) */
 static uint8_t pend[1500]; static int npend;   /* this burst's bytes not yet sent */
 static uint64_t poll_at;
 static unsigned long n_bursts_out, n_bursts_in, n_bytes_out, n_bytes_in, n_drops;
@@ -241,6 +243,7 @@ static void open_link(void)
 #ifdef _WIN32
     { u_long nb = 1; ioctlsocket(sk, FIONBIO, &nb); }
     { BOOL yes = TRUE; setsockopt(sk, SOL_SOCKET, SO_BROADCAST, (const char *)&yes, sizeof yes); }
+    lv_prepare(sk); peer_via = 0;
 #else
     fcntl(sk, F_SETFL, fcntl(sk, F_GETFL) | O_NONBLOCK);
     { int yes = 1; setsockopt(sk, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes); }
@@ -265,7 +268,7 @@ static void send_claim(void)
     if (sk == BAD_SOCK || state != ST_LINKED || !my_claim[0]) return;
     uint8_t b[8 + sizeof my_claim]; memcpy(b, "C42G", 4); put32(b + 4, session);
     const size_t n = strlen(my_claim) + 1; memcpy(b + 8, my_claim, n);
-    sendto(sk, (const char *)b, (int)(8 + n), 0, (struct sockaddr *)&peer, sizeof peer);
+    lv_send(sk, b, (int)((int)(8 + n)), &peer, peer_via);
 }
 void s23_c422_send_claim(const char *name) { snprintf(my_claim, sizeof my_claim, "%s", name); send_claim(); }
 
@@ -276,10 +279,9 @@ static void send_hello(void)
     uint8_t b[16]; memcpy(b, "C42H", 4);
     b[4] = 2; b[5] = (uint8_t)side_right;                    /* 2: data stamped with game time (1 = the first kit; the two never link) */ b[6] = (uint8_t)state; b[7] = 0;
     put32(b + 8, my_nonce); put32(b + 12, session);
-    if (peer_known) sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer);
+    if (peer_known) lv_send(sk, b, (int)(sizeof b), &peer, peer_via);
     if (auto_addr && state != ST_LINKED) {                   /* not found yet: to every PC on the network */
-        struct sockaddr_in bc = peer; bc.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-        sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&bc, sizeof bc);
+        lv_send_all(sk, b, (int)sizeof b, peer.sin_port);    /* (out of every connection, and this PC) */
     }
 }
 
@@ -287,6 +289,7 @@ static void go_linked(uint32_t other, const struct sockaddr_in *from)
 {
     their_nonce = other; session = session_with(other); state = ST_LINKED;
     if (auto_addr || !peer_known) { peer.sin_addr = from->sin_addr; peer_known = 1; }
+    peer_via = last_ifx;                                     /* replies: out of the connection it came in on */
     fprintf(stderr, "[C422] LINKED with the %s cabinet at %s (session %08X)\n", side_right ? "left" : "right", inet_ntoa(from->sin_addr), session);
     for (int i = 0; i < 3; i++) send_hello();
 }
@@ -339,7 +342,7 @@ static void flush(int end)
     b[12] = (uint8_t)end; b[13] = 0; b[14] = (uint8_t)(npend >> 8); b[15] = (uint8_t)npend;
     put64(b + 16, s23_cycles_now());                         /* this game's time: due at the other end LAG later */
     memcpy(b + 24, pend, (size_t)npend);
-    sendto(sk, (const char *)b, 24 + npend, 0, (struct sockaddr *)&peer, sizeof peer);
+    lv_send(sk, b, (int)(24 + npend), &peer, peer_via);
     if (end) n_bursts_out++;
     n_bytes_out += (unsigned long)npend;
     npend = 0;
@@ -368,9 +371,10 @@ static void poll_cable(void)
     const uint64_t t = ms_now();
     if (t - hello_ms >= (state == ST_WAIT ? 100u : 500u)) { hello_ms = t; send_hello(); }
     for (int k = 0; k < 64; k++) {
-        uint8_t b[2048]; struct sockaddr_in from; socklen_t fl = sizeof from;
-        const int r = (int)recvfrom(sk, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+        uint8_t b[2048]; struct sockaddr_in from; uint32_t ifx = 0;
+        const int r = lv_recv(sk, b, (int)sizeof b, &from, &ifx);
         if (r < 0) return;
+        last_ifx = ifx; if (peer_known && from.sin_addr.s_addr == peer.sin_addr.s_addr) peer_via = ifx;
         if (r < 16) continue;
         if (!memcmp(b, "C42H", 4)) { on_hello(b, r, &from); continue; }
         if (state != ST_LINKED || get32(b + 4) != session) continue;                      /* not from our session */
@@ -404,7 +408,7 @@ static void send_time(uint64_t now)
 {
     if (sk == BAD_SOCK || state != ST_LINKED || peer_lost) return;
     uint8_t b[16]; memcpy(b, "C42T", 4); put32(b + 4, session); put64(b + 8, now);
-    sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer);
+    lv_send(sk, b, (int)(sizeof b), &peer, peer_via);
 }
 
 /* the received pieces whose time has come, into the ring */
@@ -542,7 +546,7 @@ void s23_c422_report(void)
     if (s23_game.link && s23_game.link->report) s23_game.link->report();
     if (state == ST_OFF) return;
     if (sk != BAD_SOCK && state == ST_LINKED && !peer_lost)  /* closing: tell the other cabinet now (it would wait 5 s for us) */
-        for (int i = 0; i < 3; i++) { uint8_t b[16]; memcpy(b, "C42B", 4); put32(b + 4, session); memset(b + 8, 0, 8); sendto(sk, (const char *)b, sizeof b, 0, (struct sockaddr *)&peer, sizeof peer); }
+        for (int i = 0; i < 3; i++) { uint8_t b[16]; memcpy(b, "C42B", 4); put32(b + 4, session); memset(b + 8, 0, 8); lv_send(sk, b, (int)(sizeof b), &peer, peer_via); }
     fprintf(stderr, "[C422] link: %s%s; %lu bursts / %lu bytes out, %lu bursts / %lu bytes in, %lu datagrams lost; waited for the other %lu times, %llu ms in all, longest %llu ms\n",
             state == ST_LINKED ? "LINKED" : "alone", peer_lost ? " (then broken)" : "", n_bursts_out, n_bytes_out, n_bursts_in, n_bytes_in, n_drops,
             n_waits, (unsigned long long)wait_ms_total, (unsigned long long)wait_ms_max);

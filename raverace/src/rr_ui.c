@@ -570,6 +570,8 @@ static void labelf(nk_flags align, const char *fmt, ...)
     nk_label(ctx, b, align);
 }
 
+static int note_count;
+static void count_line(const char *fmt, ...) { (void)fmt; note_count++; }   /* the Network page's notes, counted (the dropdown's height) */
 static void note_line(const char *fmt, ...)
 {
     char b[160];
@@ -879,10 +881,12 @@ void rr_ui_draw(bool *quit)
     nk_end(ctx);
 
     /* the dropdown: sized to its page, under its title, inside the window */
-    static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 480, 420, 460 };
+    static const float drop_w[T_N] = { 300, 440, 300, 340, 380, 560, 420, 460 };
     const int n0 = nrows(tab);
     const float rh0 = tab == T_CONTROLS ? 20 : 26;
-    float dh = 48 + (n0 - (tab == T_AUDIO ? 1 : 0)) * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : tab == T_NETWORK ? 176 : 44);
+    float nh = tab == T_NETWORK ? 176 : 44;                             /* the Network page: room for all its notes (they were cut) */
+    if (tab == T_NETWORK) { note_count = 0; link_page_notes(count_line); if (12 + 21 * note_count > nh) nh = 12 + 21 * note_count; }
+    float dh = 48 + (n0 - (tab == T_AUDIO ? 1 : 0)) * (rh0 + 4) + (tab == T_DISPLAY ? 88 : tab == T_FILE ? 0 : nh);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = drop_w[tab] < ww - 8 ? drop_w[tab] : (float)ww - 8;
     float dx = title_x[tab];

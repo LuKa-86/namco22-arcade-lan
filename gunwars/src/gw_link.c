@@ -53,6 +53,7 @@ typedef int sock_t;
 #include <SDL2/SDL.h>
 #include "s23_game.h"
 #include "gw_link.h"
+#include "../../engine/lan_via.h"         /* out of the connection each cabinet was heard on (a VPN on 169.254.x.x) */
 
 uint64_t s23_cycles_now(void);
 extern uint32_t rr_frame;
@@ -81,7 +82,7 @@ typedef struct {
 /* ---- UDP on the local network ---- */
 static sock_t us = BAD_SOCK;
 static gw_link_cfg U;
-static struct sockaddr_in u_peer[MAXCAB]; static int u_known[MAXCAB];
+static struct sockaddr_in u_peer[MAXCAB]; static int u_known[MAXCAB]; static uint32_t u_via[MAXCAB];   /* u_via: the connection each was heard on */
 static struct sockaddr_in u_list[MAXCAB]; static int u_nlist;
 static int u_auto, u_loop;
 
@@ -106,6 +107,7 @@ static int udp_open(const gw_link_cfg *c, char *why, size_t wn)
     { u_long nb = 1; ioctlsocket(us, FIONBIO, &nb); }
     { BOOL yes = TRUE; setsockopt(us, SOL_SOCKET, SO_BROADCAST, (const char *)&yes, sizeof yes); }
     { int sz = 4 << 20; setsockopt(us, SOL_SOCKET, SO_RCVBUF, (const char *)&sz, sizeof sz); }   /* bursts from several cabinets (loopback lost a few with 3) */
+    lv_prepare(us); memset(u_via, 0, sizeof u_via);
 #else
     fcntl(us, F_SETFL, fcntl(us, F_GETFL) | O_NONBLOCK);
     { int yes = 1; setsockopt(us, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes); }
@@ -130,26 +132,25 @@ static int udp_open(const gw_link_cfg *c, char *why, size_t wn)
 static void udp_send(int cab, const uint8_t *b, int n)
 {
     if (us == BAD_SOCK) return;
-    if (cab >= 0) { if (cab < MAXCAB && u_known[cab]) sendto(us, (const char *)b, n, 0, (struct sockaddr *)&u_peer[cab], sizeof u_peer[cab]); return; }
+    if (cab >= 0) { if (cab < MAXCAB && u_known[cab]) lv_send(us, b, n, &u_peer[cab], u_via[cab]); return; }
     int all = 1;
-    for (int j = 0; j < U.cabinets; j++) if (j != U.cabinet) { if (u_known[j]) sendto(us, (const char *)b, n, 0, (struct sockaddr *)&u_peer[j], sizeof u_peer[j]); else all = 0; }
+    for (int j = 0; j < U.cabinets; j++) if (j != U.cabinet) { if (u_known[j]) lv_send(us, b, n, &u_peer[j], u_via[j]); else all = 0; }
     if (all) return;
-    if (u_auto) {                                              /* not all found yet: to every PC on the network */
-        struct sockaddr_in bc; memset(&bc, 0, sizeof bc); bc.sin_family = AF_INET; bc.sin_addr.s_addr = htonl(INADDR_BROADCAST); bc.sin_port = htons((uint16_t)U.port);
-        sendto(us, (const char *)b, n, 0, (struct sockaddr *)&bc, sizeof bc);
-    } else for (int i = 0; i < u_nlist; i++) sendto(us, (const char *)b, n, 0, (struct sockaddr *)&u_list[i], sizeof u_list[i]);
+    if (u_auto) lv_send_all(us, b, n, htons((uint16_t)U.port));  /* not all found yet: to every PC on the network (out of every connection) */
+    else for (int i = 0; i < u_nlist; i++) sendto(us, (const char *)b, n, 0, (struct sockaddr *)&u_list[i], sizeof u_list[i]);
 }
 static int udp_recv(uint8_t *b, int max)
 {
     if (us == BAD_SOCK) return 0;
     for (;;) {
-        struct sockaddr_in from; socklen_t fl = sizeof from;
-        const int r = (int)recvfrom(us, (char *)b, max, 0, (struct sockaddr *)&from, &fl);
+        struct sockaddr_in from; uint32_t ifx = 0;
+        const int r = lv_recv(us, b, max, &from, &ifx);
         if (r <= 0) return 0;
         if (r < 16 || memcmp(b, "GWL", 3)) continue;
         const int cab = b[4];
         if (cab >= MAXCAB || cab == U.cabinet) continue;       /* our own broadcast */
-        if (!u_loop) { u_peer[cab] = from; u_known[cab] = 1; }  /* where that cabinet is (it answers from its port) */
+        if (!u_loop) { u_peer[cab] = from; u_known[cab] = 1; u_via[cab] = ifx; }   /* where that cabinet is (it answers from its port), and
+                                                                                 * which connection: the replies go back out of it */
         return r;
     }
 }
@@ -615,13 +616,13 @@ static void *disc_answer(void *arg)
 {
     const sock_t s = (sock_t)(uintptr_t)arg;
     for (;;) {
-        char b[64]; struct sockaddr_in from; socklen_t fl = sizeof from;
-        const int r = (int)recvfrom(s, b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+        char b[64]; struct sockaddr_in from; uint32_t ifx = 0;
+        const int r = lv_recv(s, b, (int)sizeof b, &from, &ifx);
         if (r < 0) { SDL_Delay(50); continue; }
         if (r >= 5 && !memcmp(b, "GWLD?", 5)) {
             char host[40] = "", o[64]; gethostname(host, sizeof host - 1);
             const int n = snprintf(o, sizeof o, "GWLD!%s", host);
-            sendto(s, o, n, 0, (struct sockaddr *)&from, fl);
+            lv_send(s, o, n, &from, ifx);                       /* (back out of the connection the question came in on) */
         }
     }
     return 0;
@@ -634,6 +635,7 @@ static void disc_start_answering(void)
     sock_t s = socket(AF_INET, SOCK_DGRAM, 0); if (s == BAD_SOCK) return;
     struct sockaddr_in me; memset(&me, 0, sizeof me); me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(INADDR_ANY); me.sin_port = htons(DISC_PORT);
     if (bind(s, (struct sockaddr *)&me, sizeof me) != 0) { closesocket(s); return; }   /* (another copy on this PC answers already) */
+    lv_prepare(s);
 #ifdef _WIN32
     HANDLE h = CreateThread(NULL, 0, disc_answer, (LPVOID)(uintptr_t)s, 0, NULL); if (h) CloseHandle(h);
 #else
@@ -662,9 +664,7 @@ static void disc_find(void)
 #else
     fcntl(D.s, F_SETFL, fcntl(D.s, F_GETFL) | O_NONBLOCK); { int yes = 1; setsockopt(D.s, SOL_SOCKET, SO_BROADCAST, &yes, sizeof yes); }
 #endif
-    struct sockaddr_in to; memset(&to, 0, sizeof to); to.sin_family = AF_INET; to.sin_port = htons(DISC_PORT);
-    to.sin_addr.s_addr = htonl(INADDR_BROADCAST); sendto(D.s, "GWLD?", 5, 0, (struct sockaddr *)&to, sizeof to);
-    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);  sendto(D.s, "GWLD?", 5, 0, (struct sockaddr *)&to, sizeof to);   /* (this PC, whatever the network) */
+    lv_send_all(D.s, "GWLD?", 5, htons(DISC_PORT));           /* every connection, and this PC (whatever the network) */
     D.n = 0; D.done = 0; D.searching = 1; D.until = ms_now() + 1500;
 }
 static void disc_poll(void)
@@ -677,9 +677,10 @@ static void disc_poll(void)
         if (r <= 0) break;
         if (r < 5 || memcmp(b, "GWLD!", 5)) continue;
         b[r] = 0;
-        uint32_t ip = from.sin_addr.s_addr; int me = 0;
-        for (int k = 0; k < nm; k++) if (mine[k] == ip) me = 1;
-        if (ip == htonl(INADDR_LOOPBACK) && nm > 1) ip = mine[1];   /* this PC answering on the loopback: its network address */
+        uint32_t ip = from.sin_addr.s_addr; const int me = lv_is_mine(ip);
+        if (me) { int had = 0; for (int k = 0; k < D.n; k++) had |= D.f[k].me;
+                  if (had) continue;                           /* this PC answered already (by another of its addresses) */
+                  if (nm > 1) ip = mine[1]; }                  /* this PC: its network address, not the loopback */
         int dup = 0; for (int k = 0; k < D.n; k++) if (D.f[k].ip == ip) { dup = 1; D.f[k].me |= me; }
         if (!dup && D.n < MAXCAB) { D.f[D.n].ip = ip; D.f[D.n].me = me; snprintf(D.f[D.n].name, sizeof D.f[D.n].name, "%s", b + 5); D.n++; }
     }

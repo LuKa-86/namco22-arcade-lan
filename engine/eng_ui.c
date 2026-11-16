@@ -346,6 +346,8 @@ bool eng_ui_event(SDL_Event *e)
 }
 
 /* ---- drawing ---------------------------------------------------------------- */
+static int note_count;
+static void count_line(const char *fmt, ...) { (void)fmt; note_count++; }   /* a page's notes, counted (the dropdown's height) */
 static void note_line(const char *fmt, ...)      /* what a page's notes() calls: one line under the rows */
 {
     char b[160];
@@ -419,7 +421,9 @@ void eng_ui_draw(bool *quit)
     const int n0 = nrows(tab);
     const float rh = pg->row_h > 0 ? pg->row_h : 26;
     const float lw = pg->label_w > 0 ? pg->label_w : 120;
-    float dh = 48 + (n0 - (pg == &page_audio ? 1 : 0)) * (rh + 4) + (pg == &page_display ? 88 + 160 : pg->notes ? (pg->notes_h > 0 ? pg->notes_h : 44) : 0);
+    float nh = pg->notes ? (pg->notes_h > 0 ? pg->notes_h : 44) : 0;   /* the notes: their room, or more if there are more lines (they were cut) */
+    if (pg->notes && pg != &page_display && pg != &page_audio) { note_count = 0; pg->notes(count_line); if (12 + 21 * note_count > nh) nh = 12 + 21 * note_count; }
+    float dh = 48 + (n0 - (pg == &page_audio ? 1 : 0)) * (rh + 4) + (pg == &page_display ? 88 + 160 : nh);
     if (dh > wh - 34) dh = (float)wh - 34;
     float dw = (pg->drop_w > 0 ? pg->drop_w : 340) < ww - 8 ? (pg->drop_w > 0 ? pg->drop_w : 340) : (float)ww - 8;
     float dx = title_x[tab];

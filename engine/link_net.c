@@ -24,6 +24,7 @@ typedef int sock_t;
 #define sock_close close
 #endif
 #include "link_net.h"
+#include "lan_via.h"                      /* out of the connection each cabinet was heard on (a VPN on 169.254.x.x) */
 
 #define MAGIC      0x4E32324Cu              /* "N22L" */
 #define PROTO      2
@@ -89,7 +90,8 @@ static struct {
     bool     found[LNK_MAX_NODES];
     uint64_t found_heard[LNK_MAX_NODES];    /* the last packet from the learnt address: another address only takes over after 1 s of
                                              * silence (a broadcast arrives by several ways: the network, and 127.0.0.1 on the same PC) */
-    struct in_addr bcast[8]; int nbcast;    /* where "every PC" is: 255.255.255.255, each of this PC's networks (x.y.z.255), this PC */
+    uint32_t via[LNK_MAX_NODES];            /* the connection (Windows' interface index) each cabinet was last heard on: packets to it go
+                                             * back out of that one (0 = not known: wherever Windows chooses) -- engine/lan_via.h */
     struct in_addr mine[8]; int nmine;      /* this PC's addresses: a packet "from this cabinet" sent by another PC = two PCs, one number */
     uint32_t twin_from;                     /* that other PC's address (IPv4, host order; 0 = none seen) */
 } L;
@@ -139,12 +141,11 @@ bool lnk_open(const lnk_cfg *cfg)
     L.s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (L.s == SOCK_BAD) { fprintf(stderr, "[LINK] no socket\n"); return false; }
     { int one = 1; setsockopt(L.s, SOL_SOCKET, SO_BROADCAST, (const char *)&one, sizeof one); }   /* (automatic finding) */
-    { char a[8][16]; const int na = lnk_local_addresses(a, 8);
-      L.nbcast = L.nmine = 0; L.twin_from = 0;
-      L.bcast[L.nbcast++].s_addr = htonl(INADDR_BROADCAST);
-      for (int i = 0; i < na && L.nbcast < 7; i++) { struct in_addr ia; if (inet_pton(AF_INET, a[i], &ia) != 1) continue;
-                                                    L.mine[L.nmine++] = ia; ia.s_addr |= htonl(0xFFu); L.bcast[L.nbcast++] = ia; }
-      L.bcast[L.nbcast++].s_addr = htonl(INADDR_LOOPBACK); }
+    lv_prepare(L.s);                                                    /* (each packet says which connection it came in on) */
+    memset(L.via, 0, sizeof L.via);
+    { lv_if f[8]; const int nf = lv_ifs(f, 8);
+      L.nmine = 0; L.twin_from = 0;
+      for (int i = 0; i < nf; i++) L.mine[L.nmine++].s_addr = f[i].addr; }
     struct sockaddr_in me; memset(&me, 0, sizeof me);
     me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(INADDR_ANY); me.sin_port = htons((uint16_t)(L.cfg.base_port + L.cfg.id));
     if (bind(L.s, (struct sockaddr *)&me, sizeof me) != 0) {
@@ -258,11 +259,10 @@ int  lnk_peer_game_id(int n) { return n == L.cfg.id ? L.game_id : (n >= 0 && n <
 static void raw_send(int dst, const uint8_t *b, int len)
 {
     if (L.find[dst] && !L.found[dst]) {                                 /* not heard yet: to every PC (its port says which cabinet) */
-        struct sockaddr_in to = L.addr[dst];
-        for (int i = 0; i < L.nbcast; i++) { to.sin_addr = L.bcast[i]; sendto(L.s, (const char *)b, len, 0, (struct sockaddr *)&to, sizeof to); }
+        lv_send_all(L.s, b, len, L.addr[dst].sin_port);                /* (out of every connection, and this PC) */
         return;
     }
-    sendto(L.s, (const char *)b, len, 0, (struct sockaddr *)&L.addr[dst], sizeof L.addr[dst]);
+    lv_send(L.s, b, len, &L.addr[dst], L.via[dst]);
 }
 bool lnk_peer_found(int n) { return n >= 0 && n < L.cfg.nodes && (!L.find[n] || L.found[n]); }
 bool lnk_twin(char addr[16])
@@ -360,8 +360,8 @@ static void hellos(void)
 static int take(uint16_t *w, int max)
 {
     uint8_t b[HDR + 2 * LNK_MAX_WORDS + 16];
-    struct sockaddr_in from; socklen_t fl = sizeof from;
-    int len = (int)recvfrom(L.s, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+    struct sockaddr_in from; uint32_t ifx = 0;
+    int len = lv_recv(L.s, b, (int)sizeof b, &from, &ifx);
     if (len < 0) {
 #ifdef _WIN32
         if (WSAGetLastError() == WSAECONNRESET) return 0;
@@ -395,6 +395,7 @@ static int take(uint16_t *w, int max)
             L.addr[src].sin_addr = from.sin_addr; L.found[src] = true; L.found_heard[src] = p->heard;
         }
     }
+    if (from.sin_addr.s_addr == L.addr[src].sin_addr.s_addr) L.via[src] = ifx;   /* replies to it: out of the connection it came in on */
     if (!p->warned_from && !L.find[src] && (from.sin_addr.s_addr != L.addr[src].sin_addr.s_addr || from.sin_port != L.addr[src].sin_port)) {
         char got[16] = "?", want[16] = "?";
         inet_ntop(AF_INET, &from.sin_addr, got, sizeof got); inet_ntop(AF_INET, &L.addr[src].sin_addr, want, sizeof want);
@@ -526,6 +527,15 @@ void lnk_close(void)
 int lnk_local_addresses(char out[][16], int max)
 {
 #ifdef _WIN32
+    { lv_if f[8]; const int nf = lv_ifs(f, 8);
+      if (nf > 0) { int n = 0;
+                    for (int pass = 0; pass < 2; pass++)                /* a router's addresses first, then the no-router ones (169.254.x.x) */
+                        for (int i = 0; i < nf && n < max; i++) {
+                            const bool ll = (ntohl(f[i].addr) >> 16) == 0xA9FE;
+                            if (ll != (pass == 1)) continue;
+                            struct in_addr a; a.s_addr = f[i].addr; inet_ntop(AF_INET, &a, out[n++], 16);
+                        }
+                    return n; } }
     static bool wsa;
     if (!wsa) { WSADATA wd; wsa = WSAStartup(MAKEWORD(2, 2), &wd) == 0; }
 #endif
@@ -567,4 +577,19 @@ double lnk_frames_behind(void)
         if (d > worst) worst = d;
     }
     return worst;
+}
+
+/* the menu's "This PC" lines: each address with its connection's name ("192.168.1.66 (WiFi)") */
+int lnk_local_named(char out[][48], int max)
+{
+#ifdef _WIN32
+    lv_if f[8]; const int nf = lv_ifs(f, 8);
+    if (nf > 0) { int n = 0;
+                  for (int i = 0; i < nf && n < max; i++) { struct in_addr a; a.s_addr = f[i].addr; char ip[16]; inet_ntop(AF_INET, &a, ip, sizeof ip);
+                                                            snprintf(out[n++], 48, "%s (%.24s)", ip, f[i].name[0] ? f[i].name : "?"); }
+                  return n; }
+#endif
+    char a[8][16]; const int n = lnk_local_addresses(a, max < 8 ? max : 8);
+    for (int i = 0; i < n; i++) snprintf(out[i], 48, "%.15s", a[i]);
+    return n;
 }

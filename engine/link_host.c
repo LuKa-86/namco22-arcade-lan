@@ -4,6 +4,7 @@
 #include <string.h>
 #include "link_host.h"
 #include "link_net.h"
+#include "lan_via.h"
 #include "lan139.h"
 #include "eng_timing.h"
 #include "eng_party.h"
@@ -807,18 +808,20 @@ static int disc_responder(void *u)                                     /* the th
     dsock_t s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s == DSOCK_BAD) return 0;
     int one = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);   /* several copies on one PC */
+    lv_prepare(s);                                                      /* (the answer goes back out of the connection the question came in on) */
     struct sockaddr_in me; memset(&me, 0, sizeof me);
     me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(INADDR_ANY); me.sin_port = htons((uint16_t)disc_port);
     if (bind(s, (struct sockaddr *)&me, sizeof me) != 0) { fprintf(stderr, "[LINK] Find cabinets: cannot answer on UDP port %d\n", disc_port); dsock_close(s); return 0; }
     char host[64] = "PC"; gethostname(host, sizeof host);
     for (;;) {
-        uint8_t b[64]; struct sockaddr_in from; socklen_t fl = sizeof from;
-        const int len = (int)recvfrom(s, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl);
+        uint8_t b[64]; struct sockaddr_in from; uint32_t ifx = 0;
+        const int len = lv_recv(s, b, (int)sizeof b, &from, &ifx);
+        if (len < 0) { SDL_Delay(5); continue; }
         if (len < 12 || get_u32(b) != DISC_MAGIC || b[4] != 'Q' || get_u32(b + 8) != disc_tag()) continue;
         uint8_t r[48]; memcpy(r, b, 12); r[4] = 'R';                    /* the question's magic, tag and number back, and this PC's name */
         memset(r + 12, 0, 36); snprintf((char *)r + 12, 33, "%s", host);
         r[46] = (uint8_t)(on ? cfg.id + 1 : 0); r[47] = 1;                /* its cabinet number (0 = link off), and "the number is told" */
-        sendto(s, (const char *)r, sizeof r, 0, (struct sockaddr *)&from, fl);
+        lv_send(s, r, (int)sizeof r, &from, ifx);
     }
     return 0;
 }
@@ -851,17 +854,7 @@ static void disc_find(void)
     }
     D.n = 0; D.done = false; D.searching = true; D.until = SDL_GetTicks64() + 1500;
     uint8_t q[12]; put_u32(q, DISC_MAGIC); q[4] = 'Q'; q[5] = q[6] = q[7] = 0; put_u32(q + 8, disc_tag());
-    struct sockaddr_in to; memset(&to, 0, sizeof to); to.sin_family = AF_INET; to.sin_port = htons((uint16_t)disc_port);
-    to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-    for (int k = 0; k < 2; k++) sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
-    char a[8][16]; const int na = lnk_local_addresses(a, 8);            /* and each of this PC's networks (x.y.z.255) */
-    for (int i = 0; i < na; i++) {
-        struct in_addr ia; if (inet_pton(AF_INET, a[i], &ia) != 1) continue;
-        to.sin_addr.s_addr = ia.s_addr | htonl(0xFFu);
-        for (int k = 0; k < 2; k++) sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
-    }
-    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);                         /* (copies on this PC) */
-    sendto(D.s, (const char *)q, sizeof q, 0, (struct sockaddr *)&to, sizeof to);
+    for (int k = 0; k < 2; k++) lv_send_all(D.s, q, (int)sizeof q, htons((uint16_t)disc_port));   /* every connection, and this PC */
     fprintf(stderr, "[LINK] Find cabinets: asking the network (UDP port %d)\n", disc_port);
 }
 static int ip_cmp(const void *x, const void *y)
@@ -878,9 +871,10 @@ static void disc_poll(void)
         if (len < 0) break;
         if (len < 48 || get_u32(r) != DISC_MAGIC || r[4] != 'R' || get_u32(r + 8) != disc_tag()) continue;
         char ip[16]; if (!inet_ntop(AF_INET, &from.sin_addr, ip, sizeof ip)) continue;
-        char mine[8][16]; const int nm = lnk_local_addresses(mine, 8); bool me = !strncmp(ip, "127.", 4);
-        for (int i = 0; i < nm; i++) if (!strcmp(mine[i], ip)) me = true;
-        if (me && nm) snprintf(ip, sizeof ip, "%s", mine[0]);              /* this PC: its network address, not the loopback */
+        char mine[8][16]; const int nm = lnk_local_addresses(mine, 8); const bool me = lv_is_mine(from.sin_addr.s_addr);
+        if (me) { bool had = false; for (int i = 0; i < D.n; i++) had |= D.f[i].me;
+                  if (had) continue;                                    /* this PC answered already (by another of its addresses) */
+                  if (nm) snprintf(ip, sizeof ip, "%s", mine[0]); }     /* this PC: its network address, not the loopback */
         bool dup = false; for (int i = 0; i < D.n; i++) dup |= !strcmp(D.f[i].ip, ip);
         if (dup || D.n >= LNK_MAX_NODES) continue;
         snprintf(D.f[D.n].ip, sizeof D.f[0].ip, "%s", ip); snprintf(D.f[D.n].name, sizeof D.f[0].name, "%.32s", (const char *)r + 12);
@@ -913,15 +907,14 @@ static void disc_notes(void (*line)(const char *fmt, ...))
     if (D.searching) { line("Looking for PCs running this game..."); return; }
     if (!D.done) return;
     if (D.n == 0) { line("Found none. Is the game running on the others?"); return; }
-    char s[200] = ""; size_t k = 0;
-    for (int i = 0; i < D.n && k < sizeof s; i++) {
-        char c[24] = ""; if (D.f[i].cab > 0) snprintf(c, sizeof c, " cabinet %d", D.f[i].cab); else if (!D.f[i].cab) snprintf(c, sizeof c, " link off");
-        k += (size_t)snprintf(s + k, sizeof s - k, "%s%s %s%s%s", i ? ", " : "", D.f[i].ip, D.f[i].name, c, D.f[i].me ? " (this PC)" : "");
+    line("Found %d:", D.n);
+    for (int i = 0; i < D.n; i++) {
+        char c[24] = ""; if (D.f[i].cab > 0) snprintf(c, sizeof c, ", cabinet %d", D.f[i].cab); else if (!D.f[i].cab) snprintf(c, sizeof c, ", link off");
+        line("   %s  %s%s%s", D.f[i].ip, D.f[i].name, c, D.f[i].me ? " (this PC)" : "");
     }
-    line("Found %d: %s", D.n, s);
     for (int i = 0; i < D.n; i++) for (int j = i + 1; j < D.n; j++)
         if (D.f[i].cab > 0 && D.f[i].cab == D.f[j].cab) { line("WARNING: %s and %s are both cabinet %d.", D.f[i].ip, D.f[j].ip, D.f[i].cab); i = j = D.n; }
-    if (D.n >= 2 && !F.find_auto) line("\"Use the %d found\" on every PC gives them all the same list.", D.n);
+    if (D.n >= 2 && !F.find_auto) { line("\"Use the %d found\" on every PC gives them all", D.n); line("the same list."); }
 }
 
 /* THE NETWORK PAGE, the same rows in the same order in every game (Gunmen Wars' and Time Crisis II's pages follow it):
@@ -1050,19 +1043,18 @@ bool link_page_type(SDL_Scancode sc)
 }
 void link_page_notes(void (*line)(const char *fmt, ...))
 {
-    char a[4][16]; int n = lnk_local_addresses(a, 4);
-    char s[80] = ""; int k = 0;
-    for (int i = 0; i < n; i++) k += snprintf(s + k, sizeof s - (size_t)k, "%s%s", i ? ", " : "", a[i]);
-    line("This PC: %s", n ? s : "no network address found");
+    char a[4][48]; const int n = lnk_local_named(a, 4);
+    if (!n) line("This PC: no network address found");
+    for (int i = 0; i < n; i++) line("%s %s", i ? "        " : "This PC:", a[i]);
     if (from_cmdline) {
         line("Set by the test launcher (Cabinet %d of %d).", cfg.id + 1, cfg.nodes);
         line("For a real cabinet, use 'play as a cabinet'.");
     } else {
         if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
-        if (F.find_auto) line("Automatic: the cabinets find each other. Give every PC its own number. Used at next start.");
+        if (F.find_auto) { line("Automatic: the cabinets find each other."); line("Give every PC its own number. Used at next start."); }
         else line("Same list on every cabinet. Used at next start.");
         if (!F.find_auto && F.cab_auto) line("Auto: the number is this PC's place in the list.");
-        { char tw[16]; if (on && lnk_twin(tw)) line("WARNING: the PC at %s is cabinet %d too - give each PC its own number.", tw, cfg.id + 1); }
+        { char tw[16]; if (on && lnk_twin(tw)) { line("WARNING: the PC at %s is cabinet %d too:", tw, cfg.id + 1); line("give each PC its own number."); } }
         if (method_at_start != modern()) line("Link method: %s at next start.", modern() ? "Modern multiplayer" : "Arcade LAN");
         else if (modern()) line("Modern multiplayer: lobby play on the Online page.");
         else line("Arcade LAN: real cabinets, linked at power-on.");
