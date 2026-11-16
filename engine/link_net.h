@@ -25,7 +25,8 @@
 
 typedef struct {
     int      id, nodes, base_port;
-    const char *peers;                      /* "ip0,ip1,..." (index = cabinet number); NULL = all 127.0.0.1 */
+    const char *peers;                      /* "ip0,ip1,..." (index = cabinet number); NULL = all 127.0.0.1; "*" = found on the network
+                                             * (automatic finding: sent to every PC until that cabinet is heard, then to its address) */
     const char *tag;                        /* the game ("TW"): cabinets of another game are ignored */
     int      gather_ms;                     /* how long to wait at start-up for missing cabinets */
     int      delay_ms, jitter_ms, loss_pct; /* test only: a worse network than the real one */
@@ -59,6 +60,8 @@ int      lnk_next_hop(void);                          /* where a frame goes now,
 void     lnk_set_game_id(int id);                     /* the game's own cabinet ID (its test menu's), told to the others in the hellos */
 int      lnk_peer_game_id(int n);                     /* cabinet n's game ID, -1 = not known */
 const lnk_stats *lnk_get_stats(void);
+bool     lnk_peer_found(int n);                       /* cabinet n's address is known (typed, or found on the network) */
+bool     lnk_twin(char addr[16]);                     /* another PC (addr) is set up with this cabinet's number too */
 int      lnk_local_addresses(char out[][16], int max);   /* this PC's IPv4 addresses (not 127.x), for the menu: how many */
 /* the diagnostics: who this cabinet hears (within the last second) and from which address; who hears it (their hellos say) */
 bool     lnk_peer_info(int n, char addr[16], int *ago_ms, uint32_t *pkts);   /* false = cabinet n never heard since this start */

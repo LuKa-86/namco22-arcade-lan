@@ -83,26 +83,32 @@ The ways to play:
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
                                          (Gunmen Wars and Time Crisis II: 2 players, keyboard and
                                          mouse + a controller, or 2 controllers)
-   (Gunmen Wars' link is set up in the game's own Esc menu, Link page)
+   (Gunmen Wars' link is set up in the game's Esc menu, Network page, as the other games)
    Time Crisis II                        Left side or Right side, Both sides on one PC (2 monitors
                                          and 2 guns), Test: both sides, or Party
 
 
 3. LINKING THE CABINETS (once per set)
 -------------------------------------
-1. Copy this whole folder to every cabinet PC, connect the PCs to one network switch with
-   cables, and give each PC a fixed address (in Windows, or reserved in the router).
-2. On EVERY PC start the game with "Full screen".
-3. On each PC press Esc, open the Network page and choose "Find cabinets". After a moment it
-   lists the PCs running the game ("Found 3: 192.168.1.11 CABINET-1 (this PC), ..."). Choose
-   "Use the N found": the address list is filled in, the same on every PC, with "This cabinet"
-   on Auto (each PC's number is its place in the list).
-   (Time Crisis II finds the other side by itself: just start "Left cabinet" on one PC and
-   "Right cabinet" on the other.)
-4. Close the game on every PC and start them all again. The cabinets look for each other when
+1. Copy this whole folder to every cabinet PC and connect the PCs to one network switch with
+   cables. No addresses to type: the cabinets find each other on the network by themselves.
+2. On EVERY PC start the game with "Full screen", press Esc and open the Network page. Every
+   LAN game has the same page, with the same rows in the same order:
+     Link play         On
+     This cabinet      1 on the first PC, 2 on the next, and so on: every PC its own number
+     Cabinets in set   how many are linked (the same on every PC)
+     Find others       Automatic (the default). "Address list" is there for a network where
+                       finding them does not work: then type each PC's address
+     Start-up wait     how long a cabinet waits at power-on for the others (60 s)
+     Link lights       where the small link lights go (bottom left)
+     If link is lost   Restart (start again with the others) or Carry on
+   then Restart all cabinets, and Find cabinets: it lists the PCs running the game and the
+   number each one has, and warns when two PCs have the same number.
+   (Time Crisis II: This cabinet 1 = left, red player; 2 = right, blue player.)
+3. Close the game on every PC and start them all again. The cabinets look for each other when
    they start, like the real boards, wait up to a minute for any that are missing, then begin
    together.
-5. The first time, Windows Firewall asks whether the game may use the network: tick "Private
+4. The first time, Windows Firewall asks whether the game may use the network: tick "Private
    networks" and click Allow. If it does not ask and the cabinets cannot see each other, that
    permission is the first thing to check.
 
@@ -111,7 +117,7 @@ How the link behaves (the same rule as the real boards):
    in: it plays on its own until the whole set is started again. "Restart all cabinets" on the
    Network page restarts every cabinet at once, so nobody has to walk round the PCs.
  - If a cabinet is left alone, or its game loses the link for 10 seconds, it shows
-   "LINK LOST - RESTARTING IN 5" and restarts itself (Network page > If the link is lost).
+   "LINK LOST - RESTARTING IN 5" and restarts itself (Network page > If link is lost).
  - While linked, the Esc menu does not pause the game: a cabinet that stops is dropped.
  - Each game keeps its own cabinet ID in its test menu (Tokyo Wars: GAME OPTIONS > ID NO.;
    Rave Racer: GAME OPTIONS > CPU NUMBER; Cyber Commando: GAME OPTIONS > CPU NO.;
@@ -175,9 +181,10 @@ cabinet; grey = not in this set.
 7. GUNMEN WARS
 --------------
  - Ways to play: Full screen, Window, Test: 2 cabinets (Settings > Test modes), and Party: 2 players
-   (split screen: keyboard and mouse + a controller, or 2 controllers). Linked cabinets: set them up on the game's own Esc menu > Link page
-   ("Find cabinets", then "Use found" on every PC); 2 or 3 cabinets, 4 is experimental.
- - Link page > Network: LAN (cables, the default), Wi-Fi, Slow network or Internet. A slower
+   (split screen: keyboard and mouse + a controller, or 2 controllers). Linked cabinets: Esc menu >
+   Network page, as every other game (Link play On, each PC its own cabinet number, Find others
+   Automatic); 2 or 3 cabinets, 4 is experimental.
+ - Network page > Network delay: LAN (cables, the default), Wi-Fi, Slow network or Internet. A slower
    choice adds a little delay but rides out a less steady network; linked PCs all use the
    slowest one set on any of them.
  - THE NAMCAM: the photo taken before team select comes from the PC's webcam, or from a picture

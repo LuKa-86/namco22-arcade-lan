@@ -547,3 +547,83 @@ void s23_c422_report(void)
             state == ST_LINKED ? "LINKED" : "alone", peer_lost ? " (then broken)" : "", n_bursts_out, n_bytes_out, n_bursts_in, n_bytes_in, n_drops,
             n_waits, (unsigned long long)wait_ms_total, (unsigned long long)wait_ms_max);
 }
+
+/* ================= THE NETWORK PAGE (Esc menu; Time Crisis II): tc2_link.cfg, with the same rows, names and order as every other LAN
+ * game's Network page (engine/link_host.c): Link play, This cabinet, Cabinets in set, Find others, Start-up wait, Link lights, If link is
+ * lost. The changes are used at the next start. (Two cabinets always; the other side is always found by itself unless an address is typed
+ * in the file; a lost link always plays on, the partner's player taken by the computer.) ================= */
+#include "eng/eng_ui.h"
+#define PG_FILE "tc2_link.cfg"
+static char pg_v[8][64];                                          /* link, side, address, wait, lights: read when the page is drawn */
+static const char *const pg_key[5] = { "link", "side", "address", "wait", "lights" };
+static uint32_t pg_read_at;
+static void pg_read(void)
+{
+    if (pg_read_at && SDL_GetTicks() - pg_read_at < 500) return;
+    pg_read_at = SDL_GetTicks();
+    snprintf(pg_v[0], 64, "off"); snprintf(pg_v[1], 64, "left"); snprintf(pg_v[2], 64, "auto"); snprintf(pg_v[3], 64, "60"); snprintf(pg_v[4], 64, "bottom-left");
+    FILE *f = fopen(PG_FILE, "r"); if (!f) return;
+    char line[256];
+    while (fgets(line, sizeof line, f)) { char k[64], v[192];
+        if (line[0] == '#' || sscanf(line, " %63[^= ] = %191s", k, v) != 2) continue;
+        for (int i = 0; i < 5; i++) if (!strcmp(k, pg_key[i])) snprintf(pg_v[i], 64, "%.63s", v); }
+    fclose(f);
+}
+static void pg_set(int i, const char *v)                          /* that one line changed, the rest of the file kept as it is */
+{
+    char *buf = NULL; size_t n = 0, cap = 0; int done = 0;
+    FILE *f = fopen(PG_FILE, "r");
+    if (f) { char line[256];
+        while (fgets(line, sizeof line, f)) { char k[64]; char out[300];
+            if (line[0] != '#' && sscanf(line, " %63[^= ]", k) == 1 && !strcmp(k, pg_key[i])) { snprintf(out, sizeof out, "%s=%s\n", pg_key[i], v); done = 1; }
+            else snprintf(out, sizeof out, "%s", line);
+            const size_t l = strlen(out); if (n + l + 1 > cap) { cap = (n + l + 1) * 2; buf = realloc(buf, cap); if (!buf) { fclose(f); return; } }
+            memcpy(buf + n, out, l); n += l; }
+        fclose(f); }
+    f = fopen(PG_FILE, "w"); if (!f) { free(buf); return; }
+    if (n) fwrite(buf, 1, n, f);
+    if (!done) fprintf(f, "%s=%s\n", pg_key[i], v);
+    fclose(f); free(buf);
+    pg_read_at = 0;
+}
+static const char *const pg_light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
+static const char *const pg_light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
+static int pg_light(void) { for (int i = 0; i < 7; i++) if (!strcmp(pg_v[4], pg_light_key[i])) return i; return !strcmp(pg_v[4], "on") ? 1 : 0; }
+static int pg_on(void) { return !strcmp(pg_v[0], "on") || !strcmp(pg_v[0], "1") || !strcmp(pg_v[0], "yes"); }
+static int pg_right(void) { return pg_v[1][0] == 'r' || pg_v[1][0] == 'R'; }
+static int pg_rows(void) { return 7; }
+static bool pg_has_value(int r) { return r != 2 && r != 6; }
+static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
+{
+    pg_read(); *v = 0;
+    switch (r) {
+    case 0: snprintf(l, ln, "Link play"); snprintf(v, vn, "%s", pg_on() ? "On" : "Off"); break;
+    case 1: snprintf(l, ln, "This cabinet"); snprintf(v, vn, "%s", pg_right() ? "2 (right, blue player)" : "1 (left, red player)"); break;
+    case 2: snprintf(l, ln, "Cabinets in set"); snprintf(v, vn, "2 (this game)"); break;
+    case 3: snprintf(l, ln, "Find others"); if (!strcmp(pg_v[2], "auto")) snprintf(v, vn, "Automatic"); else snprintf(v, vn, "Address: %.40s", pg_v[2]); break;
+    case 4: snprintf(l, ln, "Start-up wait"); snprintf(v, vn, "%d s", atoi(pg_v[3])); break;
+    case 5: snprintf(l, ln, "Link lights"); snprintf(v, vn, "%s", pg_light_name[pg_light()]); break;
+    default: snprintf(l, ln, "If link is lost"); snprintf(v, vn, "Carry on (this game always does)"); break;
+    }
+}
+static void pg_change(int r, int dir)
+{
+    pg_read(); const int d = dir < 0 ? -1 : 1; char b[16];
+    switch (r) {
+    case 0: pg_set(0, pg_on() ? "off" : "on"); break;
+    case 1: pg_set(1, pg_right() ? "left" : "right"); break;
+    case 3: pg_set(2, "auto"); break;                              /* (a typed address: back to Automatic) */
+    case 4: { int w = atoi(pg_v[3]) + d * 10; if (w < 10) w = 10; if (w > 300) w = 300; snprintf(b, sizeof b, "%d", w); pg_set(3, b); break; }
+    case 5: pg_set(4, pg_light_key[(pg_light() + (d < 0 ? 6 : 1)) % 7]); break;
+    }
+}
+static void pg_notes(void (*line)(const char *, ...))
+{
+    if (state == ST_LINKED) line("Now: LINKED with the %s cabinet%s.", side_right ? "left (red)" : "right (blue)", peer_lost ? " (then lost: playing on)" : "");
+    else if (state == ST_ALONE) line("Now: not linked - %s", why_alone[0] ? why_alone : "the other cabinet did not answer");
+    else line("Now: link off - this cabinet plays alone.");
+    line("Automatic: the two cabinets find each other on the network.");
+    line("One PC is cabinet 1 (left), the other cabinet 2 (right).");
+    line("Changes take effect at the next start.");
+}
+const eng_ui_page s23_c422_page = { "Network", 560, 140, 26, pg_rows, pg_has_value, NULL, pg_text, pg_change, pg_notes };

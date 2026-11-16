@@ -73,16 +73,31 @@ static const char *tab_name[T_N] = { "File", "Display", "Audio", "Controls", "Re
 static bool tab_shown(int t)
 {
     if (t == T_ONLINE) return !link_host_arcade_mode();    /* arcade mode (link.cfg): the Arcade LAN only, no online play in the menu */
-    return t != T_DEBUG || (g_rr_game->debug && g_rr_game->ndebug > 0);
+    return t != T_DEBUG || (g_rr_game->debug && g_rr_game->ndebug > 0 && !link_host_arcade_mode());   /* (developer screens: arcade mode off only) */
 }
 static int tab = T_DISPLAY;
 static int row = 0;                    /* -1 = the tab strip */
 static bool kb_moved;                  /* keep the selected row in view after a key */
 
 /* ---- the rows ------------------------------------------------------------- */
-enum { D_WIDE, D_DRAW, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_N };
+enum { D_WIDE, D_DRAW, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_TIMING, D_N };
 enum { C_FREEPLAY, C_FFB, C_FFB_DIR, C_FFB_KEEP, C_FFB_LOG, C_STICK, C_CAR, C_FIXED = C_CAR };   /* the Controls page's rows before the bindings */
-#define C_N (C_FIXED + (g_rr_game->ncars > 0))                 /* + Car, for a game that lists its cars (rr_game_t.cars) */
+#define C_RAW (C_FIXED + (g_rr_game->ncars > 0))               /* + Car, for a game that lists its cars (rr_game_t.cars) */
+/* the rows this game shows: no FFB rows and no Stick steering for twin sticks (Cyber Commando: no wheel); "FFB log" never (a developer's) */
+static int c_vis[C_CAR + 1], c_nvis = -1;
+static int c_count(void)
+{
+    if (c_nvis >= 0) return c_nvis;
+    c_nvis = 0;
+    for (int r = 0; r < C_RAW; r++) {
+        if (r == C_FFB_LOG) continue;
+        if (g_rr_game->twin_stick && (r == C_FFB || r == C_FFB_DIR || r == C_FFB_KEEP || r == C_STICK)) continue;
+        c_vis[c_nvis++] = r;
+    }
+    return c_nvis;
+}
+#define C_N c_count()
+static int c_raw(int r) { const int n = c_count(); return r < n ? c_vis[r] : r - n + C_RAW; }   /* a shown row -> its C_ number (the bindings after) */
 enum { O_SERVER, O_NAME, O_HOST, O_FIND, O_CONNECT, O_STATUS, O_LOBBY0 };   /* then, not connected: one row per LAN game found; connected: the players, Ready, Start */
 static int online_rows(void) { return O_LOBBY0 + (rr_net_connected() ? rr_net_roster_count() + 2 : rr_net_found_count()); }
 static int online_self_ready(void)
@@ -156,6 +171,7 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
                         snprintf(value, vn, "%s", g_cfg_wide ? (g_cfg_wide_169 ? "16:9" : "Fill the window") : asp[g_cfg_aspect]); break;
         case D_SCALING: snprintf(label, ln, "Scaling"); snprintf(value, vn, "%s", sc[g_cfg_scaling]); break;
         case D_FPS:     snprintf(label, ln, "Frame rate"); snprintf(value, vn, "%s", eng_vsync_rate_name(g_cfg_fps)); break;
+        case D_TIMING:  snprintf(label, ln, "Frame timing"); link_timing_text(value, vn); break;   /* (link.cfg timing=) */
         case D_HUD:     { extern int g_eng_hud_edges_on; snprintf(label, ln, "Widescreen HUD"); snprintf(value, vn, "%s", g_eng_hud_edges_on ? "at the screen edges" : "original (4:3 centre)"); break; }
         }
         break;
@@ -164,6 +180,7 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         else { snprintf(label, ln, "Volume"); snprintf(value, vn, "%d%%", g_cfg_volume); }
         break;
     case T_CONTROLS:
+        r = c_raw(r);                                               /* (from here on: the C_ numbers, the bindings after C_RAW) */
         if (r == C_FREEPLAY) { snprintf(label, ln, "Free play"); snprintf(value, vn, "%s", rr_hw_freeplay() ? "ON" : "OFF (coins)"); }
         else if (r == C_FFB) {
             snprintf(label, ln, "Force feedback");
@@ -178,13 +195,13 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
             const int c = g_rr_game->car_get ? g_rr_game->car_get() : 0;
             snprintf(label, ln, "Car"); snprintf(value, vn, "%d %s", c + 1, c >= 0 && c < g_rr_game->ncars ? g_rr_game->cars[c] : "?");
         }
-        else if (r >= C_N + n_acts()) {
-            const int c = r - C_N - n_acts();
+        else if (r >= C_RAW + n_acts()) {
+            const int c = r - C_RAW - n_acts();
             if (c == ts_count()) { snprintf(label, ln, "Stick deadzone"); snprintf(value, vn, "%d%%", ts_deadzone()); }
             else { snprintf(label, ln, "%s", ts_label(c)); ts_value_text(c, value, vn); }
         }
         else {
-            const int a = act_of(r - C_N);
+            const int a = act_of(r - C_RAW);
             if (g_rr_game->act_label && g_rr_game->act_label[a]) snprintf(label, ln, "%s", g_rr_game->act_label[a]);   /* the game's own names */
             else {
             snprintf(label, ln, "%s", rr_input_action_name(a));
@@ -294,6 +311,7 @@ static void row_change(int t, int r, int dir)
         case D_SCALING: rr_host_set_scaling(cyc(g_cfg_scaling, d, 3)); break;
         case D_HUD:     { extern int g_eng_hud_edges_on; rr_host_set_hud_edges(!g_eng_hud_edges_on); break; }
         case D_FPS:     { extern void rr_host_set_fps(int); rr_host_set_fps(eng_vsync_rate_step(g_cfg_fps, d)); break; }
+        case D_TIMING:  link_timing_change(); break;
         }
         break;
     case T_AUDIO: {
@@ -304,6 +322,7 @@ static void row_change(int t, int r, int dir)
         rr_host_set_volume(v);
         break; }
     case T_CONTROLS:
+        r = c_raw(r);
         if (r == C_FREEPLAY) rr_host_set_freeplay(!rr_hw_freeplay());
         else if (r == C_FFB) rr_host_set_ffb_strength(dir ? g_cfg_ffb_strength + 10 * dir : (g_cfg_ffb_strength + 10) % 110);   /* Enter cycles */
         else if (r == C_FFB_DIR) rr_host_set_ffb_invert(!g_cfg_ffb_invert);
@@ -314,12 +333,12 @@ static void row_change(int t, int r, int dir)
             const int n = g_rr_game->ncars, c = g_rr_game->car_get ? g_rr_game->car_get() : 0;
             rr_host_set_car(((dir ? c + dir : c + 1) % n + n) % n);                                       /* left/right step, Enter cycles */
         }
-        else if (r >= C_N + n_acts()) {
-            const int c = r - C_N - n_acts();
+        else if (r >= C_RAW + n_acts()) {
+            const int c = r - C_RAW - n_acts();
             if (c == ts_count()) { int v = ts_deadzone() + (dir ? dir : 1) * 5; if (!dir && v > 50) v = 0; ts_set_deadzone(v); }   /* Enter cycles */
             else ts_change(c, dir);                  /* Enter binds (rr_ui_event hands it the next input), Left clears, Right defaults */
         }
-        else if (dir == 0) { rebinding = act_of(r - C_N); rr_input_capture_begin(rebinding); }
+        else if (dir == 0) { rebinding = act_of(r - C_RAW); rr_input_capture_begin(rebinding); }
         break;
     case T_RECORD: rr_host_toggle_record(); break;
     case T_NETWORK: link_page_change(r, dir); break;

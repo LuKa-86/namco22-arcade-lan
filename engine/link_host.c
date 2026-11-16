@@ -611,8 +611,10 @@ void link_host_frame(uint32_t frame, bool headless)
 #define CFG_FILE "link.cfg"
 /* cabinet_auto: "This cabinet" = Auto, the number is where this PC's own address is in the list (last_auto: the one found last time;
  * when it changes the game's own ID follows). lights: 0 off, else where (LINK_LIGHTS_*). */
-static struct { bool on, set_id, carry_on, cab_auto, classic, author, arcade, record; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
-    F = { false, false, false, true, false, false, true, true, 1, 2, 60, 22220, 0, 0, { "" } };
+/* find_auto: "Find others" = Automatic (the standard): no address list, every PC only needs its own number -- the link finds the others
+ * on the network (engine/link_net.c, "*" addresses). Off = the typed / found address list below. */
+static struct { bool on, set_id, carry_on, cab_auto, classic, author, arcade, record, find_auto; int cabinet, cabinets, wait, port, lights, last_auto; char addr[LNK_MAX_NODES][16]; }
+    F = { false, false, false, false, false, false, true, true, true, 1, 2, 60, 22220, LINK_LIGHTS_BOTTOM_LEFT, 0, { "" } };
 static const char *const light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
 static const char *const light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
 static char peers_buf[LNK_MAX_NODES * 17];
@@ -624,7 +626,7 @@ static void cfg_load(void)
 {
     FILE *f = fopen(CFG_FILE, "r");
     if (!f) return;
-    char line[128];
+    char line[128]; bool saw_find = false, any_addr = false;
     while (fgets(line, sizeof line, f)) {
         char k[32], v[64]; int n;
         if (sscanf(line, " %31[^= ] = %63s", k, v) != 2) continue;
@@ -641,9 +643,12 @@ static void cfg_load(void)
         else if (!strcmp(k, "arcade_mode")) F.arcade = strcmp(v, "off") != 0;
         else if (!strcmp(k, "record")) F.record = strcmp(v, "off") != 0;
         else if (!strcmp(k, "method")) F.author = !strcmp(v, "modern") || !strcmp(v, "author");   /* ("author" / "ours": the first names) */
-        else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v);
+        else if (!strcmp(k, "find")) { saw_find = true; F.find_auto = strcmp(v, "list") != 0; }
+        else if (sscanf(k, "address%d", &n) == 1 && n >= 1 && n <= LNK_MAX_NODES) { snprintf(F.addr[n - 1], sizeof F.addr[0], "%.15s", v); any_addr = true; }
     }
     fclose(f);
+    if (!saw_find) F.find_auto = !any_addr;                            /* (a file from before "Find others": its list is kept) */
+    if (F.find_auto && F.cab_auto) { F.cab_auto = false; if (F.last_auto) F.cabinet = F.last_auto; }   /* Auto numbering needs a list */
     if (F.cabinets < 2) F.cabinets = 2;
     if (F.cabinets > LNK_MAX_NODES) F.cabinets = LNK_MAX_NODES;
     if (F.cabinet < 1) F.cabinet = 1;
@@ -653,10 +658,6 @@ static void cfg_load(void)
 
 static bool method_at_start;                                           /* the method this run started with */
 static bool modern(void) { return F.author && !F.arcade; }             /* Modern multiplayer: only with arcade mode off */
-static int  page_nodes(void);
-/* a row after the wait, as its fixed number (0 lights, 1 if lost, 2 timing, 3 method, 4 restart all, 5 find, 6 use the found); in
- * arcade mode the method row is not there */
-static int xrow(int row) { int r = row - (3 + page_nodes() + 1); if (F.arcade && r >= 3) r++; return r; }
 bool link_host_author_method(int argc, char **argv)
 {
     for (int i = 1; i < argc; i++) if (!strncmp(argv[i], "--link", 6)) return false;   /* a one-PC test launcher: ours */
@@ -674,6 +675,8 @@ static void cfg_save(void)
     if (F.cab_auto) fprintf(f, "link=%s\ncabinet=auto\n", F.on ? "on" : "off");
     else fprintf(f, "link=%s\ncabinet=%d\n", F.on ? "on" : "off", F.cabinet);
     fprintf(f, "cabinets=%d\nwait=%d\nport=%d\n", F.cabinets, F.wait, F.port);
+    fprintf(f, "# find the others: auto = on the network by themselves (every PC its own cabinet number); list = the addresses below\nfind=%s\n",
+            F.find_auto ? "auto" : "list");
     if (F.last_auto) fprintf(f, "last_auto=%d\n", F.last_auto);
     for (int n = 0; n < LNK_MAX_NODES; n++) if (F.addr[n][0]) fprintf(f, "address%d=%s\n", n + 1, F.addr[n]);
     if (F.set_id) fprintf(f, "# the game's own ID (test menu) is set to this cabinet's number when the game next starts\nset_game_id=1\n");
@@ -746,6 +749,13 @@ int link_host_prescan(int argc, char **argv)
     }
     if (!F.on || modern()) return 0;
     int cab = F.cabinet;
+    if (F.find_auto) {                                                 /* AUTOMATIC: every other cabinet found on the network */
+        cfg.id = cab - 1; cfg.nodes = F.cabinets; cfg.gather_ms = F.wait * 1000; cfg.base_port = F.port;
+        int k = 0;
+        for (int n = 0; n < F.cabinets; n++) k += snprintf(peers_buf + k, sizeof peers_buf - (size_t)k, "%s%s", n ? "," : "", "*");
+        cfg.peers = peers_buf;
+        return cab;
+    }
     if (F.cab_auto) {                                                  /* where this PC's own address is in the list */
         cab = own_cabinet(true);
         if (cab <= 0) { auto_fail = true; return 0; }
@@ -785,7 +795,7 @@ typedef int dsock_t;
 #endif
 #define DISC_MAGIC 0x4E323244u                                          /* "N22D" */
 static int disc_port;
-static struct { bool searching; uint64_t until; dsock_t s; int n; struct { char ip[16], name[33]; bool me; } f[LNK_MAX_NODES]; bool done; } D = { .s = DSOCK_BAD };
+static struct { bool searching; uint64_t until; dsock_t s; int n; struct { char ip[16], name[33]; bool me; int cab; } f[LNK_MAX_NODES]; bool done; } D = { .s = DSOCK_BAD };
 static uint64_t restart_armed_at;
 static bool restart_armed(void) { return restart_armed_at && SDL_GetTicks64() - restart_armed_at < 5000; }
 static uint32_t disc_game;                                             /* the game (its name's fingerprint): only copies of the same game answer */
@@ -807,6 +817,7 @@ static int disc_responder(void *u)                                     /* the th
         if (len < 12 || get_u32(b) != DISC_MAGIC || b[4] != 'Q' || get_u32(b + 8) != disc_tag()) continue;
         uint8_t r[48]; memcpy(r, b, 12); r[4] = 'R';                    /* the question's magic, tag and number back, and this PC's name */
         memset(r + 12, 0, 36); snprintf((char *)r + 12, 33, "%s", host);
+        r[46] = (uint8_t)(on ? cfg.id + 1 : 0); r[47] = 1;                /* its cabinet number (0 = link off), and "the number is told" */
         sendto(s, (const char *)r, sizeof r, 0, (struct sockaddr *)&from, fl);
     }
     return 0;
@@ -873,7 +884,7 @@ static void disc_poll(void)
         bool dup = false; for (int i = 0; i < D.n; i++) dup |= !strcmp(D.f[i].ip, ip);
         if (dup || D.n >= LNK_MAX_NODES) continue;
         snprintf(D.f[D.n].ip, sizeof D.f[0].ip, "%s", ip); snprintf(D.f[D.n].name, sizeof D.f[0].name, "%.32s", (const char *)r + 12);
-        D.f[D.n].me = me; D.n++;
+        D.f[D.n].me = me; D.f[D.n].cab = r[47] ? r[46] : -1; D.n++;
     }
     if (SDL_GetTicks64() >= D.until) {
         D.searching = false; D.done = true;
@@ -891,7 +902,7 @@ static void disc_use(void)                                              /* the f
     if (!disc_found_usable()) return;
     F.cabinets = D.n;
     for (int i = 0; i < LNK_MAX_NODES; i++) snprintf(F.addr[i], sizeof F.addr[0], "%s", i < D.n ? D.f[i].ip : "");
-    F.cab_auto = true; F.set_id = true; F.on = true;
+    F.cab_auto = true; F.set_id = true; F.on = true; F.find_auto = false;
     cfg_save();
     fprintf(stderr, "[LINK] Find cabinets: the %d found are now the address list (This cabinet: Auto)\n", D.n);
     D.done = false;
@@ -903,83 +914,82 @@ static void disc_notes(void (*line)(const char *fmt, ...))
     if (!D.done) return;
     if (D.n == 0) { line("Found none. Is the game running on the others?"); return; }
     char s[200] = ""; size_t k = 0;
-    for (int i = 0; i < D.n && k < sizeof s; i++) k += (size_t)snprintf(s + k, sizeof s - k, "%s%s %s%s", i ? ", " : "", D.f[i].ip, D.f[i].name, D.f[i].me ? " (this PC)" : "");
+    for (int i = 0; i < D.n && k < sizeof s; i++) {
+        char c[24] = ""; if (D.f[i].cab > 0) snprintf(c, sizeof c, " cabinet %d", D.f[i].cab); else if (!D.f[i].cab) snprintf(c, sizeof c, " link off");
+        k += (size_t)snprintf(s + k, sizeof s - k, "%s%s %s%s%s", i ? ", " : "", D.f[i].ip, D.f[i].name, c, D.f[i].me ? " (this PC)" : "");
+    }
     line("Found %d: %s", D.n, s);
-    if (D.n >= 2) line("\"Use the %d found\" on every PC gives them all the same list.", D.n);
+    for (int i = 0; i < D.n; i++) for (int j = i + 1; j < D.n; j++)
+        if (D.f[i].cab > 0 && D.f[i].cab == D.f[j].cab) { line("WARNING: %s and %s are both cabinet %d.", D.f[i].ip, D.f[j].ip, D.f[i].cab); i = j = D.n; }
+    if (D.n >= 2 && !F.find_auto) line("\"Use the %d found\" on every PC gives them all the same list.", D.n);
 }
 
-/* the page: 0 Link play, 1 This cabinet, 2 Cabinets in the set, 3.. the addresses, then the wait. A copy started by a one-PC test
- * launcher (--link ...) shows what the launcher gave it, read-only: its number comes from the launcher every time it starts. */
-static int page_nodes(void) { return from_cmdline ? cfg.nodes : F.cabinets; }
-int  link_page_rows(void) { return 3 + page_nodes() + (F.arcade ? 6 : 7) + (disc_found_usable() ? 1 : 0); }
-bool link_page_has_value(int row) { const int r = xrow(row); return row < 3 || (row >= 3 + page_nodes() && r < 4); }
-static bool extra_text(int row, char *label, size_t ln, char *value, size_t vn)   /* the rows after the wait */
+/* THE NETWORK PAGE, the same rows in the same order in every game (Gunmen Wars' and Time Crisis II's pages follow it):
+ *   Link play, This cabinet, Cabinets in set, Find others, [the addresses: Find others = Address list], Start-up wait, Link lights,
+ *   If link is lost, Restart all cabinets, Find cabinets, [Use the N found], [Link method: arcade mode off]
+ * A copy started by a one-PC test launcher (--link ...) shows what the launcher gave it, read-only. */
+static int link_page_max_cabinets(void) { return G && G->max_cabinets > 0 && G->max_cabinets < LNK_MAX_NODES ? G->max_cabinets : LNK_MAX_NODES; }
+enum { K_ON, K_CAB, K_CABS, K_FIND, K_ADDR, K_WAIT, K_LIGHTS, K_LOST, K_RESTART, K_DISC, K_USE, K_METHOD };
+static int page_kinds(int *kind, int *arg)
 {
-    const int r = xrow(row);
-    if (r == 0) { snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); return true; }
-    if (r == 1) { snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); return true; }
-    if (r == 2) {
-        snprintf(label, ln, "Frame timing");
-        snprintf(value, vn, "%s%s", F.classic ? "Classic (0.4.0)" : "New", eng_timing_classic() != F.classic ? " - at next start" : "");
-        return true;
-    }
-    if (r == 3) {
-        snprintf(label, ln, "Link method");
-        snprintf(value, vn, "%s", F.author ? "Modern multiplayer" : "Arcade LAN");
-        return true;
-    }
-    if (r == 4) {
-        snprintf(label, ln, "Restart all cabinets");
-        snprintf(value, vn, "%s", !on ? "(link play is off)" : restart_armed() ? "Press Enter AGAIN" : "Enter");
-        return true;
-    }
-    if (r == 5) { snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); return true; }
-    if (r == 6) { snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); return true; }
-    return false;
+    int n = 0;
+    kind[n] = K_ON; arg[n++] = 0; kind[n] = K_CAB; arg[n++] = 0; kind[n] = K_CABS; arg[n++] = 0; kind[n] = K_FIND; arg[n++] = 0;
+    if (!from_cmdline && !F.find_auto) for (int c = 0; c < F.cabinets; c++) { kind[n] = K_ADDR; arg[n++] = c; }
+    kind[n] = K_WAIT; arg[n++] = 0; kind[n] = K_LIGHTS; arg[n++] = 0; kind[n] = K_LOST; arg[n++] = 0; kind[n] = K_RESTART; arg[n++] = 0;
+    kind[n] = K_DISC; arg[n++] = 0;
+    if (disc_found_usable()) { kind[n] = K_USE; arg[n++] = 0; }
+    if (!F.arcade) { kind[n] = K_METHOD; arg[n++] = 0; }
+    return n;
 }
-static void live_text(int row, char *label, size_t ln, char *value, size_t vn)
+static int row_kind(int row, int *arg)
 {
-    if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "On"); }
-    else if (row == 1) { snprintf(label, ln, "This cabinet"); snprintf(value, vn, "%d", cfg.id + 1); }
-    else if (row == 2) { snprintf(label, ln, "Cabinets in set"); snprintf(value, vn, "%d", cfg.nodes); }
-    else if (row < 3 + cfg.nodes) {
-        const int n = row - 3;
-        snprintf(label, ln, n == cfg.id ? "Cabinet %d (this PC)" : "Cabinet %d", n + 1);
-        const char *p = cfg.peers;
-        for (int k = 0; p && k < n; k++) { p = strchr(p, ','); if (p) p++; }
-        if (p) { size_t e = strcspn(p, ","); snprintf(value, vn, "%.*s", (int)(e < 15 ? e : 15), p); }
-        else snprintf(value, vn, "127.0.0.1 (this PC)");
-    } else { snprintf(label, ln, "Start-up wait"); snprintf(value, vn, "%d s", cfg.gather_ms / 1000); }
+    int k[32], a[32]; const int n = page_kinds(k, a);
+    if (row < 0 || row >= n) { *arg = 0; return -1; }
+    *arg = a[row]; return k[row];
 }
+int  link_page_rows(void) { int k[32], a[32]; return page_kinds(k, a); }
+bool link_page_has_value(int row) { int a; const int k = row_kind(row, &a); return k != K_ADDR && k != K_RESTART && k != K_DISC && k != K_USE; }
 void link_page_text(int row, char *label, size_t ln, char *value, size_t vn)
 {
-    if (extra_text(row, label, ln, value, vn)) return;
-    if (from_cmdline) { live_text(row, label, ln, value, vn); return; }
-    if (row == 0) { snprintf(label, ln, "Link play"); snprintf(value, vn, "%s", F.on ? "On" : "Off"); }
-    else if (row == 1) {
+    int n; const int k = row_kind(row, &n);
+    *label = *value = 0;
+    switch (k) {
+    case K_ON: snprintf(label, ln, "Link play"); snprintf(value, vn, "%s", (from_cmdline || F.on) ? "On" : "Off"); break;
+    case K_CAB: {
         snprintf(label, ln, "This cabinet");
+        if (from_cmdline) { snprintf(value, vn, "%d", cfg.id + 1); break; }
         const int c = F.cab_auto ? own_cabinet(false) : F.cabinet;
         if (!F.cab_auto) snprintf(value, vn, "%d", F.cabinet);
         else if (c > 0) snprintf(value, vn, "Auto (%d)", c);
         else snprintf(value, vn, "Auto (not in list)");
-    }
-    else if (row == 2) { snprintf(label, ln, "Cabinets in set"); snprintf(value, vn, "%d", F.cabinets); }
-    else if (row < 3 + F.cabinets) {
-        const int n = row - 3, me = F.cab_auto ? own_cabinet(false) : F.cabinet;
+        break; }
+    case K_CABS: snprintf(label, ln, "Cabinets in set"); snprintf(value, vn, "%d", from_cmdline ? cfg.nodes : F.cabinets); break;
+    case K_FIND: snprintf(label, ln, "Find others");
+        snprintf(value, vn, "%s", from_cmdline ? "This PC (test launcher)" : F.find_auto ? "Automatic" : "Address list"); break;
+    case K_ADDR: {
+        const int me = F.cab_auto ? own_cabinet(false) : F.cabinet;
         snprintf(label, ln, n + 1 == me ? "Cabinet %d (this PC)" : "Cabinet %d", n + 1);
         if (edit_row == row) snprintf(value, vn, "%s_", edit_buf);
         else snprintf(value, vn, "%s", F.addr[n][0] ? F.addr[n] : "(Enter to type)");
-    } else { snprintf(label, ln, "Start-up wait"); snprintf(value, vn, "%d s", F.wait); }
+        break; }
+    case K_WAIT: snprintf(label, ln, "Start-up wait"); snprintf(value, vn, "%d s", from_cmdline ? cfg.gather_ms / 1000 : F.wait); break;
+    case K_LIGHTS: snprintf(label, ln, "Link lights"); snprintf(value, vn, "%s", light_name[F.lights]); break;
+    case K_LOST: snprintf(label, ln, "If link is lost"); snprintf(value, vn, "%s", F.carry_on ? "Carry on" : "Restart"); break;
+    case K_RESTART: snprintf(label, ln, "Restart all cabinets");
+        snprintf(value, vn, "%s", !on ? "(link play is off)" : restart_armed() ? "Press Enter AGAIN" : "Enter"); break;
+    case K_DISC: snprintf(label, ln, "Find cabinets"); snprintf(value, vn, "%s", disc_searching() ? "Searching..." : "Enter"); break;
+    case K_USE: snprintf(label, ln, "Use the %d found", disc_count()); snprintf(value, vn, "%s", from_cmdline ? "(test launcher)" : "Enter"); break;
+    case K_METHOD: snprintf(label, ln, "Link method"); snprintf(value, vn, "%s", F.author ? "Modern multiplayer" : "Arcade LAN"); break;
+    }
 }
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 void link_page_change(int row, int dir)
 {
-    const int r = xrow(row);
-    if (r == 0) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
-    if (r == 1) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
-    if (r == 2) { F.classic = !F.classic; cfg_save(); return; }        /* frame timing: used at the next start */
-    if (r == 3) { F.author = !F.author; cfg_save(); return; }          /* link method: used at the next start */
-    if (r == 4) {                                                      /* restart all: Enter twice (not by accident) */
+    int n; const int k = row_kind(row, &n);
+    if (k == K_LIGHTS) { F.lights = (F.lights + (dir < 0 ? 6 : 1)) % 7; cfg_save(); return; }
+    if (k == K_LOST) { F.carry_on = !F.carry_on; lost_carry_on = F.carry_on; cfg_save(); return; }
+    if (k == K_METHOD) { F.author = !F.author; cfg_save(); return; }   /* link method: used at the next start */
+    if (k == K_RESTART) {                                              /* restart all: Enter twice (not by accident) */
         if (!on || dir) return;
         if (!restart_armed()) { restart_armed_at = SDL_GetTicks64(); return; }
         fprintf(stderr, "[LINK] this cabinet asked every cabinet to restart\n");
@@ -988,24 +998,38 @@ void link_page_change(int row, int dir)
         restart_in = 60;
         return;
     }
-    if (r == 5) { if (!dir) disc_find(); return; }
-    if (r == 6) { if (!dir && !from_cmdline) disc_use(); return; }
+    if (k == K_DISC) { if (!dir) disc_find(); return; }
+    if (k == K_USE) { if (!dir && !from_cmdline) disc_use(); return; }
     if (from_cmdline) return;                                          /* the launcher's settings: nothing here to change */
-    if (row == 0) F.on = !F.on;
-    else if (row == 1) {                                               /* Auto, 1 .. N, round */
-        int i = F.cab_auto ? 0 : F.cabinet;
-        i = (i + (dir < 0 ? F.cabinets : 1)) % (F.cabinets + 1);
-        F.cab_auto = i == 0; if (i) F.cabinet = i;
+    if (k == K_ON) F.on = !F.on;
+    else if (k == K_CAB) {                                             /* 1 .. N, round (with an address list: Auto too) */
+        if (F.find_auto) { F.cab_auto = false; F.cabinet = (F.cabinet - 1 + (dir < 0 ? F.cabinets - 1 : 1)) % F.cabinets + 1; }
+        else {
+            int i = F.cab_auto ? 0 : F.cabinet;
+            i = (i + (dir < 0 ? F.cabinets : 1)) % (F.cabinets + 1);
+            F.cab_auto = i == 0; if (i) F.cabinet = i;
+        }
         F.set_id = true;
     }
-    else if (row == 2) { const int c = F.cabinet; F.cabinets = clampi(F.cabinets + (dir ? dir : 1), 2, LNK_MAX_NODES); F.cabinet = clampi(F.cabinet, 1, F.cabinets); F.set_id |= F.cabinet != c; }
-    else if (row < 3 + F.cabinets) {
+    else if (k == K_CABS) { const int c = F.cabinet; F.cabinets = clampi(F.cabinets + (dir ? dir : 1), 2, link_page_max_cabinets()); F.cabinet = clampi(F.cabinet, 1, F.cabinets); F.set_id |= F.cabinet != c; }
+    else if (k == K_FIND) {
+        F.find_auto = !F.find_auto;
+        if (F.find_auto && F.cab_auto) { const int c = own_cabinet(false); F.cab_auto = false; F.cabinet = c > 0 ? c : F.last_auto > 0 ? F.last_auto : F.cabinet; F.set_id = true; }
+    }
+    else if (k == K_ADDR) {
         if (dir) return;
-        edit_row = row; snprintf(edit_buf, sizeof edit_buf, "%s", F.addr[row - 3]);                /* Enter: type the address */
+        edit_row = row; snprintf(edit_buf, sizeof edit_buf, "%s", F.addr[n]);   /* Enter: type the address */
         return;
-    } else F.wait = clampi(F.wait + (dir ? dir : 1) * 10, 10, 300);
+    } else if (k == K_WAIT) F.wait = clampi(F.wait + (dir ? dir : 1) * 10, 10, 300);
+    else return;
     cfg_save();
 }
+/* FRAME TIMING (link.cfg timing=; shown on the Display page, not here: it is not about the network) */
+void link_timing_text(char *value, size_t vn)
+{
+    snprintf(value, vn, "%s%s", F.classic ? "Classic (0.4.0)" : "New", eng_timing_classic() != F.classic ? " - at next start" : "");
+}
+void link_timing_change(void) { F.classic = !F.classic; cfg_save(); }
 bool link_page_editing(void) { return edit_row >= 0; }
 /* one key while an address is typed: digits and dots; Backspace deletes; Enter keeps it; Esc drops it. false = typing is over */
 bool link_page_type(SDL_Scancode sc)
@@ -1020,7 +1044,7 @@ bool link_page_type(SDL_Scancode sc)
     else if (sc == SDL_SCANCODE_PERIOD || sc == SDL_SCANCODE_KP_PERIOD) c = '.';
     if (c) { if (n + 1 < sizeof edit_buf) { edit_buf[n] = c; edit_buf[n + 1] = 0; } return true; }
     if (sc == SDL_SCANCODE_BACKSPACE) { if (n) edit_buf[n - 1] = 0; return true; }
-    if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) { snprintf(F.addr[edit_row - 3], sizeof F.addr[0], "%s", edit_buf); cfg_save(); }
+    if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) { int c; if (row_kind(edit_row, &c) == K_ADDR) { snprintf(F.addr[c], sizeof F.addr[0], "%s", edit_buf); cfg_save(); } }
     if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER || sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_UNKNOWN) { edit_row = -1; return false; }
     return true;                                                       /* any other key: ignored, still typing */
 }
@@ -1035,8 +1059,10 @@ void link_page_notes(void (*line)(const char *fmt, ...))
         line("For a real cabinet, use 'play as a cabinet'.");
     } else {
         if (edit_row >= 0) line("Type the address, then Enter (Esc cancels).");
-        line("Same list on every cabinet. Used at next start.");
-        if (F.cab_auto) line("Auto: the number is this PC's place in the list.");
+        if (F.find_auto) line("Automatic: the cabinets find each other. Give every PC its own number. Used at next start.");
+        else line("Same list on every cabinet. Used at next start.");
+        if (!F.find_auto && F.cab_auto) line("Auto: the number is this PC's place in the list.");
+        { char tw[16]; if (on && lnk_twin(tw)) line("WARNING: the PC at %s is cabinet %d too - give each PC its own number.", tw, cfg.id + 1); }
         if (method_at_start != modern()) line("Link method: %s at next start.", modern() ? "Modern multiplayer" : "Arcade LAN");
         else if (modern()) line("Modern multiplayer: lobby play on the Online page.");
         else line("Arcade LAN: real cabinets, linked at power-on.");

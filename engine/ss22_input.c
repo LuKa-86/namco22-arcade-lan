@@ -465,7 +465,7 @@ static void axis_label(int kind, char *v, size_t vn)
 
 static int nsw(void) { return (game->test_bit ? 1 : 0) + (game->service_bit ? 1 : 0); }
 static int nffb0(void) { return game->wheel_motor ? (game->torque.addr ? 4 : 2) : game->kick_wheel ? 1 : 0; }   /* motor: Force feedback, FFB direction[, FFB centering, FFB road effects]; kick only: Force feedback */
-static int nffb(void) { return nffb0() + (game->wheel_motor ? 2 : 0); }   /* + FFB keep-alive restart, FFB log (GitHub #73) */
+static int nffb(void) { return nffb0() + (game->wheel_motor ? 1 : 0); }   /* + FFB keep-alive restart (GitHub #73); "FFB log" (a developer's) not shown: ffb_log=1 in the cfg still works */
 static int gun_flash_on = 1;                                     /* light-gun games: draw the shot flash (gun_flash in the cfg; ss22_gl.c hides it when 0) */
 static int ngun(void) { return game->trackball ? 13 : game->light_gun ? 5 : game->kick_wheel ? 1 : 0; }   /* Gun shot flash, Gun border, Pad aim speed, Pad aim deadzone, Pad rumble on recoil -- or (kick_wheel: Pad rumble on recoil) -- or Trackball sensitivity, orientation, keys/pad steering, keys/pad smoothing, pad+keys invert x/y, mouse invert x/y, swap stick axes, stick layout, stick deadzone, stick curve */
 static int aim_speed = 100;                                     /* light gun: % of the default crosshair speed for the sticks / D-pad / arrow keys (aim_speed in the cfg) */
@@ -486,9 +486,10 @@ static const struct { const char *name; int frames; } tb_smooth_levels[] = { {"o
 void ss22_snd_trackball_direct(bool on);
 void ss22_snd_trackball(int dx, int dy);                         /* engine/ss22_snd.c */
 static int ntank_rows(void) { return game->tank ? game->ntank + 1 : 0; }   /* a tank game: its twin-stick rows and the Stick deadzone */
-static int tank_row0(void) { return nsw() + nffb() + ngun() + 2 + game->n; }
+static int nsteer(void) { return game->light_gun || game->trackball ? 0 : 1; }   /* "Stick steering": only a game that steers (not a gun, not the ball) */
+static int tank_row0(void) { return nsw() + nffb() + ngun() + 1 + nsteer() + game->n; }
 static int pg_n(void) { return tank_row0() + ntank_rows(); }    /* the switches, the FFB rows, the gun rows, Reset, Stick steering, the actions, the tank rows */
-static bool pg_val(int r) { return (r >= nsw() && r < nsw() + nffb() + ngun()) || r == nsw() + nffb() + ngun() + 1 || r >= tank_row0(); }
+static bool pg_val(int r) { return (r >= nsw() && r < nsw() + nffb() + ngun()) || (nsteer() && r == nsw() + nffb() + ngun() + 1) || r >= tank_row0(); }
 static void tank_save(const char *k, const char *v) { eng_cfg_set(k, v); }
 /* SS22_FAKESTICKS=F (TEST, tank games): two SDL virtual joysticks of ONE model (same GUID: two of the same arcade stick), 2 axes and 3
  * buttons each, attached at start; from frame F: both forward 120 f, left forward + right back 120 f, both back 120 f, centre 60 f,
@@ -553,7 +554,6 @@ static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
     if (r == 2 && nffb0() > 2) { snprintf(l, ln, "FFB centering"); snprintf(v, vn, "%d%%", ffb_centre); return; }
     if (r == 3 && nffb0() > 2) { snprintf(l, ln, "FFB road effects"); snprintf(v, vn, "%d%%", ffb_road); return; }
     if (game->wheel_motor && r == nffb0()) { snprintf(l, ln, "FFB keep-alive restart"); snprintf(v, vn, "%s", eng_ffb_restart() ? "ON (every second)" : "OFF (only when stopped)"); return; }
-    if (game->wheel_motor && r == nffb0() + 1) { snprintf(l, ln, "FFB log"); snprintf(v, vn, "%s", eng_ffb_log() ? "ON (once a second, to the log)" : "OFF"); return; }
     r -= nffb();
     if (r == 0 && ngun() && game->trackball) { snprintf(l, ln, "Trackball / mouse sensitivity"); snprintf(v, vn, "%d%%", tb_sens); return; }
     if (r == 1 && ngun() && game->trackball) { snprintf(l, ln, "Trackball orientation"); snprintf(v, vn, "%s", tb_direct ? "direct" : "natural (the cabinet's)"); return; }
@@ -576,8 +576,8 @@ static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
     if (r == 3 && game->light_gun) { snprintf(l, ln, "Pad aim deadzone"); snprintf(v, vn, "%d%%", aim_dz); return; }
     r -= ngun();
     if (r == 0) { snprintf(l, ln, "Reset to defaults (keys, buttons, axes)"); return; }
-    if (r == 1) { snprintf(l, ln, "Stick steering"); snprintf(v, vn, "%s", steer_levels[steer_level].name); return; }
-    r -= 2;
+    if (r == 1 && nsteer()) { snprintf(l, ln, "Stick steering"); snprintf(v, vn, "%s", steer_levels[steer_level].name); return; }
+    r -= 1 + nsteer();
     const int a = r;
     snprintf(l, ln, "%s", game->actions[a].label);
     if (rebinding == a) {
@@ -607,7 +607,7 @@ static void pg_change(int r, int dir)
         else { int v = ts_deadzone() + (dir ? dir : 1) * 5; if (!dir && v > 50) v = 0; ts_set_deadzone(v); }   /* Enter cycles */
         return;
     }
-    if (r == nsw() + nffb() + ngun() + 1) {              /* Stick steering: left/right step through the levels, a press moves on (wrapping) */
+    if (nsteer() && r == nsw() + nffb() + ngun() + 1) {  /* Stick steering: left/right step through the levels, a press moves on (wrapping) */
         const int lv = dir < 0 ? steer_level - 1 : dir > 0 ? steer_level + 1 : (steer_level + 1) % STEER_N;
         if (lv >= 0 && lv < STEER_N) steer_set(lv);
         return;
@@ -633,8 +633,6 @@ static void pg_change(int r, int dir)
         return;
     }
     if (game->wheel_motor && r == nffb0()) { eng_ffb_set_restart(!eng_ffb_restart()); eng_cfg_set_int("ffb_restart", eng_ffb_restart()); return; }
-    if (game->wheel_motor && r == nffb0() + 1) { eng_ffb_set_log(!eng_ffb_log()); eng_cfg_set_int("ffb_log", eng_ffb_log());
-        fprintf(stderr, "[FFB] log %s\n", eng_ffb_log() ? "ON" : "OFF"); return; }
     r -= nffb();
     if (r == 0 && ngun() && game->trackball) {                    /* 25..400 %: Left/Right 25% steps, Enter cycles */
         tb_sens = dir ? tb_sens + 25 * dir : (tb_sens >= 400 ? 25 : tb_sens + 25);
@@ -720,7 +718,7 @@ static void pg_change(int r, int dir)
         if (game->tank) for (int c = 0; c < game->ntank; c++) ts_change(c, +1);
         return;
     }
-    r -= 2;
+    r -= 1 + nsteer();
     rebinding = r;
     axis_capture_begin(action_axis(r));
     eng_ui_capture_input(capture_input, NULL);

@@ -58,6 +58,8 @@ void link_page_change(int row, int dir);                       /* dir 0 = Enter,
 bool link_page_editing(void);
 bool link_page_type(SDL_Scancode sc);
 void link_page_notes(void (*line)(const char *fmt, ...));
+void link_timing_text(char *value, size_t vn);                 /* "Frame timing" (link.cfg timing=), a Display page row: its value */
+void link_timing_change(void);                                 /* ... and Left / Right / Enter: used at the next start */
 /* the link lights (link_lights_nk.h draws them in either menu's Nuklear) */
 #define LINK_LIGHTS_MAX 8
 enum { LINK_LIGHT_SELF, LINK_LIGHT_GOOD, LINK_LIGHT_ONEWAY, LINK_LIGHT_SILENT, LINK_LIGHT_OUT };

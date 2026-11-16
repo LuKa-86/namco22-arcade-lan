@@ -84,6 +84,14 @@ static struct {
     int nheld;
     bool warned_tag;
     uint32_t my_vf;                         /* this cabinet's video frames run (+1), told in the hellos (lnk_set_frame) */
+    bool     find[LNK_MAX_NODES];           /* AUTOMATIC FINDING: the address list said "*" for this cabinet -- its address is learnt
+                                             * from its packets; until the first one, packets for it go to every PC on the network */
+    bool     found[LNK_MAX_NODES];
+    uint64_t found_heard[LNK_MAX_NODES];    /* the last packet from the learnt address: another address only takes over after 1 s of
+                                             * silence (a broadcast arrives by several ways: the network, and 127.0.0.1 on the same PC) */
+    struct in_addr bcast[8]; int nbcast;    /* where "every PC" is: 255.255.255.255, each of this PC's networks (x.y.z.255), this PC */
+    struct in_addr mine[8]; int nmine;      /* this PC's addresses: a packet "from this cabinet" sent by another PC = two PCs, one number */
+    uint32_t twin_from;                     /* that other PC's address (IPv4, host order; 0 = none seen) */
 } L;
 
 static uint64_t now_ms(void) { return SDL_GetTicks64(); }
@@ -97,6 +105,8 @@ static bool set_addr(int n, const char *host)
     memset(&L.addr[n], 0, sizeof L.addr[n]);
     L.addr[n].sin_family = AF_INET;
     L.addr[n].sin_port = htons((uint16_t)(L.cfg.base_port + n));
+    L.find[n] = !strcmp(host, "*"); L.found[n] = false;
+    if (L.find[n]) { L.addr[n].sin_addr.s_addr = htonl(INADDR_BROADCAST); return true; }   /* (the list's fingerprint: the same on every PC) */
     if (inet_pton(AF_INET, host, &L.addr[n].sin_addr) != 1) { fprintf(stderr, "[LINK] cabinet %d: '%s' is not an IPv4 address\n", n + 1, host); return false; }
     return true;
 }
@@ -128,6 +138,13 @@ bool lnk_open(const lnk_cfg *cfg)
       for (int n = 0; n < L.cfg.nodes; n++) { const uint8_t *a = (const uint8_t *)&L.addr[n].sin_addr; for (int k = 0; k < 4; k++) L.list_hash = (L.list_hash ^ a[k]) * 16777619u; } }
     L.s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (L.s == SOCK_BAD) { fprintf(stderr, "[LINK] no socket\n"); return false; }
+    { int one = 1; setsockopt(L.s, SOL_SOCKET, SO_BROADCAST, (const char *)&one, sizeof one); }   /* (automatic finding) */
+    { char a[8][16]; const int na = lnk_local_addresses(a, 8);
+      L.nbcast = L.nmine = 0; L.twin_from = 0;
+      L.bcast[L.nbcast++].s_addr = htonl(INADDR_BROADCAST);
+      for (int i = 0; i < na && L.nbcast < 7; i++) { struct in_addr ia; if (inet_pton(AF_INET, a[i], &ia) != 1) continue;
+                                                    L.mine[L.nmine++] = ia; ia.s_addr |= htonl(0xFFu); L.bcast[L.nbcast++] = ia; }
+      L.bcast[L.nbcast++].s_addr = htonl(INADDR_LOOPBACK); }
     struct sockaddr_in me; memset(&me, 0, sizeof me);
     me.sin_family = AF_INET; me.sin_addr.s_addr = htonl(INADDR_ANY); me.sin_port = htons((uint16_t)(L.cfg.base_port + L.cfg.id));
     if (bind(L.s, (struct sockaddr *)&me, sizeof me) != 0) {
@@ -240,7 +257,18 @@ int  lnk_peer_game_id(int n) { return n == L.cfg.id ? L.game_id : (n >= 0 && n <
 
 static void raw_send(int dst, const uint8_t *b, int len)
 {
+    if (L.find[dst] && !L.found[dst]) {                                 /* not heard yet: to every PC (its port says which cabinet) */
+        struct sockaddr_in to = L.addr[dst];
+        for (int i = 0; i < L.nbcast; i++) { to.sin_addr = L.bcast[i]; sendto(L.s, (const char *)b, len, 0, (struct sockaddr *)&to, sizeof to); }
+        return;
+    }
     sendto(L.s, (const char *)b, len, 0, (struct sockaddr *)&L.addr[dst], sizeof L.addr[dst]);
+}
+bool lnk_peer_found(int n) { return n >= 0 && n < L.cfg.nodes && (!L.find[n] || L.found[n]); }
+bool lnk_twin(char addr[16])
+{
+    if (!L.twin_from) return false;
+    struct in_addr a; a.s_addr = htonl(L.twin_from); inet_ntop(AF_INET, &a, addr, 16); return true;
 }
 
 /* the test impairments apply to frames only (hellos go straight out) */
@@ -340,6 +368,12 @@ static int take(uint16_t *w, int max)
 #endif
         return -1;
     }
+    if (len >= HDR && get32(b) == MAGIC && b[4] == PROTO && b[6] == L.cfg.id && get32(b + 12) == L.tag && !L.twin_from) {
+        bool me = (ntohl(from.sin_addr.s_addr) >> 24) == 127;           /* our own broadcast coming back is fine; another PC is not */
+        for (int i = 0; i < L.nmine; i++) me |= from.sin_addr.s_addr == L.mine[i].s_addr;
+        if (!me) { L.twin_from = ntohl(from.sin_addr.s_addr); char a[16]; inet_ntop(AF_INET, &from.sin_addr, a, sizeof a);
+                   fprintf(stderr, "[LINK] WARNING: the PC at %s is set up as cabinet %d too -- give every PC its own cabinet number\n", a, L.cfg.id + 1); }
+    }
     if (len < HDR || get32(b) != MAGIC || b[4] != PROTO || b[6] >= L.cfg.nodes || b[6] == L.cfg.id) { L.st.bad++; return 0; }
     if (get32(b + 12) != L.tag) {
         if (!L.warned_tag) { fprintf(stderr, "[LINK] cabinet %d is running another game: ignored\n", b[6] + 1); L.warned_tag = true; }
@@ -352,7 +386,16 @@ static int take(uint16_t *w, int max)
     p->pkts++;
     if (from.sin_addr.s_addr != p->from.sin_addr.s_addr && p->from.sin_family) p->warned_from = false;   /* a new sender: check it again */
     p->from = from;
-    if (!p->warned_from && (from.sin_addr.s_addr != L.addr[src].sin_addr.s_addr || from.sin_port != L.addr[src].sin_port)) {
+    if (L.find[src]) {                                                  /* automatic finding: here it is */
+        const bool same = L.found[src] && L.addr[src].sin_addr.s_addr == from.sin_addr.s_addr;
+        if (same) L.found_heard[src] = p->heard;
+        else if (!L.found[src] || p->heard - L.found_heard[src] > 1000) {
+            char a[16]; inet_ntop(AF_INET, &from.sin_addr, a, sizeof a);
+            fprintf(stderr, "[LINK] found cabinet %d on the network at %s\n", src + 1, a);
+            L.addr[src].sin_addr = from.sin_addr; L.found[src] = true; L.found_heard[src] = p->heard;
+        }
+    }
+    if (!p->warned_from && !L.find[src] && (from.sin_addr.s_addr != L.addr[src].sin_addr.s_addr || from.sin_port != L.addr[src].sin_port)) {
         char got[16] = "?", want[16] = "?";
         inet_ntop(AF_INET, &from.sin_addr, got, sizeof got); inet_ntop(AF_INET, &L.addr[src].sin_addr, want, sizeof want);
         if (strncmp(got, "127.", 4) || strncmp(want, "127.", 4))       /* (all on one PC: the loopback, any address) */

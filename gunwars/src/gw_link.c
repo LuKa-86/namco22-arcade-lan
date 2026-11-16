@@ -714,40 +714,60 @@ static int auto_place(const char *list, int *count)
 static int pg_get(const char *k, int def) { return eng_cfg_int(k, def); }
 static int cab_auto(void) { const char *c = eng_cfg_get("link_cabinet"); return c && !strcmp(c, "auto"); }
 static int net_cfg(void) { const char *v = eng_cfg_get("link_net"); for (int i = 0; i < 4; i++) if (v && !strcmp(v, net_key[i])) return i; return 0; }
-static int lk_rows(void) { return 8; }
+/* THE STANDARD NETWORK PAGE (the same rows, names and order as every other LAN game's -- engine/link_host.c): Link play, This cabinet,
+ * Cabinets in set, Find others, Start-up wait, Link lights, If link is lost, Find cabinets, [Use the N found]; then this game's own:
+ * Network delay. (No "Restart all cabinets": this link has none. If link is lost: it always plays on without the lost one.) */
+enum { K_ON, K_CAB, K_CABS, K_FIND, K_WAIT, K_LIGHTS, K_LOST, K_DISC, K_USE, K_NET };
+static int lk_kind(int r) { const int use = D.done && D.n >= 2; if (r < K_USE) return r; return use ? r : r + 1; }
+static int lk_rows(void) { return (D.done && D.n >= 2) ? 10 : 9; }
+static const char *const lk_light_key[7] = { "off", "bottom-left", "bottom-centre", "bottom-right", "top-left", "top-centre", "top-right" };
+static const char *const lk_light_name[7] = { "Off", "Bottom left", "Bottom centre", "Bottom right", "Top left", "Top centre", "Top right" };
+static int lk_light(void) { const char *v = eng_cfg_get("link_lights"); for (int i = 0; i < 7; i++) if (v && !strcmp(v, lk_light_key[i])) return i; return 1; }
+static int lk_on(void) { const char *o = eng_cfg_get("link"); return o && (!strcmp(o, "on") || !strcmp(o, "1") || !strcmp(o, "yes")); }
+static int lk_has_value(int r) { const int k = lk_kind(r); return k != K_LOST && k != K_DISC && k != K_USE; }
+static bool lk_has_value_b(int r) { return lk_has_value(r) != 0; }
 static void lk_text(int r, char *l, size_t ln, char *v, size_t vn)
 {
     const char *a = eng_cfg_get("link_address");
-    switch (r) {
-    case 0: { const char *o = eng_cfg_get("link"); const int on = o && (!strcmp(o, "on") || !strcmp(o, "1") || !strcmp(o, "yes"));
-              snprintf(l, ln, "Cabinet link"); snprintf(v, vn, "%s", on ? "On" : "Off (plays alone)"); break; }
-    case 1: snprintf(l, ln, "This cabinet");
-            if (cab_auto()) snprintf(v, vn, "Auto  (its place in the address list)"); else snprintf(v, vn, "%d  (every PC a different one)", pg_get("link_cabinet", 1)); break;
-    case 2: snprintf(l, ln, "Cabinets linked"); snprintf(v, vn, "%d", pg_get("link_cabinets", 2)); break;
-    case 3: snprintf(l, ln, "Find the others");
-            snprintf(v, vn, "%s", !a || !strcmp(a, "auto") ? "On the network (auto)" : !strcmp(a, "loop") ? "On this PC (test copies)" : a); break;
-    case 4: snprintf(l, ln, "Port"); snprintf(v, vn, "%d  (the same on every PC)", pg_get("link_port", 23100)); break;
-    case 5: { static const char *const nm[4] = { "LAN  (cable / good network, no added delay)", "Wi-Fi  (+17 ms, rides out small hiccups)",
-                                                  "Slow network  (+50 ms)", "Internet  (+100 ms)" };
-              snprintf(l, ln, "Network"); snprintf(v, vn, "%s", nm[net_cfg()]); break; }
-    case 6: snprintf(l, ln, "Find cabinets"); snprintf(v, vn, "%s", D.searching ? "searching..." : "Enter: search the network"); break;
-    default: snprintf(l, ln, "Use found"); snprintf(v, vn, "%s", D.done && D.n >= 2 ? "Enter: link with these PCs" : "(find 2 or more first)"); break;
+    *v = 0;
+    switch (lk_kind(r)) {
+    case K_ON: snprintf(l, ln, "Link play"); snprintf(v, vn, "%s", lk_on() ? "On" : "Off"); break;
+    case K_CAB: snprintf(l, ln, "This cabinet");
+        if (cab_auto()) snprintf(v, vn, "Auto (its place in the list)"); else snprintf(v, vn, "%d", pg_get("link_cabinet", 1)); break;
+    case K_CABS: snprintf(l, ln, "Cabinets in set"); snprintf(v, vn, "%d", pg_get("link_cabinets", 2)); break;
+    case K_FIND: snprintf(l, ln, "Find others");
+        snprintf(v, vn, "%s", !a || !strcmp(a, "auto") ? "Automatic" : !strcmp(a, "loop") ? "This PC (test copies)" : "Address list"); break;
+    case K_WAIT: snprintf(l, ln, "Start-up wait"); snprintf(v, vn, "%d s", pg_get("link_wait", 60)); break;
+    case K_LIGHTS: snprintf(l, ln, "Link lights"); snprintf(v, vn, "%s", lk_light_name[lk_light()]); break;
+    case K_LOST: snprintf(l, ln, "If link is lost"); snprintf(v, vn, "Carry on (this game always does)"); break;
+    case K_DISC: snprintf(l, ln, "Find cabinets"); snprintf(v, vn, "%s", D.searching ? "Searching..." : "Enter"); break;
+    case K_USE: snprintf(l, ln, "Use the %d found", D.n); snprintf(v, vn, "Enter"); break;
+    default: { static const char *const nm[4] = { "LAN (cable, no added delay)", "Wi-Fi (+17 ms)", "Slow network (+50 ms)", "Internet (+100 ms)" };
+               snprintf(l, ln, "Network delay"); snprintf(v, vn, "%s", nm[net_cfg()]); break; }
     }
 }
 static void lk_change(int r, int dir)
 {
     const int d = dir < 0 ? -1 : 1;
-    if (r == 0) { const char *o = eng_cfg_get("link"); const int on = o && (!strcmp(o, "on") || !strcmp(o, "1") || !strcmp(o, "yes")); eng_cfg_set("link", on ? "off" : "on"); return; }
-    if (r == 1) { const int n = pg_get("link_cabinets", 2); int c = cab_auto() ? 0 : pg_get("link_cabinet", 1); c += d;   /* Auto, 1 .. n */
-                  if (c < 0) c = n; if (c > n) c = 0;
+    switch (lk_kind(r)) {
+    case K_ON: eng_cfg_set("link", lk_on() ? "off" : "on"); return;
+    case K_CAB: { const int n = pg_get("link_cabinets", 2); const char *a = eng_cfg_get("link_address");
+                  const int list = a && strcmp(a, "auto") && strcmp(a, "loop");            /* Auto numbering only with an address list */
+                  int c = cab_auto() ? 0 : pg_get("link_cabinet", 1); c += d;
+                  if (c < (list ? 0 : 1)) c = n; if (c > n) c = list ? 0 : 1;
                   if (c == 0) eng_cfg_set("link_cabinet", "auto"); else eng_cfg_set_int("link_cabinet", c); return; }
-    if (r == 2) { int n = pg_get("link_cabinets", 2) + d; if (n < 2) n = MAXCAB; if (n > MAXCAB) n = 2; eng_cfg_set_int("link_cabinets", n);
-                  if (!cab_auto() && pg_get("link_cabinet", 1) > n) eng_cfg_set_int("link_cabinet", n); return; }
-    if (r == 3) { const char *a = eng_cfg_get("link_address"); eng_cfg_set("link_address", a && !strcmp(a, "loop") ? "auto" : "loop"); return; }
-    if (r == 4) { int p = pg_get("link_port", 23100) + d * 10; if (p < 1024) p = 1024; if (p > 65000) p = 65000; eng_cfg_set_int("link_port", p); return; }
-    if (r == 5) { eng_cfg_set("link_net", net_key[(net_cfg() + (d < 0 ? 3 : 1)) & 3]); return; }
-    if (r == 6) { if (dir == 0) disc_find(); return; }
-    if (dir == 0) disc_use();
+    case K_CABS: { int n = pg_get("link_cabinets", 2) + d; if (n < 2) n = MAXCAB; if (n > MAXCAB) n = 2; eng_cfg_set_int("link_cabinets", n);
+                   if (!cab_auto() && pg_get("link_cabinet", 1) > n) eng_cfg_set_int("link_cabinet", n); return; }
+    case K_FIND: { const char *a = eng_cfg_get("link_address");                         /* Automatic <-> test copies (a found list: back to Automatic) */
+                   eng_cfg_set("link_address", a && !strcmp(a, "auto") ? "loop" : "auto");
+                   if (cab_auto()) eng_cfg_set_int("link_cabinet", 1); return; }
+    case K_WAIT: { int w = pg_get("link_wait", 60) + d * 10; if (w < 10) w = 10; if (w > 300) w = 300; eng_cfg_set_int("link_wait", w); return; }
+    case K_LIGHTS: eng_cfg_set("link_lights", lk_light_key[(lk_light() + (d < 0 ? 6 : 1)) % 7]); return;
+    case K_LOST: return;
+    case K_DISC: if (dir == 0) disc_find(); return;
+    case K_USE: if (dir == 0) disc_use(); return;
+    default: eng_cfg_set("link_net", net_key[(net_cfg() + (d < 0 ? 3 : 1)) & 3]); return;
+    }
 }
 static void lk_notes(void (*line)(const char *, ...))
 {
@@ -761,13 +781,14 @@ static void lk_notes(void (*line)(const char *, ...))
     else if (D.done) {
         line("Found %d PC%s running Gunmen Wars:", D.n, D.n == 1 ? "" : "s");
         for (int i = 0; i < D.n; i++) { struct in_addr a; a.s_addr = D.f[i].ip; line("  %d. %s  %s%s", i + 1, inet_ntoa(a), D.f[i].name, D.f[i].me ? "  (this PC)" : ""); }
-        if (D.n >= 2) line("\"Use found\" on EVERY PC: the same list, each its own number.");
+        if (D.n >= 2) line("Automatic needs no list: give every PC its own cabinet number.");
         else line("Start the game on the other PCs, then search again.");
     } else line("Find cabinets: start the game on every PC, then search.");
     if (state == ST_LINKED) line("Network: %s (the slowest setting of the linked PCs is used).", net_key[net_level]);
+    line("Automatic: the cabinets find each other. Give every PC its own number.");
     line("Changes take effect at the next start.");
 }
-const eng_ui_page gw_link_page = { "Link", 560, 140, 26, lk_rows, NULL, NULL, lk_text, lk_change, lk_notes };
+const eng_ui_page gw_link_page = { "Network", 560, 140, 26, lk_rows, lk_has_value_b, NULL, lk_text, lk_change, lk_notes };
 
 /* ================= THE PLAYERS' PHOTOS (NamCam) =================
  * The photo page (src/gw_game.c) has a 128 x 128 square per cabinet, by PCB ID = node: n at u = 128 n, in a row --

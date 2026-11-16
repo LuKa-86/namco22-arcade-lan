@@ -431,7 +431,12 @@ static int preset_next(const int *pr, int n, int cur, int dir)        /* the nex
     return pr[((dir < 0 ? k + n - 1 : k + 1) % n + n) % n];
 }
 void ss22_input_flash_step(int dir) { ss22_input_set_gun_flash(preset_next(flash_presets, 5, gun_flash_on, dir)); }
-static int pg_n_raw(void) { return nsw() + nffb() + ngun() + 2 + game->n; }    /* the switches, the FFB rows, the gun rows, Reset, Stick steering, the actions */
+/* the recoil outputs (moved here from Display: they are what the gun does, not the picture): Recoil outputs, Lamp outputs, Pad rumble */
+extern int s23_out_net, s23_out_rumble, s23_out_lamps;                  /* src/s23_out.c */
+void s23_out_set_net(int on), s23_out_set_rumble(int on), s23_out_set_lamps(int on);
+static int nout(void) { return ngun() && !game->mounted_gun ? 3 : 0; }
+static int out_row0(void) { return nsw() + nffb() + ngun() + 2 + game->n; }
+static int pg_n_raw(void) { return out_row0() + nout(); }    /* the switches, the FFB rows, the gun rows, Reset, Stick steering, the actions */
 /* the rows THIS game shows: a mounted gun (Gunmen Wars) leaves out the light gun's shot flash and border and the wheel's stick steering;
  * the page's row r is the raw row pg_vis[r] */
 static int pg_vis[256], pg_nvis;
@@ -441,17 +446,25 @@ static int pg_n(void)
     for (int r = 0; r < pg_n_raw() && pg_nvis < 256; r++) {
         const int g = r - nsw() - nffb();
         if (game->mounted_gun && ngun() && (g == 0 || g == 1)) continue;          /* Gun shot flash, Gun border */
-        if (game->mounted_gun && r == nsw() + nffb() + ngun() + 1) continue;      /* Stick steering */
+        if (ngun() && g == 0) continue;                                           /* Gun shot flash: on the Display page */
+        if ((game->mounted_gun || game->light_gun) && r == nsw() + nffb() + ngun() + 1) continue;   /* Stick steering: nothing steers */
         pg_vis[pg_nvis++] = r;
     }
     return pg_nvis;
 }
 static int pg_raw(int r) { if (!pg_nvis) pg_n(); return r >= 0 && r < pg_nvis ? pg_vis[r] : pg_n_raw(); }
-static bool pg_val_raw(int r) { return (r >= nsw() && r < nsw() + nffb() + ngun()) || r == nsw() + nffb() + ngun() + 1; }
+static bool pg_val_raw(int r) { return (r >= nsw() && r < nsw() + nffb() + ngun()) || r == nsw() + nffb() + ngun() + 1 || r >= out_row0(); }
 
 static void pg_text_raw(int r, char *l, size_t ln, char *v, size_t vn)
 {
     *v = 0;
+    if (r >= out_row0()) {
+        const int o = r - out_row0();
+        if (o == 0) { snprintf(l, ln, "Recoil outputs (Hook of the Reaper)"); snprintf(v, vn, "%s", s23_out_net ? "ON (tcp port 8000)" : "OFF"); }
+        else if (o == 1) { snprintf(l, ln, "Lamp outputs (lamp0-7)"); snprintf(v, vn, "%s", s23_out_lamps ? "ON" : "OFF (recoil only)"); }
+        else { snprintf(l, ln, "Pad rumble on recoil"); snprintf(v, vn, "%s", s23_out_rumble ? "ON" : "OFF"); }
+        return;
+    }
     if (game->test_bit && r == 0) { snprintf(l, ln, "Test mode"); snprintf(v, vn, "%s", test_latch ? "ON" : "OFF"); return; }
     if (game->service_bit && r == (game->test_bit ? 1 : 0)) { snprintf(l, ln, "Service button"); snprintf(v, vn, "press"); return; }
     r -= nsw();
@@ -501,6 +514,11 @@ static void pg_text_raw(int r, char *l, size_t ln, char *v, size_t vn)
 
 static void pg_change_raw(int r, int dir)
 {
+    if (r >= out_row0()) {
+        const int o = r - out_row0();
+        if (o == 0) s23_out_set_net(!s23_out_net); else if (o == 1) s23_out_set_lamps(!s23_out_lamps); else s23_out_set_rumble(!s23_out_rumble);
+        return;
+    }
     if (r == nsw() + nffb() + ngun() + 1) {              /* Stick steering: left/right step through the levels, a press moves on (wrapping) */
         const int lv = dir < 0 ? steer_level - 1 : dir > 0 ? steer_level + 1 : (steer_level + 1) % STEER_N;
         if (lv >= 0 && lv < STEER_N) steer_set(lv);

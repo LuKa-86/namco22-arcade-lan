@@ -91,6 +91,7 @@ static int disp_n(void)
         if (d == D_SMOOTH && s23_game_no_smooth()) continue;          /* (off for good in this game) */
         if (d >= D_CROSS && !g_eng_disp_light_gun) continue;
         if (d >= D_FLASH && s23_game_mounted_gun()) continue;
+        if (d == D_OUTNET || d == D_LAMPS || d == D_RUMBLE) continue;   /* (on the Controls page now, with the gun) */
         vis[nvis++] = d;
     }
     return nvis;

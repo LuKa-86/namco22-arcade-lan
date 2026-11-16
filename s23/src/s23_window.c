@@ -203,6 +203,7 @@ int s23_window_open(int scale, int fullscreen)
     eng_ui_add_page(ss22_input_page());
     { void s23_subs_ui_init(void); s23_subs_ui_init(); }   /* English subtitles (src/s23_subs.c): only a game with a table */
     if (s23_game.menu_pages) s23_game.menu_pages();
+    if (s23_game.twin && !s23_game.link) { extern const eng_ui_page s23_c422_page; eng_ui_add_page(&s23_c422_page); }   /* Time Crisis II: the Network page (src/s23_c422.c) */
     /* (the author's 0.9.1 online link, src/s23_link.c + its pages, is not built in our fork: the twin-cabinet LAN link is ours,
      * src/s23_c422.c, set up in tc2_link.cfg) */
     (void)picture_rect(0);
