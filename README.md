@@ -17,18 +17,15 @@ cabinet is switched on. Huge respect and thanks to spacestate1; please star and 
 
 ## Why this exists
 
-This project was made for an arcade that runs Tokyo Wars, Rave Racer, Cyber Cycles, Prop Cycle and Time
-Crisis II cabinets. Their original hardware has been problematic over the years, and the aim is a reliable way to keep
-the real machines running. It started with restoring a 4-player Tokyo Wars set-up and has grown from there.
+The original boards in these cabinets are 25 to 30 years old. They fail, spares are scarce, and a linked set is only as
+good as its weakest board. This project started as a way to **restore a 4-player linked Tokyo Wars set-up** and has
+grown into a way to **keep other Namco machines of that era running** with a modern PC in each cabinet.
 
 The goal is **set up and forget**: switch a cabinet on, and its PC boots, starts its game full screen, finds the other
 cabinets on the network and links with them, with nobody touching a keyboard, every day.
 
-The fork follows the original project's releases, so it has the same games available, but its focus is the games
-the arcade has and keeping them running.
-
-> **Project status:** a hobby project, with no regular updates or support. The link has been tested with up to four
-> PCs on a home network and with up to four copies on one PC; it has not yet run in a full arcade installation. Bug
+> **Project status:** a hobby project, with no regular updates or support. The link has been tested on three real PCs
+> on one network switch, and with up to four copies on one PC; it has not yet run in a full arcade installation. Bug
 > reports and pull requests are welcome but may not get picked up. You are welcome to fork it under the same licence
 > (MIT).
 
@@ -38,73 +35,82 @@ the arcade has and keeping them running.
 
 ## The games
 
-| Game | Year | Cabinets | |
-|---|---|---|---|
-| **Tokyo Wars** | 1996 | up to 4, linked | Team tank battles |
-| **Rave Racer** | 1995 | up to 4, linked | Linked races |
-| **Ace Driver** | 1994 | up to 8, linked (tested with 8 on one PC) | Linked races; **new link** in this fork (the original project's build plays solo) |
-| **Time Crisis II** | 1997 | 2, the twin cabinet | The left and right sides linked for two players; **party mode** (split screen on one PC) |
-| **Gunmen Wars** | 1998 | up to 3, linked | **New**: a port made for this fork (System 23 with its GMEN camera and link board): team shoot-outs, the NamCam photo from a webcam or a picture, party mode |
-| **Cyber Cycles** | 1995 | up to 4, linked | **New**: a port made for this fork, not in the original project |
-| **Cyber Commando** | 1994 | 2, linked | Robot battles, cabinet against cabinet; **new link** in this fork (the original project's build plays solo) |
-| **Armadillo Racing** | 1997 | up to 4, linked | Trackball racing; **new link** in this fork (the original project's build plays solo) |
-| **Alpine Racer** | 1995 | 1 | **New**: a port made for this fork, not in the original project |
-| **Alpine Racer 2** | 1996 | 2, linked | **New**: a port made for this fork, not in the original project; 2 linked cabinets race head to head, party mode |
-| **Alpine Surfer** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
-| **Air Combat 22** | 1995 | 1 | **New**: a port made for this fork, not in the original project (jet-fighter missions) |
-| **Aqua Jet** | 1996 | 1 | **New**: a port made for this fork, not in the original project |
-| **Cyber Sled** | 1993 | 2, linked | Hover-tank battles, left cabinet against right; **cabinet link** in this fork (on Windows the original project's build links only online) |
+**Linked** means cabinets on the network play together, as the original boards did over their link cable.
+**New** means the game is not in the original project: this fork ported it.
 
-The original project's single-cabinet games (**Crisis Zone, Dirt Dash, Prop Cycle, Time Crisis**) are in the package and the
-launcher too, as the original author's own programs, unchanged, from their Windows release (0.9.3); this fork does not build them.
+| Game | Year | Board | Cabinets | |
+|---|---|---|---|---|
+| **Tokyo Wars** | 1996 | Super 22 | up to 4, linked | Team tank battles |
+| **Rave Racer** | 1995 | System 22 | up to 4, linked | Linked races |
+| **Ace Driver** | 1994 | System 22 | up to 8, linked | Linked races; the link is **new** (the original project's build plays solo) |
+| **Ace Driver: Victory Lap** | 1996 | System 22 | up to 4, linked | **New** port. Up to 8 is in the code but not yet reliable |
+| **Cyber Cycles** | 1995 | System 22 | up to 4, linked | **New** port |
+| **Cyber Commando** | 1994 | System 22 | 2, linked | Robot battles; the link is **new** |
+| **Armadillo Racing** | 1997 | Super 22 | up to 4, linked | Trackball racing; the link is **new** |
+| **Alpine Racer 2** | 1996 | Super 22 | 2, linked | **New** port; head-to-head races, party mode |
+| **Cyber Sled** | 1993 | System 21 | 2, linked | Hover-tank battles; **cabinet link** is new (the original links only online) |
+| **Time Crisis II** | 1997 | System 23 | 2, the twin cabinet | Left and right sides linked for two players; party mode |
+| **Gunmen Wars** | 1998 | System 23 + GMEN | up to 3, linked | **New** port; team shoot-outs, NamCam photo from a webcam, party mode |
+| **Alpine Racer** | 1995 | Super 22 | 1 | **New** port |
+| **Alpine Surfer** | 1996 | Super 22 | 1 | **New** port |
+| **Air Combat 22** | 1995 | Super 22 | 1 | **New** port; jet-fighter missions |
+| **Aqua Jet** | 1996 | Super 22 | 1 | **New** port |
+| **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
+| **Prop Cycle** | 1996 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
+| **Dirt Dash** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
+| **Time Crisis** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
 
-## What the fork adds
+Every linked game has been tested linking several copies on one PC. Tokyo Wars, Rave Racer, Cyber Cycles,
+Time Crisis II and Gunmen Wars have also been tested linking across three real PCs.
 
-### The cabinet link
+## Fixes and improvements over the original project
 
-- **Links at power-on, like the boards.** Each cabinet looks for the others when its game starts, and only then. When
-  all are there, or the start-up wait runs out, they begin together. A cabinet that starts late, or restarts after a
-  crash, plays on its own until the whole set is restarted: the same rule as the real hardware.
-- **No menus to play.** Coins and Start work as on the original machines. Each game's own test-menu settings (cabinet
-  ID, team colour, car type and so on) are kept per cabinet.
-- **LAN only.** Nothing uses the internet. **Find cabinets** on the Network page fills in every PC's address by itself.
-- **Safety net.** If its partners disappear, a cabinet shows *LINK LOST - RESTARTING* and starts again, alone, instead
-  of being left in a battle nobody else is in.
-- **Link lights**: small status lights in a corner of the screen, one per cabinet, for setting up.
-- **The same rules as the chips.** The link is a model of Namco's C139 link chip (and the C422 for Time Crisis II),
-  read from each game's own driver, so the games run their original link code unchanged.
+### The cabinet link (all new in this fork)
+
+- **A local-network link** for 11 games, modelled on Namco's own link chips (the C139 on System 21/22, the C422 on
+  System 23, the GMEN board's FireWire link for Gunmen Wars). The games run their original link code unchanged.
+- **Links at power-on, like the boards.** Cabinets wait up to a minute for each other, then start together. A cabinet
+  that starts late or restarts plays alone until the set is restarted, as on the real hardware.
+- **Finds the other cabinets by itself.** *Find cabinets* on the Network page fills in every PC's address, and the
+  Network page is the same in every linked game.
+- **Works without a router.** PCs wired to a plain switch use Windows' automatic addresses (169.254.x.x) and still link.
+- **Copes with PCs that have several network connections** (Wi-Fi, VPNs such as Tailscale, virtual adapters): replies go
+  back out of the connection the other cabinet was heard on, so a VPN can't steal the link.
+- **Safety net:** if its partners disappear, a cabinet shows *LINK LOST - RESTARTING* and starts again, alone, instead
+  of being stuck in a battle nobody else is in.
+- **Link lights:** small status lights in a corner of the screen, one per cabinet, for setting up.
+- **Several copies on one PC** pace themselves by timer, so background windows don't lag (for testing and party mode).
+- **LAN test kit:** three .bat files that run a test on every PC, collect the logs on one PC and print a plain report
+  (linked or not, one-way links, lost links, link quality, a PC running too slow).
 
 <p align="center">
   <img src="docs/images/tokyowar-link-4cab.jpg" alt="Tokyo Wars: the four cabinets' screens during one linked battle" width="80%">
 </p>
 
-### The launcher and the package
+### Running in a cabinet
 
-`Namco 22 Arcade LAN.exe` is a full-screen front end for the package, made for a cabinet screen. Pick a game and how to
-play it with the keyboard, a controller or the mouse:
+- **A full-screen launcher** (`Namco 22 Arcade LAN.exe`) for every game, driven by keyboard, controller or mouse.
+- **Starts a game when Windows starts**, and **starts it again if it ever closes**, so the cabinet always comes back to
+  its attract mode.
+- **Arcade mode:** the original project's online pages are hidden. Coins and Start work as on the original machines;
+  each game's test-menu settings (cabinet ID, team colour and so on) are kept per cabinet.
+- **Esc only opens and closes the menu** (the original's double-Esc quits, which a cabinet does not want).
+- **Session recordings:** each game keeps the last session's inputs, so a problem can be replayed exactly. **F9** saves a
+  picture and a replayable capture of a glitch. A crash keeps its recording and log.
+- **Party modes:** 2 or 4 players on one PC, split screen, a controller each.
 
-- **Linked cabinet** (full screen or in a window), **Time Crisis II's left or right cabinet**, both sides on one PC,
-  **Test** modes that run 2, 4 or 8 linked copies on one PC, and **Party** modes (2 or 4 players on one PC, split
-  screen, a controller each; Gunmen Wars and Time Crisis II: 2 players, the keyboard and mouse for one of them).
-- System 22 and System 23 games side by side: Gunmen Wars and Time Crisis II run on the fork's System 23 engine (`s23/`).
-- **Start a game when Windows starts**: the launcher counts down (a key or button opens the menu instead) and starts the
-  chosen game. **If the game ever closes, it starts it again**, so the cabinet always comes back to its attract mode.
-- **Settings for every game at once**: the link status lights, and the session recordings (each game keeps the last session's
-  inputs so a problem can be replayed exactly; off keeps none).
-- This PC's network address, for typing the cabinets' addresses by hand.
+### Game fixes
 
-```
-Namco 22 Arcade LAN\
-  Namco 22 Arcade LAN.exe       the launcher
-  READ ME.txt
-  games\<Game>\                 <Name>-ArcadeLAN.exe, its roms\ (your zips) and its own settings
-  advanced\                     a .bat for every button in the launcher
-```
-
-### Also
-
-- **Esc only opens and closes the menu** (the original's double-Esc quits, which an arcade does not want).
-- **Fix**: quick clicks and touchpad taps in the menus are no longer lost.
+- **Victory Lap:** collision tables and race crashes fixed; test mode works; the rev needle is no longer dimmed.
+- **Air Combat 22:** crashes in attract, at mission end and after the mission 2 refuel fixed; stuck sprites fixed; pitch
+  and throttle can be rebound.
+- **Crisis Zone:** widescreen HUD with the score bars at the screen edges; 4:3 with fading bars outside play; tank
+  shadow colours fixed; HUD icons drawn over the bars; zone-select ticker scrolls on its own.
+- **Gunmen Wars:** the namco logo matched to real-cabinet footage; widescreen HUD; NamCam from a webcam or a picture.
+- **System 23 engine:** about 4 times faster priority drawing; correct texture sampling for some polygons.
+- **Super 22 / System 22:** translucent sprites over text; priority of some polygons over the text layer; guard-band
+  polygons drawn.
+- **Menus:** quick clicks and touchpad taps are no longer lost; a controller's D-pad moves one row, not two.
 
 ## Putting a PC in a cabinet
 
@@ -114,8 +120,9 @@ Namco 22 Arcade LAN\
   joystick or game controller, for example an Ultimarc A-PAC (analog: wheels, pedals, levers) or I-PAC (buttons). Set
   the keys or axes once on each game's Esc menu > Controls page and calibrate in the game's own test menu, as on the
   real machine.
-- **Network**: a cable from each cabinet to one switch, and a fixed address for each PC. The games expect every cabinet
-  to answer within about a tenth of a second, all the time; Wi-Fi reconnects and power saving break that.
+- **Network**: a cable from each cabinet to one switch. No router is needed. The games expect every cabinet to answer
+  within about a tenth of a second, all the time; Wi-Fi reconnects and power saving break that. Set each PC's wired
+  network to **Private** in Windows, or Windows' firewall may block the link.
 - **Start-up**: set Windows to sign in by itself and switch off sleep, then choose the game in the launcher's
   *Start a game when Windows starts*.
 - **Full screen** on every cabinet. In a window, a PC with modest graphics can freeze for a moment, which can drop the
@@ -128,18 +135,18 @@ Namco 22 Arcade LAN\
    folder, and each game unpacks them on its first start.
 2. Copy the package folder to every cabinet PC.
 3. On every PC, start the game as **Linked cabinet - full screen** in the launcher. On each one, press **Esc**,
-   open **Network**, choose **Find cabinets**, then **Use the N found**. That fills in the address list (the same on
-   every PC) with *This cabinet* on *Auto*. Time Crisis II's two sides find each other by themselves.
+   open **Network**, choose **Find cabinets**, then **Use the N found**. Time Crisis II's two sides find each other
+   by themselves.
 4. Close the game on every PC and start them all again. They wait up to a minute for each other, then link.
 5. In the launcher's Settings, choose the game for *Start a game when Windows starts*.
 
-The package's `READ ME.txt` walks through all of it; [docs/ARCADE_LAN.md](docs/ARCADE_LAN.md) describes the link in
-more detail.
+The package's `READ ME.txt` walks through all of it, and its `LAN test` folder checks a set of PCs;
+[docs/ARCADE_LAN.md](docs/ARCADE_LAN.md) describes the link in more detail.
 
 ## Settings
 
-Each game's link settings are in `link.cfg` in its folder (Time Crisis II: `tc2_link.cfg`); the game's **Network** page
-in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
+Each game's link settings are in `link.cfg` in its folder (Time Crisis II: `tc2_link.cfg`; Gunmen Wars: the `link` lines
+of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 
 | Setting | |
 |---|---|
@@ -155,30 +162,29 @@ in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
 
 ## Version history
 
-- **0.9.3** (November 2026): **Gunmen Wars** (System 23 + GMEN), new: linked up to 3 cabinets over the GMEN boards' FireWire
-  bus model, a Network setting for slower networks, the NamCam photo from a webcam or a picture, widescreen with the HUD at
-  the edges, mouse-look controls, F9 captures (a picture and the game's state, to replay a problem), party mode. The System 23
-  engine moved to its own folder (`s23/`), shared by Gunmen Wars and Time Crisis II; Time Crisis II gains party mode.
-  **Alpine Racer 2 links**: 2 cabinets race head to head (its point-to-point C139 driver, the cabinet ID at EEPROM 0x32), with
-  the test and party modes.
-
-- **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, Rave Racer session recordings, a
-  geometry fix). New games: Cyber Cycles (linked, up to 4) and Alpine Racer; Ace Driver links (up to 8). The launcher, with the automatic start
-  and the restart watchdog; the package with a folder per game; the session recording switch.
-- **0.9.0**: Time Crisis II twin-cabinet link, one gun per screen with both cabinets on one PC, link lights for every
-  game.
-- **0.7.0**: party mode, *Arcade mode* (the original's online pages hidden, kept for later merges).
-- **0.5.4**: the frame timing choice (the original's new timer or 0.4.0's).
+- **0.10.3** (November 2026): merged the original project's 0.10.3; Prop Cycle, Dirt Dash, Time Crisis and Crisis Zone
+  now built here. New: **Ace Driver: Victory Lap** (up to 4 linked) and **Air Combat 22**. The link replies out of the
+  right network connection (fixes PCs with a VPN or several adapters), finds cabinets automatically and works without
+  a router; the same Network page in every game; the LAN test kit; Crisis Zone widescreen and graphics fixes.
+- **0.9.3** (November 2026): **Gunmen Wars** (System 23 + GMEN), linked up to 3 cabinets; the System 23 engine shared by
+  Gunmen Wars and Time Crisis II (which gains party mode); **Alpine Racer 2** links 2 cabinets.
+- **0.9.2** (October 2026): merged the original 0.9.1 and 0.9.2 (16:9 widescreen, session recordings). New games: Cyber
+  Cycles (linked, up to 4) and Alpine Racer; Ace Driver links (up to 8). The launcher, with the automatic start and the
+  restart watchdog.
+- **0.9.0**: Time Crisis II twin-cabinet link, link lights for every game.
+- **0.7.0**: party mode, *Arcade mode*.
+- **0.5.4**: the frame timing choice.
 - **0.4.0**: the first Arcade LAN: Tokyo Wars and Rave Racer, the Network page, Find cabinets, the safety net.
 
 ## Known issues
 
 - Rare: when a cabinet is switched off without warning, the others may show a link blip of about a third of a second
   before carrying on.
+- A PC that stalls for a moment (for example a laptop on battery) can briefly drop the link; it recovers by itself.
 - Not yet tested with real controllers in party mode, or in a full arcade installation.
-- Gunmen Wars: four linked cabinets are experimental (one cabinet can stall at team select); the namco logo's change to red is
-  matched to arcade footage (the hardware rule is not known); in widescreen the attract demo shows in 4:3 (its scenery only
-  exists as far as the original screen shows).
+- Victory Lap: 8 linked cabinets are not yet reliable, so the launcher offers up to 4.
+- Gunmen Wars: four linked cabinets are experimental (one cabinet can stall at team select); in widescreen the attract
+  demo shows in 4:3.
 
 ## Building
 
@@ -188,14 +194,17 @@ its sound and DSP programs are translated from them at build time (see the origi
 
 ```
 cmake -S tokyowar -B tokyowar/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DZLIB_LIBRARY=/mingw64/lib/libz.a
-ninja -C tokyowar/build          # the same for raverace, tc2, gunwars, cybrcycc, alpiner and cybsled (cs21, -j1)
+ninja -C tokyowar/build          # the same for every game folder (cybsled: -j1)
 cmake -S launcher -B launcher/build -G Ninja && ninja -C launcher/build
 ```
 
-Cyber Cycles and Alpine Racer are translated from the game's own program with Ghidra and this fork's 68020 translator
+Game folders: `tokyowar raverace acedriver victlap cybrcomm adillor airco22 alpiner alpines alpinr2 aquajet cybrcycc
+dirtdash timecris cybsled crszone gunwars tc2`.
+
+The new 68020 ports are translated from each game's own program with Ghidra and this fork's translator
 (`tools/gen/lift68k.py`, `tools/gen/ghidra/`); Gunmen Wars with its MIPS translator (`tools/gen/liftmips.py`,
-`gunwars/tools/regen.sh`); their `tools/import.sh` / `regen.sh` need `N22TOOLS` set to the folder
-with Ghidra and a JDK. The link tests run four copies on one PC over 127.0.0.1, with network faults injected:
+`gunwars/tools/regen.sh`); their `tools/import.sh` / `regen.sh` need `N22TOOLS` set to the folder with Ghidra and a JDK.
+The link tests run four copies on one PC over 127.0.0.1, with network faults injected:
 `tokyowar/tools/link_tests.sh` and `raverace/tools/link_tests.sh` (`gather`, `missing`, `bad`, `skew`, `crash`).
 
 ## How it works
@@ -204,20 +213,22 @@ Each original board has a link chip (Namco's C139; the C422 on System 23) joined
 `engine/lan139.c` is a model of the chip at the level of whole frames, written from how each game's own link driver uses
 it: a frame the game sends goes to the next cabinet as one UDP packet (`engine/link_net.c`), and a frame received is
 put in the chip's buffer and the game is interrupted, as on the board. `engine/link_host.c` handles start-up (finding the
-others, the power-on wait, the fixed set), the Network page, `link.cfg` and the safety net. Notes on each game's link
-protocol are in [docs/LINK_NOTES.md](docs/LINK_NOTES.md). Gunmen Wars links differently: its cabinets talk through the GMEN
-board's IEEE 1394 (FireWire) chip, modelled in `gunwars/src/gw_gmen.c` and carried over UDP in lockstep on game time
-(`gunwars/src/gw_link.c`, [gunwars/LINK.md](gunwars/LINK.md)); its settings are the `link` lines of `gunwars.cfg`. The original author's own online play (`engine/net.c` and
-friends) is kept as it is, hidden by *Arcade mode*, so their releases keep merging cleanly.
+others, the power-on wait, the fixed set), the Network page, `link.cfg` and the safety net. `engine/lan_via.h` makes
+sure each packet leaves by the right network connection. Notes on each game's link protocol are in
+[docs/LINK_NOTES.md](docs/LINK_NOTES.md). Gunmen Wars links differently: its cabinets talk through the GMEN board's
+IEEE 1394 (FireWire) chip, modelled in `gunwars/src/gw_gmen.c` and carried over UDP in lockstep on game time
+(`gunwars/src/gw_link.c`, [gunwars/LINK.md](gunwars/LINK.md)). The original author's own online play (`engine/net.c`
+and friends) is kept as it is, hidden by *Arcade mode*, so their releases keep merging cleanly.
 
 ## Licence and legal
 
 MIT License; see `LICENSE`. Copyright of the original project is its author's; this fork's additions are under the same
 licence.
 
-This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Ace Driver, Time Crisis, Cyber Cycles,
-Alpine Racer, Cyber Sled, Gunmen Wars and Air Combat are trademarks of Bandai Namco Entertainment Inc. You need your own legally obtained copy of
-each game.
+This project is not affiliated with or endorsed by Bandai Namco. Tokyo Wars, Rave Racer, Ace Driver, Time Crisis,
+Cyber Cycles, Cyber Commando, Cyber Sled, Armadillo Racing, Alpine Racer, Alpine Surfer, Aqua Jet, Air Combat,
+Gunmen Wars, Crisis Zone, Prop Cycle and Dirt Dash are trademarks of Bandai Namco Entertainment Inc. You need your own
+legally obtained copy of each game.
 
 ## Credits
 
