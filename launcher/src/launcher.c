@@ -65,7 +65,7 @@ typedef struct {
 /* THE WAYS TO PLAY. One wording for every game: a linked cabinet (full screen / window), the tests that run linked copies on this PC,
  * and the split-screen Party modes. Index 0 (and Time Crisis II's first three) are the ones offered for the automatic start: the
  * automatic start is saved as game id + way number, so a new way goes after the others or keeps the numbers of those before it. */
-#define M_NET_FULL(roms) { "Full screen", "This PC is one cabinet in a linked set, or plays alone. The normal choice for a cabinet.", true, 1, \
+#define M_NET_FULL(roms) { "Full screen", "The normal choice for a cabinet. With Link play on (Settings) it joins the other cabinets.", true, 1, \
         { { roms " --fullscreen", NULL } } }
 #define M_NET_WIN(roms)  { "Window", "The same in a window, for setting up and testing.", false, 1, \
         { { roms " --window", NULL } } }
@@ -104,7 +104,7 @@ static const game_t games[] = {
     { "victlap", "Ace Driver: Victory Lap", "1996", "Ace Driver Victory Lap", "VictoryLap-ArcadeLAN.exe",
       "Ace Driver's 1996 sequel: a three-round championship for up to 4 linked cabinets. New in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", "link.cfg",
-      8, { NET_MODES("roms") } },   /* (8 cabinets link, but the user's 8-window test was all over the place: left out for now) */
+      8, { NET_MODES("roms") } },   /* (8 cabinets link, but 8 windows on one PC did not keep up: left out) */
     { "airco22", "Air Combat 22", "1995", "Air Combat 22", "AirCombat22-ArcadeLAN.exe",
       "Jet-fighter missions for a single cabinet. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows fly  \xC2\xB7  W boost  \xC2\xB7  S brake  \xC2\xB7  Space gun  \xC2\xB7  Alt missile  \xC2\xB7  Esc menu", NULL,
@@ -151,9 +151,9 @@ static const game_t games[] = {
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X gas  \xC2\xB7  Z brake  \xC2\xB7  Q / E shift  \xC2\xB7  C view  \xC2\xB7  Esc menu", NULL,
       2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", "") } },
     { "gunwars", "Gunmen Wars", "1998", "Gunmen Wars", "GunmenWars-ArcadeLAN.exe",
-      "Team shoot-outs for up to 3 linked cabinets (set up in the game's Esc menu, Link page). New in this package.",
+      "Team shoot-outs for up to 3 linked cabinets (set up in the game's Esc menu, Network page). New in this package.",
       "Controls: mouse turns  \xC2\xB7  left button fires  \xC2\xB7  right button decide  \xC2\xB7  W A S D move  \xC2\xB7  5 coin  \xC2\xB7  Esc menu (Options: NamCam webcam / photo)", NULL,
-      5, { { "Full screen", "The normal choice for a cabinet: on its own, or linked with others (set up in the game's Esc menu, Link page).", true, 1,
+      5, { { "Full screen", "The normal choice for a cabinet. With Link play on (Settings) it joins the other cabinets.", true, 1,
                { { "--window --fullscreen", NULL } } },
            { "Window", "The same, in a window. Useful while setting up or testing.", false, 1, { { "--window", NULL } } },
            { "Test: 2 cabinets", "Opens 2 linked windows side by side. Controller 1 plays the left, controller 2 the right; the keyboard and mouse play the window you click.", false, 2, {
@@ -235,7 +235,11 @@ static const char *cabinets_text(const game_t *g)
 static void game_dir(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s", base, g->folder); }
 static void game_exe(const game_t *g, char *out, size_t n) { snprintf(out, n, "%sgames\\%s\\%s", base, g->folder, g->exe); }
 
-static struct { int auto_game, auto_mode, delay, restart, windowed, tests; } S = { -1, 0, 10, 1, 0, 0 };
+static struct { int auto_game, auto_mode, delay, restart, windowed, tests, link; } S = { -1, 0, 10, 1, 0, 0, 0 };
+/* LINK PLAY (Settings, off by default): one switch for this PC. A game started on its own (Full screen / Window / a TC2 side) gets
+ * link=on|off written into its link settings just before it starts, so off = it plays at once, on = it looks for the other cabinets.
+ * The Test / Party ways link by their own command line and are not touched. */
+static const char *link_file(const game_t *g) { return g->cfg ? g->cfg : !strcmp(g->id, "gunwars") ? "gunwars.cfg" : NULL; }
 /* a way to play the menu shows: the "Test: ..." ways (several linked windows on this PC) only with Settings > Test modes on */
 static bool way_shown(const way_t *m) { return S.tests || strncmp(m->label, "Test: ", 6) != 0; }
 static const int delays[] = { 5, 10, 20, 30, 60 };
@@ -258,6 +262,7 @@ static void cfg_load(void)
         else if (!strcmp(k, "if_closed")) S.restart = strcmp(v, "menu") != 0;
         else if (!strcmp(k, "screen")) S.windowed = !strcmp(v, "window");
         else if (!strcmp(k, "test_modes")) S.tests = !strcmp(v, "on");
+        else if (!strcmp(k, "link_play")) S.link = !strcmp(v, "on");
     }
     fclose(f);
     if (S.delay < 1) S.delay = 10;
@@ -274,6 +279,7 @@ static void cfg_save(void)
             S.restart ? "restart" : "menu");
     fprintf(f, "screen=%s\n", S.windowed ? "window" : "fullscreen");
     fprintf(f, "# test_modes: show the Test ways (several linked windows on this PC) in the menu\ntest_modes=%s\n", S.tests ? "on" : "off");
+    fprintf(f, "# link_play: on = the games link with the other cabinets, off = each game plays on its own\nlink_play=%s\n", S.link ? "on" : "off");
     fclose(f);
 }
 
@@ -372,6 +378,10 @@ static bool launch(int gi, int mi)
     game_dir(g, dir, sizeof dir); game_exe(g, exe, sizeof exe);
     if (GetFileAttributesA(exe) == INVALID_FILE_ATTRIBUTES) { logm("cannot start %s: %s is missing", g->name, exe); return false; }
     nprocs = 0;
+    if (m->n == 1 && link_file(g)) {
+        char p[MAX_PATH]; snprintf(p, sizeof p, "%sgames\\%s\\%s", base, g->folder, link_file(g));
+        cfg_set(p, "link", S.link ? "on" : "off");
+    }
     if (m->n > 1) SetEnvironmentVariableA("N22_ONE_PC", "1");   /* copies on one PC: the games pace by timer, not vsync (engine/eng_vsync.h) */
     for (int c = 0; c < m->n; c++) {
         char cmd[1024]; snprintf(cmd, sizeof cmd, "\"%s\" %s", exe, way_args(m->c[c].args));
@@ -416,7 +426,7 @@ static bool ours_running(void)
     return false;
 }
 /* the first visible window of a game we started: the launcher (still in front) hands it the focus before hiding -- hidden at once,
- * Windows gave the focus to whatever was behind it and the game's window opened behind (the user, 2026-11-19) */
+ * Windows gave the focus to whatever was behind it and the game's window opened behind */
 static BOOL CALLBACK find_game_win(HWND h, LPARAM lp)
 {
     DWORD pid; GetWindowThreadProcessId(h, &pid);
@@ -425,7 +435,7 @@ static BOOL CALLBACK find_game_win(HWND h, LPARAM lp)
     return TRUE;
 }
 /* back in front when the game closes: the game had the focus and is gone, so Windows refuses SetForegroundWindow (the launcher
- * stayed behind, the user 2026-11-19) -- unless this process sent the last input: a tap of Alt, the usual way round the lock */
+ * stayed behind) -- unless this process sent the last input: a tap of Alt, the usual way round the lock */
 static void take_focus(SDL_Window *w)
 {
     SDL_ShowWindow(w); SDL_RaiseWindow(w);
@@ -600,7 +610,7 @@ static int screen = SC_MENU, sel_game, sel_mode, focus;     /* focus 0: the game
 static int sel_set; static Uint64 count_until; static char message[160]; static Uint64 message_until;
 static bool auto_session;                                   /* started by Windows (--auto): the watchdog's restart applies */
 static bool want_quit;
-enum { SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_TESTS, SET_LIGHTS, SET_RECORD, SET_ADDR, SET_N };
+enum { SET_LINK, SET_AUTO, SET_DELAY, SET_CLOSED, SET_SCREEN, SET_TESTS, SET_LIGHTS, SET_RECORD, SET_ADDR, SET_N };
 
 static void say(const char *m) { snprintf(message, sizeof message, "%s", m); message_until = SDL_GetTicks64() + 4000; }
 
@@ -655,6 +665,7 @@ static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT
         else if (key == SDLK_ESCAPE) screen = SC_MENU;
         else if (key == SDLK_LEFT || key == SDLK_RIGHT || key == SDLK_RETURN) {
             switch (sel_set) {
+            case SET_LINK: S.link = !S.link; cfg_save(); break;
             case SET_AUTO: auto_next(d); cfg_save(); run_key_set(S.auto_game >= 0); break;
             case SET_DELAY: { int i = 0; while (i < 4 && delays[i] != S.delay) i++; i = (i + d + 5) % 5; S.delay = delays[i]; cfg_save(); break; }
             case SET_CLOSED: S.restart = !S.restart; cfg_save(); break;
@@ -766,7 +777,9 @@ static void draw(int W, int H, SDL_Window *win)
             const int col = !two ? 0 : kind[i] == 2 ? 1 : kind[i] == 1 ? (has_party ? 0 : 1) : 0;
             if (kind[i] != last_kind[col]) {                                 /* a new group: its heading (closer to its buttons than to the group above) */
                 if (last_kind[col] >= 0) cy[col] += 16 * k;
-                text(cb, f_small, rx + col * (mw + cgap), cy[col], heads[kind[i]], C_SEC);
+                const char *hd = heads[kind[i]];
+                if (kind[i] == 0 && link_file(g)) hd = S.link ? "Play  \xC2\xB7  link play on" : "Play  \xC2\xB7  link play off (Settings)";
+                text(cb, f_small, rx + col * (mw + cgap), cy[col], hd, kind[i] == 0 && link_file(g) && S.link ? C_AMBER : C_SEC);
                 cy[col] += headh; last_kind[col] = kind[i];
             }
             struct nk_rect r = nk_rect(rx + col * (mw + cgap), cy[col], mw, mh);
@@ -790,10 +803,11 @@ static void draw(int W, int H, SDL_Window *win)
             text(cb, f_small, rx, hy, no_stop(g->m[sel_mode].hint), C_SEC);
         }
     } else if (screen == SC_SETTINGS) {
-        static const char *names[SET_N] = { "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
+        static const char *names[SET_N] = { "Link play", "Start a game when Windows starts", "Countdown before the game starts", "When the game closes",
                                              "Launcher display", "Test modes", "Link status lights (all games)", "Session recordings (all games)",
                                              "This PC's network address" };
         static const char *hints[SET_N] = {
+            "On: each game looks for the other cabinets when it starts (Start or S plays alone). Off: games play on their own straight away.",
             "When Windows signs in, the launcher opens, counts down and starts this game. On a cabinet PC, set Windows to sign in automatically.",
             "How long the countdown waits before the game starts. Any key or button during the countdown opens the menu instead.",
             "After an automatic start: restart the game whenever it closes, so the cabinet always returns to attract mode.",
@@ -816,6 +830,7 @@ static void draw(int W, int H, SDL_Window *win)
             text(cb, f_mid, r.x + 24 * k, r.y + 14 * k, names[i], s ? C_TEXT : C_SEC);
             char v[200] = "";
             switch (i) {
+            case SET_LINK: snprintf(v, sizeof v, "%s", S.link ? "On" : "Off"); break;
             case SET_AUTO: if (S.auto_game < 0) snprintf(v, sizeof v, "Off"); else snprintf(v, sizeof v, "%s: %s", games[S.auto_game].name, games[S.auto_game].m[S.auto_mode].label); break;
             case SET_DELAY: snprintf(v, sizeof v, "%d seconds", S.delay); break;
             case SET_CLOSED: snprintf(v, sizeof v, "%s", S.restart ? "Restart the game" : "Return to this menu"); break;

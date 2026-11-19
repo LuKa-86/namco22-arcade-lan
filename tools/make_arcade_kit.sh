@@ -64,7 +64,7 @@ for g in "${GAMES[@]}"; do
     if [ "$folder" = "Time Crisis II" ]; then           # (it unpacks roms\timecrs2.zip into extracted\ itself on its first start)
         [ -f "$d/tc2_link.cfg" ] || printf '%s\r\n' "# Time Crisis II twin-cabinet link. The launcher sets the side (left / right)." \
             "# address: auto finds the other cabinet on the network by itself; or the other PC's address. port: the same on both PCs." \
-            "link=on" "side=left" "address=auto" "port=23000" "wait=60" "lights=bottom-left" "record=on" > "$d/tc2_link.cfg"
+            "link=off" "side=left" "address=auto" "port=23000" "wait=60" "lights=bottom-left" "record=on" > "$d/tc2_link.cfg"
     fi
     echo "  $folder: $exe${have:+, roms:$have}"
 done

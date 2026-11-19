@@ -55,6 +55,7 @@ cabinets on the network and links with them, with nobody touching a keyboard, ev
 | **Alpine Surfer** | 1996 | Super 22 | 1 | **New** port |
 | **Air Combat 22** | 1995 | Super 22 | 1 | **New** port; jet-fighter missions |
 | **Aqua Jet** | 1996 | Super 22 | 1 | **New** port |
+| **Rapid River** | 1997 | Gorgon (System 23 family) | 1 | **New** port; white-water rafting |
 | **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
 | **Prop Cycle** | 1996 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
 | **Dirt Dash** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
@@ -90,6 +91,9 @@ Time Crisis II and Gunmen Wars have also been tested linking across three real P
 ### Running in a cabinet
 
 - **A full-screen launcher** (`Namco 22 Arcade LAN.exe`) for every game, driven by keyboard, controller or mouse.
+- **One Link play switch** in the launcher's Settings, **off** out of the box: every game simply starts and plays. Turn
+  it on for a PC that is part of a linked set and its games look for the other cabinets first (Start or S skips the
+  wait). The launcher sets each game's own Link play setting to match whenever it starts one.
 - **Starts a game when Windows starts**, and **starts it again if it ever closes**, so the cabinet always comes back to
   its attract mode.
 - **Arcade mode:** the original project's online pages are hidden. Coins and Start work as on the original machines;
@@ -134,9 +138,9 @@ Time Crisis II and Gunmen Wars have also been tested linking across three real P
    `tools/make_arcade_kit.sh <package folder> <folder with your MAME zips>`. Each game's zips go into its own `roms`
    folder, and each game unpacks them on its first start.
 2. Copy the package folder to every cabinet PC.
-3. On every PC, start the game as **Linked cabinet - full screen** in the launcher. On each one, press **Esc**,
-   open **Network**, choose **Find cabinets**, then **Use the N found**. Time Crisis II's two sides find each other
-   by themselves.
+3. On every PC, turn on **Link play** in the launcher's Settings, then start the game with **Full screen**. Press
+   **Esc**, open **Network**, give each PC its own **This cabinet** number and set **Cabinets in set**. The cabinets
+   find each other by themselves; **Find cabinets** lists them. Time Crisis II: cabinet 1 = left side, 2 = right.
 4. Close the game on every PC and start them all again. They wait up to a minute for each other, then link.
 5. In the launcher's Settings, choose the game for *Start a game when Windows starts*.
 
@@ -146,11 +150,12 @@ The package's `READ ME.txt` walks through all of it, and its `LAN test` folder c
 ## Settings
 
 Each game's link settings are in `link.cfg` in its folder (Time Crisis II: `tc2_link.cfg`; Gunmen Wars: the `link` lines
-of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it.
+of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The launcher's are in `launcher.cfg` beside it
+(`link_play`, `auto_start`, `auto_delay`, `if_closed`, `screen`, `test_modes`).
 
 | Setting | |
 |---|---|
-| `link` | `on` or `off` |
+| `link` | `on` or `off` (default `off`; the launcher's Link play switch sets it each time it starts a game) |
 | `cabinet` | `auto` (its place in the address list) or a number |
 | `cabinets`, `address1` ... `address8` | how many cabinets, and each one's address |
 | `wait` | seconds to wait at power-on for a missing cabinet (default 60) |
@@ -161,6 +166,10 @@ of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The l
 | `arcade_mode` | `on` (default) hides the original's online pages; `off` brings them back |
 
 ## Version history
+
+- **0.10.3, later** (November 2026): **Rapid River** (Namco Gorgon) port. The launcher's **Link play** switch (off by
+  default), controller fixes in every game (triggers can be bound and stay analogue on pedals; the left stick moves
+  through menus; pad Start skips the link wait), the launcher opens games in front and in a real window, sharper logos.
 
 - **0.10.3** (November 2026): merged the original project's 0.10.3; Prop Cycle, Dirt Dash, Time Crisis and Crisis Zone
   now built here. New: **Ace Driver: Victory Lap** (up to 4 linked) and **Air Combat 22**. The link replies out of the

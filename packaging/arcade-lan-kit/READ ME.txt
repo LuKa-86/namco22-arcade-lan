@@ -74,8 +74,8 @@ back. In the games: Esc opens the game's own menu (display, sound, controls, Net
 File > Exit or Alt+F4 closes the game.
 
 The ways to play:
-   Full screen                           this PC is one cabinet in a linked set, or plays alone
-                                         (the normal choice)
+   Full screen                           the normal choice for a cabinet: it plays on its own, or
+                                         joins the other cabinets when Link play is On
    Window                                the same in a window, for setting up and testing
    Test: 2 / 4 cabinets                  linked copies in windows on this PC, to see the link
                                          working (Ace Driver also has Test: 8). Hidden until
@@ -88,11 +88,16 @@ The ways to play:
                                          and 2 guns), Test: both sides, or Party
 
 
+LINK PLAY: ONE SWITCH. Settings > Link play is Off at first, so every game starts and plays
+straight away. Turn it On on a PC that is one of a linked set: from then on each game started
+there looks for the other cabinets first (Start or S skips the wait and plays alone this time).
+The launcher sets the game's own "Link play" row to match each time it starts a game.
+
 3. LINKING THE CABINETS (once per set)
 -------------------------------------
 1. Copy this whole folder to every cabinet PC and connect the PCs to one network switch with
    cables. No addresses to type: the cabinets find each other on the network by themselves.
-2. On EVERY PC start the game with "Full screen", press Esc and open the Network page. Every
+2. On EVERY PC turn on Settings > Link play in the launcher. Then start the game with "Full screen", press Esc and open the Network page. Every
    LAN game has the same page, with the same rows in the same order:
      Link play         On
      This cabinet      1 on the first PC, 2 on the next, and so on: every PC its own number
