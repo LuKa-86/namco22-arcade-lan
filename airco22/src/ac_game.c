@@ -80,8 +80,8 @@ static const ss22_action actions[] = {
     { "Stick right",      "right",     SDL_SCANCODE_RIGHT,  SDL_SCANCODE_UNKNOWN,  0,          SS22_AX_WHEEL_RIGHT, 0 },
     { "Nose down (stick fwd)", "pitchdown", SDL_SCANCODE_UP, SDL_SCANCODE_UNKNOWN, IN_V_PITCH_DOWN, 0,              0 },
     { "Nose up (stick back)",      "pitchup",   SDL_SCANCODE_DOWN, SDL_SCANCODE_UNKNOWN, IN_V_PITCH_UP, 0,              0 },
-    { "Throttle up (boost)", "accel", SDL_SCANCODE_W, SDL_SCANCODE_LSHIFT, IN_V_THR_FWD,  0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) },
-    { "Throttle down (brake)",      "brake", SDL_SCANCODE_S, SDL_SCANCODE_Z,      IN_V_THR_BACK, 0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) },
+    { "Throttle down (brake)", "accel", SDL_SCANCODE_W, SDL_SCANCODE_LSHIFT, IN_V_THR_FWD,  0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) },   /* the user: pad accelerate / slow down swapped (2026-11-19) */
+    { "Throttle up (boost)",        "brake", SDL_SCANCODE_S, SDL_SCANCODE_Z,      IN_V_THR_BACK, 0,                   SS22_PAD(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) },
 };
 static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2);
 static const ss22_input_game input = {
@@ -174,8 +174,10 @@ static void ac_send(uint16_t p, unsigned wheel, unsigned pedal1, unsigned pedal2
     if (p & IN_V_THR_BACK) t -= 0x100;
     y += ac_axis(SDL_CONTROLLER_AXIS_LEFTY) / 128;
     t -= ac_axis(SDL_CONTROLLER_AXIS_RIGHTY) / 128;
-    t += ac_axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 128;
-    t -= ac_axis(SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 128;
+    /* LT throttle up, RT down: as LB / RB (the user, 2026-11-19) -- unless the trigger is bound on the Controls page, where
+     * the binding alone counts (the user's RT = up was cancelled by this reading RT as down) */
+    if (!ss22_input_trigger_bound(false)) t += ac_axis(SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 128;
+    if (!ss22_input_trigger_bound(true)) t -= ac_axis(SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 128;
     ss22_snd_inputs((uint16_t)(p & ~IN_VIRTUAL), wheel, clamp_adc(0x200 + y), clamp_adc(0x200 + t));
 }
 

@@ -28,6 +28,7 @@
 #include "eng/eng_cfg.h"
 #include "eng/eng_crosshair.h"
 #include "eng/eng_pace.h"
+#include "eng/eng_pad.h"
 #include "eng/eng_tile.h"
 #include "eng/ss22_input.h"
 #include "eng/ss22_host.h"
@@ -201,6 +202,7 @@ int s23_window_open(int scale, int fullscreen)
     if (party_hint[0]) { void eng_ui_set_hint(const char *, int); eng_ui_set_hint(party_hint, 60 * 15); }   /* party: whose picture this is */
     ss22_input_init(s23_game.input ? (const ss22_input_game *)s23_game.input : s23_game.io_asca3 ? &ak_input_game : &s23_input_game);                    /* the controls (keys, mouse, light gun, pads) and the menu's Controls page */
     eng_ui_add_page(ss22_input_page());
+    if (!party_hint[0] && eng_pad_present()) eng_ui_set_hint(ENG_PAD_MENU_HINT, 60 * 8);   /* a pad has no Esc: how to reach the menu (as engine/ss22_host.c) */
     { void s23_subs_ui_init(void); s23_subs_ui_init(); }   /* English subtitles (src/s23_subs.c): only a game with a table */
     if (s23_game.menu_pages) s23_game.menu_pages();
     if (s23_game.twin && !s23_game.link) { extern const eng_ui_page s23_c422_page; eng_ui_add_page(&s23_c422_page); }   /* Time Crisis II: the Network page (src/s23_c422.c) */
@@ -399,8 +401,12 @@ static int pass(int new_frame)
             default: break;
             }
         }
+        if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK) { eng_ui_set_open(true); ss22_input_neutral(); fprintf(stderr, "[HOST] menu open (R3)\n"); }
+        if (e.type == SDL_CONTROLLERDEVICEADDED) eng_ui_set_hint(ENG_PAD_MENU_HINT, 60 * 8);
         ss22_input_event(&e);                                    /* pads hot-plugged */
     }
+    /* a pad's way to the menu, as every System 22 game (eng/eng_pad.h): R3 above, or Start held a second (a tap stays the game's Start) */
+    if (!eng_ui_is_open() && eng_pad_start_hold(60)) { eng_ui_set_open(true); ss22_input_neutral(); fprintf(stderr, "[HOST] menu open (Start held)\n"); }
     eng_ui_input_end();
     { /* tests: S23_MENU_AT=frame:page:row opens the menu there (S23_MENU_KEYS=<u d l r o b n p> then drives it) */
       static long at = -2, n; static int mp, mr;
@@ -470,6 +476,8 @@ int s23_window_wait_pump(const char *l1, const char *l2)
             if (e.key.keysym.scancode == SDL_SCANCODE_S) key = 'S';
             if (e.key.keysym.scancode == SDL_SCANCODE_F11) eng_disp_toggle_fullscreen();
         }
+        if (e.type == SDL_CONTROLLERDEVICEADDED) SDL_GameControllerOpen(e.cdevice.which);          /* (a pad's buttons arrive once it is open) */
+        if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_START) key = 'S';   /* a pad's Start = S */
     }
     eng_ui_input_end();
     int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);

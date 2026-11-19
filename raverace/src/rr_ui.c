@@ -553,6 +553,13 @@ bool rr_ui_event(SDL_Event *e)
         if (e->jhat.value & SDL_HAT_UP) k = K_UP; else if (e->jhat.value & SDL_HAT_DOWN) k = K_DOWN;
         else if (e->jhat.value & SDL_HAT_LEFT) k = K_LEFT; else if (e->jhat.value & SDL_HAT_RIGHT) k = K_RIGHT;
     }
+    else if (e->type == SDL_CONTROLLERAXISMOTION && (e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTX || e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTY)) {
+        /* the LEFT STICK navigates as the d-pad does, one step per push (as s23/src/eng/eng_ui.c) */
+        static int held[2]; const int ax = e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTY, v = e->caxis.value;
+        const int dir = v > 20000 ? 1 : v < -20000 ? -1 : 0;
+        if (dir && dir != held[ax]) k = ax ? (dir > 0 ? K_DOWN : K_UP) : (dir > 0 ? K_RIGHT : K_LEFT);
+        if (v > -12000 && v < 12000) held[ax] = 0; else if (dir) held[ax] = dir;
+    }
     if (k >= 0) { nav(k); kb_moved = true; return true; }
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) return true;   /* the game does not see keys while open */
     nkc_event(e);                                        /* mouse (a quick click held a frame: engine/eng_nk_click.h) */

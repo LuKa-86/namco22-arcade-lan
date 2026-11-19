@@ -396,12 +396,40 @@ static bool button_matches(SDL_Joystick *js, int a)
     return SDL_JoystickGetButton(js, joy_button[a]) != 0;
 }
 
+/* a pad's analogue trigger bound as a button: joy_button = PAD_TRIG + 0 (LT) or + 1 (RT) (as the System 23 host, s23/src/eng/ss22_input.c) */
+#define PAD_TRIG 100
+static bool trigger_matches(SDL_GameController *gc, int a)
+{
+    if (!gc || joy_button[a] < PAD_TRIG) return false;
+    if (joy_button_guid[a][0]) {
+        char guid[40];
+        SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(gc)), guid, sizeof guid);
+        if (strcmp(guid, joy_button_guid[a])) return false;
+    }
+    return SDL_GameControllerGetAxis(gc, joy_button[a] == PAD_TRIG ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 12000;
+}
+
+static bool is_pedal(int a) { return game->actions[a].axis == SS22_AX_PEDAL1 || game->actions[a].axis == SS22_AX_PEDAL2; }
+/* the trigger bound to a pedal on the Controls page (PAD_TRIG + 0 / 1), or -1: read analogue for that pedal, not as a button */
+static int pedal_trigger(int kind)
+{
+    for (int a = 0; a < game->n; a++) if (game->actions[a].axis == kind && joy_button[a] >= PAD_TRIG) return joy_button[a];
+    return -1;
+}
+
+bool ss22_input_trigger_bound(bool right)
+{
+    for (int a = 0; a < game->n; a++) if (joy_button[a] == PAD_TRIG + right) return true;
+    return false;
+}
+
 static bool raw_button_held(int a)
 {
     if (a < 0 || a >= game->n || joy_button[a] < 0) return false;
     for (int i = 0; i < MAX_DEV; i++) {
         if (button_matches(raws[i].js, a)) return true;
         if (pads[i].gc && button_matches(SDL_GameControllerGetJoystick(pads[i].gc), a)) return true;
+        if (pads[i].gc && !is_pedal(a) && trigger_matches(pads[i].gc, a)) return true;   /* a pedal's trigger stays analogue (pedal_trigger) */
     }
     return false;
 }
@@ -588,7 +616,8 @@ static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
     snprintf(v, vn, "%s", key && *key ? key : "(none)");
     if (joy_button[a] >= 0) {
         size_t used = strlen(v);
-        snprintf(v + used, vn - used, " / button %d", joy_button[a]);
+        if (joy_button[a] >= PAD_TRIG) snprintf(v + used, vn - used, " / %s", joy_button[a] == PAD_TRIG ? "left trigger" : "right trigger");
+        else snprintf(v + used, vn - used, " / button %d", joy_button[a]);
     }
     const int kind = action_axis(a);
     if (kind >= 0 && axis_bind(kind)->axis >= 0) {
@@ -851,11 +880,13 @@ static bool capture_input(const SDL_Event *e, void *u)
         return true;
     }
     if (e->type == SDL_JOYBUTTONUP) { bool *h = cap_held_slot(e->jbutton.which, e->jbutton.button); if (h) *h = false; return false; }
-    if (e->type == SDL_JOYBUTTONDOWN) {
-        SDL_Joystick *js = button_device(e->jbutton.which);
+    const bool trig = e->type == SDL_CONTROLLERAXISMOTION && e->caxis.value > 20000 &&
+        (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT || e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+    if (e->type == SDL_JOYBUTTONDOWN || trig) {
+        SDL_Joystick *js = button_device(trig ? e->caxis.which : e->jbutton.which);
         if (!js) return false;
-        { bool *h = cap_held_slot(e->jbutton.which, e->jbutton.button); if (h && *h) return false; }   /* the press that opened the row */
-        joy_button[rebinding] = e->jbutton.button;
+        if (!trig) { bool *h = cap_held_slot(e->jbutton.which, e->jbutton.button); if (h && *h) return false; }   /* the press that opened the row */
+        joy_button[rebinding] = trig ? PAD_TRIG + (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) : e->jbutton.button;
         SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(js), joy_button_guid[rebinding],
                                  sizeof joy_button_guid[rebinding]);
         char key[64];
@@ -931,6 +962,8 @@ static bool pad_trigger_rebound(SDL_GameController *c, SDL_GameControllerAxis ax
     if (axis_bind(kind == SS22_AX_PEDAL1 ? 1 : 2)->axis >= 0) return true;          /* ... or on a raw axis */
     const SDL_GameControllerButtonBind bb = SDL_GameControllerGetBindForAxis(c, ax);
     char g[40]; SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(c)), g, sizeof g);
+    for (int a = 0; a < game->n; a++)                                              /* the trigger itself bound to an action */
+        if (joy_button[a] == PAD_TRIG + (ax == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) && (!joy_button_guid[a][0] || !strcmp(joy_button_guid[a], g))) return true;
     if (bb.bindType == SDL_CONTROLLER_BINDTYPE_BUTTON) {
         for (int a = 0; a < game->n; a++)
             if (joy_button[a] == bb.value.button && (!joy_button_guid[a][0] || !strcmp(joy_button_guid[a], g))) return true;
@@ -1189,15 +1222,14 @@ void ss22_input_update(void)
             stick_wheel = (unsigned)((int)centre + (lx < 0 ? -1 : 1) * (int)(t * game->wheel_key_span));
             stick = true;
         }
-        const int rt = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
-        const int lt = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-        if (rt > 2000 && !pad_trigger_rebound(c, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, SS22_AX_PEDAL1)) {
-            const unsigned v = (unsigned)((double)rt * game->pedal_max[0] / 32767);
-            if (v > pedal[0]) pedal[0] = v;
-        }
-        if (lt > 2000 && !pad_trigger_rebound(c, SDL_CONTROLLER_AXIS_TRIGGERLEFT, SS22_AX_PEDAL2)) {
-            const unsigned v = (unsigned)((double)lt * game->pedal_max[1] / 32767);
-            if (v > pedal[1]) pedal[1] = v;
+        for (int k = 0; k < 2; k++) {                      /* RT gas, LT brake -- or the trigger bound to the pedal, still analogue */
+            const int kind = k ? SS22_AX_PEDAL2 : SS22_AX_PEDAL1, bound = pedal_trigger(kind);
+            SDL_GameControllerAxis ax = k ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+            if (bound >= 0) ax = bound == PAD_TRIG ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+            else if (pad_trigger_rebound(c, ax, kind)) continue;
+            const int t = SDL_GameControllerGetAxis(c, ax);
+            const unsigned v = t > 2000 ? (unsigned)((double)t * game->pedal_max[k] / 32767) : 0;
+            if (v > pedal[k]) pedal[k] = v;
         }
         for (int a = 0; a < game->n; a++) {
             const ss22_action *ac = &game->actions[a];

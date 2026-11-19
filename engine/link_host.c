@@ -271,7 +271,7 @@ static void wait_screen(void (*screen)(const char *const *lines, int n), const c
     }
     if (*sm) snprintf(L[n++], sizeof L[0], "%s", sm);
     snprintf(L[n++], sizeof L[0], " ");
-    snprintf(L[n++], sizeof L[0], "Press S to play without the link");
+    snprintf(L[n++], sizeof L[0], "Press S, or Start on a controller, to play without the link");
     for (int i = 0; i < n; i++) lp[i] = L[i];
     screen(lp, n);
 }
@@ -308,6 +308,8 @@ void link_host_gather(const char *title, SDL_Window *w, void (*hint)(const char 
         while (w && SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { lnk_close(); exit(0); }
             if (e.type == SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym == SDLK_s) skip = true;   /* S: play without the link */
+            if (e.type == SDL_CONTROLLERDEVICEADDED) SDL_GameControllerOpen(e.cdevice.which);        /* (a pad's buttons arrive once it is open) */
+            if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_START) skip = true;   /* ... or a pad's Start */
         }
         if (skip_at && SDL_GetTicks64() >= skip_at) skip = true;
         if (skip) break;

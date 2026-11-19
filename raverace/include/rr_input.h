@@ -39,6 +39,9 @@ bool rr_input_device_matches(SDL_Joystick *js, const char *guid);
  * "FANATEC Wheel"s under one GUID (12 axes / 63 buttons and 8 axes / 108 buttons) */
 bool rr_input_axis_device(const rr_joyaxis_t *ax, SDL_Joystick *js);
 bool rr_input_button_matches(int action, SDL_Joystick *js, int button);
+#define RR_PAD_TRIG 100                                 /* g_joy_button = RR_PAD_TRIG + 0 (LT) / + 1 (RT): a pad's trigger bound as a button */
+bool rr_input_trigger_held(int action, SDL_GameController *gc);
+bool rr_input_trigger_pressed(int action, const SDL_Event *e);
 double rr_input_pedal_value(rr_joyaxis_t *axis, int value);
 extern rr_joyaxis_t g_joy_steer, g_joy_gas, g_joy_brake;
 extern int g_joy_button[RR_ACT_N];

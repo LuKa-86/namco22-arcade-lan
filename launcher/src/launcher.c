@@ -30,6 +30,7 @@
 #include <iphlpapi.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL_syswm.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
@@ -356,6 +357,14 @@ static void all_set(const char *key, bool on)
 /* ---- STARTING A GAME, AND WATCHING IT -------------------------------------------------------------------------------- */
 static HANDLE procs[MAXCOPY]; static int nprocs;
 static int run_game = -1, run_mode;
+/* a way's arguments as run: a window way also says "not full screen" for this run (--set: engine/eng_args.h) -- a game whose own
+ * settings remember full screen opened full screen from the Window button; its settings file is not changed */
+static const char *way_args(const char *a)
+{
+    static char b[512];
+    snprintf(b, sizeof b, "%s%s", a, strstr(a, "--window") && !strstr(a, "--fullscreen") ? " --set window_mode=0" : "");
+    return b;
+}
 static bool launch(int gi, int mi)
 {
     const game_t *g = &games[gi]; const way_t *m = &g->m[mi];
@@ -365,7 +374,7 @@ static bool launch(int gi, int mi)
     nprocs = 0;
     if (m->n > 1) SetEnvironmentVariableA("N22_ONE_PC", "1");   /* copies on one PC: the games pace by timer, not vsync (engine/eng_vsync.h) */
     for (int c = 0; c < m->n; c++) {
-        char cmd[1024]; snprintf(cmd, sizeof cmd, "\"%s\" %s", exe, m->c[c].args);
+        char cmd[1024]; snprintf(cmd, sizeof cmd, "\"%s\" %s", exe, way_args(m->c[c].args));
         char envs[512] = "";                       /* the copy's own settings: set for the child, cleared again after */
         if (m->c[c].env) snprintf(envs, sizeof envs, "%s", m->c[c].env);
         for (char *t = strtok(envs, ";"); t; t = strtok(NULL, ";")) { char *eq = strchr(t, '='); if (eq) { *eq = 0; SetEnvironmentVariableA(t, eq + 1); *eq = '='; } }
@@ -406,6 +415,28 @@ static bool ours_running(void)
     for (int i = 0; i < nprocs; i++) if (WaitForSingleObject(procs[i], 0) == WAIT_TIMEOUT) return true;
     return false;
 }
+/* the first visible window of a game we started: the launcher (still in front) hands it the focus before hiding -- hidden at once,
+ * Windows gave the focus to whatever was behind it and the game's window opened behind (the user, 2026-11-19) */
+static BOOL CALLBACK find_game_win(HWND h, LPARAM lp)
+{
+    DWORD pid; GetWindowThreadProcessId(h, &pid);
+    if (!IsWindowVisible(h)) return TRUE;
+    for (int i = 0; i < nprocs; i++) if (GetProcessId(procs[i]) == pid) { *(HWND *)lp = h; return FALSE; }
+    return TRUE;
+}
+/* back in front when the game closes: the game had the focus and is gone, so Windows refuses SetForegroundWindow (the launcher
+ * stayed behind, the user 2026-11-19) -- unless this process sent the last input: a tap of Alt, the usual way round the lock */
+static void take_focus(SDL_Window *w)
+{
+    SDL_ShowWindow(w); SDL_RaiseWindow(w);
+    SDL_SysWMinfo i; SDL_VERSION(&i.version);
+    if (!SDL_GetWindowWMInfo(w, &i)) return;
+    HWND h = i.info.win.window;
+    if (GetForegroundWindow() == h) return;
+    keybd_event(VK_MENU, 0, 0, 0); keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+    SetForegroundWindow(h); BringWindowToTop(h);
+}
+static HWND game_window(void) { HWND h = NULL; EnumWindows(find_game_win, (LPARAM)&h); return h; }
 static void forget_procs(void) { for (int i = 0; i < nprocs; i++) CloseHandle(procs[i]); nprocs = 0; }
 
 /* ---- WINDOWS: write the .bat launchers, this PC's addresses ---------------------------------------------------------- */
@@ -433,7 +464,7 @@ static void write_advanced(const char *dir)
                 if (m->n > 1) fprintf(f, "\r\nrem Window %d of %d\r\n", c + 1, m->n); else fprintf(f, "\r\n");
                 if (m->c[c].env) { char e[512]; snprintf(e, sizeof e, "%s", m->c[c].env);
                     for (char *t = strtok(e, ";"); t; t = strtok(NULL, ";")) fprintf(f, "set \"%s\"\r\n", t); }
-                fprintf(f, "start \"\" \"%s\" %s\r\n", g->exe, m->c[c].args);
+                fprintf(f, "start \"\" \"%s\" %s\r\n", g->exe, way_args(m->c[c].args));
                 if (c + 1 < m->n) fprintf(f, "rem A short pause, so the windows open in order\r\nping -n 1 -w 300 127.0.0.1 >nul\r\n");
             }
             fclose(f);
@@ -584,33 +615,41 @@ static int auto_next(int dir)
     return cur;
 }
 
+static Uint64 run_since;                          /* when the game was started (the launcher waits for its window) */
 static void start_mode(int g, int m, bool from_auto)
 {
     if (!launch(g, m)) { char b[160]; snprintf(b, sizeof b, "%s could not start. Check that games\\%s\\%s is there.", games[g].name, games[g].folder, games[g].exe); say(b); screen = SC_MENU; return; }
     auto_session = from_auto;
-    screen = SC_RUNNING;
+    screen = SC_RUNNING; run_since = SDL_GetTicks64();
 }
 
+static int bar = -1;                              /* the bottom bar's buttons with the keys / a pad: -1 none, 0 Settings (Games), 1 Quit */
 static void act(int key, SDL_Window *win)        /* key: SDLK_UP/DOWN/LEFT/RIGHT/RETURN/ESCAPE (pads are mapped to these) */
 {
     if (screen == SC_COUNTDOWN || screen == SC_RESTART) { screen = SC_MENU; logm("countdown stopped: the menu"); return; }
+    if (bar >= 0 && (screen == SC_MENU || screen == SC_SETTINGS)) {   /* reached by Down past the last item; Up / Back return */
+        if (key == SDLK_LEFT || key == SDLK_RIGHT) bar ^= 1;
+        else if (key == SDLK_UP || key == SDLK_ESCAPE) bar = -1;
+        else if (key == SDLK_RETURN) { screen = bar == 1 ? SC_QUIT : screen == SC_MENU ? SC_SETTINGS : SC_MENU; bar = -1; }
+        return;
+    }
     if (screen == SC_MENU) {
         const game_t *g = &games[sel_game];
         if (focus == 0) {
             if (key == SDLK_UP) { sel_game = (sel_game + NGAMES - 1) % NGAMES; sel_mode = 0; }
-            else if (key == SDLK_DOWN) { sel_game = (sel_game + 1) % NGAMES; sel_mode = 0; }
+            else if (key == SDLK_DOWN) { if (sel_game == NGAMES - 1) bar = 0; else { sel_game++; sel_mode = 0; } }
             else if (key == SDLK_RIGHT || key == SDLK_RETURN) { focus = 1; sel_mode = 0; }
             else if (key == SDLK_ESCAPE) screen = SC_QUIT;
         } else {
             if (key == SDLK_UP) do sel_mode = (sel_mode + g->nmodes - 1) % g->nmodes; while (!way_shown(&g->m[sel_mode]));
-            else if (key == SDLK_DOWN) do sel_mode = (sel_mode + 1) % g->nmodes; while (!way_shown(&g->m[sel_mode]));
+            else if (key == SDLK_DOWN) { int n = sel_mode; do n = (n + 1) % g->nmodes; while (!way_shown(&g->m[n])); if (n <= sel_mode) bar = 0; else sel_mode = n; }
             else if (key == SDLK_LEFT || key == SDLK_ESCAPE) focus = 0;
             else if (key == SDLK_RETURN) start_mode(sel_game, sel_mode, false);
         }
     } else if (screen == SC_SETTINGS) {
         const int d = key == SDLK_LEFT ? -1 : 1;
         if (key == SDLK_UP) sel_set = (sel_set + SET_N - 1) % SET_N;
-        else if (key == SDLK_DOWN) sel_set = (sel_set + 1) % SET_N;
+        else if (key == SDLK_DOWN) { if (sel_set == SET_N - 1) bar = 0; else sel_set++; }
         else if (key == SDLK_ESCAPE) screen = SC_MENU;
         else if (key == SDLK_LEFT || key == SDLK_RIGHT || key == SDLK_RETURN) {
             switch (sel_set) {
@@ -821,7 +860,8 @@ static void draw(int W, int H, SDL_Window *win)
         for (int i = 1; i >= 0; i--) {
             const float bw = tw(f_mid, bt[i]) + 40 * k; bx -= bw;
             struct nk_rect r = nk_rect(bx, H - 56 * k, bw, 48 * k);
-            const bool h = nk_input_is_mouse_hovering_rect(in, r);
+            const bool h = nk_input_is_mouse_hovering_rect(in, r) || bar == i;
+            if (bar == i) nk_fill_rect(cb, nk_rect(r.x - 3 * k, r.y - 3 * k, r.w + 6 * k, r.h + 6 * k), 10 * k, C_AMBER);   /* chosen with the keys / a pad */
             nk_fill_rect(cb, nk_rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2), 8 * k, C_LINE);
             nk_fill_rect(cb, r, 8 * k, h ? C_SEL : C_PANEL);                 /* hover: one surface step up */
             text(cb, f_mid, r.x + 20 * k, r.y + 9 * k, bt[i], h ? C_TEXT : C_SEC);
@@ -924,9 +964,9 @@ int main(int argc, char **argv)
         if ((screen == SC_COUNTDOWN || screen == SC_RESTART) && now >= count_until) {
             logm("countdown over: starting %s - %s", games[S.auto_game].name, games[S.auto_game].m[S.auto_mode].label);
             start_mode(S.auto_game, S.auto_mode, true);
-            if (screen == SC_RUNNING) SDL_HideWindow(win);
         } else if (screen == SC_RUNNING && SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN) {
-            SDL_HideWindow(win);
+            HWND gw = game_window();                                     /* hide once the game's window is up, and give it the focus */
+            if (gw || now - run_since > 20000) { if (gw) SetForegroundWindow(gw); SDL_HideWindow(win); }
         }
         if (screen == SC_RUNNING) {                                      /* the watchdog: every second */
             if (now >= next_check) {
@@ -936,7 +976,7 @@ int main(int argc, char **argv)
                 else if (now - gone_since >= 3000) {                     /* gone for 3 s (a restart by the game itself is quicker) */
                     forget_procs(); gone_since = 0;
                     logm("%s has closed", games[run_game].name);
-                    SDL_ShowWindow(win); SDL_RaiseWindow(win);
+                    take_focus(win);
                     if (auto_session && S.restart && S.auto_game >= 0) { screen = SC_RESTART; count_until = now + 5000; }
                     else screen = SC_MENU;
                 }

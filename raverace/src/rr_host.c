@@ -458,6 +458,7 @@ static bool held(int act)
         if (dev[d].gc && g_bind[act].pad != SDL_CONTROLLER_BUTTON_INVALID && SDL_GameControllerGetButton(dev[d].gc, g_bind[act].pad)) return true;
         SDL_Joystick *js = dev[d].gc ? SDL_GameControllerGetJoystick(dev[d].gc) : dev[d].js;
         if (rr_input_button_matches(act, js, g_joy_button[act]) && SDL_JoystickGetButton(js, g_joy_button[act])) return true;
+        if (act != RR_GAS && act != RR_BRAKE && rr_input_trigger_held(act, dev[d].gc)) return true;   /* a pedal's trigger stays analogue (pad_pedal) */
     }
     return false;
 }
@@ -467,6 +468,7 @@ static bool pressed(const SDL_Event *e, int act)
         for (int i = 0; i < g_bind[act].nkeys; i++) if (e->key.keysym.scancode == g_bind[act].keys[i]) return true;
     }
     if (e->type == SDL_CONTROLLERBUTTONDOWN && g_bind[act].pad != SDL_CONTROLLER_BUTTON_INVALID && e->cbutton.button == g_bind[act].pad) return true;
+    if (rr_input_trigger_pressed(act, e)) return true;
     return e->type == SDL_JOYBUTTONDOWN && rr_input_button_matches(act, SDL_JoystickFromInstanceID(e->jbutton.which), e->jbutton.button);
 }
 
@@ -550,6 +552,15 @@ static void wheel_motor(bool hold)
         eng_ffb_force(hold ? 0 : motor_hold_off(eng_ffb_decode(rr_hw_motor_byte())), g_cfg_ffb_strength, g_joy_steer.invert != (g_cfg_ffb_invert != 0));
 }
 static bool pad_steer(int *out) { return pad_steer_ex(out, false); }
+/* a pad's trigger for the gas / brake: RT / LT, or the one bound to it on the Controls page (read analogue, not as a button) */
+static SDL_GameControllerAxis pedal_trigger(bool gas)
+{
+    const int me = g_joy_button[gas ? RR_GAS : RR_BRAKE], other = g_joy_button[gas ? RR_BRAKE : RR_GAS];
+    int t = gas;                                        /* 1 = RT, 0 = LT */
+    if (me >= RR_PAD_TRIG) t = me - RR_PAD_TRIG;
+    else if (other == RR_PAD_TRIG + t) t = !t;          /* the other pedal took this one's trigger */
+    return t ? SDL_CONTROLLER_AXIS_TRIGGERRIGHT : SDL_CONTROLLER_AXIS_TRIGGERLEFT;
+}
 static bool pad_pedal(bool gas, int *out)         /* 0..gas_max / brake_max (the game table) */
 {
     int best = 0;
@@ -558,7 +569,7 @@ static bool pad_pedal(bool gas, int *out)         /* 0..gas_max / brake_max (the
     for (int d = 0; d < MAX_DEV; d++) {
         int v = 0;
         if (dev[d].gc) {
-            int t = SDL_GameControllerGetAxis(dev[d].gc, gas ? SDL_CONTROLLER_AXIS_TRIGGERRIGHT : SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+            int t = SDL_GameControllerGetAxis(dev[d].gc, pedal_trigger(gas));
             if (t > 1000) v = (t - 1000) * top / (32767 - 1000);
         } else if (rr_input_axis_device(ax, dev[d].js) && ax->axis >= 0 && ax->axis < SDL_JoystickNumAxes(dev[d].js)) {
             int r = SDL_JoystickGetAxis(dev[d].js, ax->axis);

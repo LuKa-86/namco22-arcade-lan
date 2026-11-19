@@ -460,7 +460,7 @@ void s23_c422_gate(int (*pump)(const char *l1, const char *l2))
         if (left <= 0) { go_alone("THE OTHER CABINET DID NOT ANSWER"); break; }
         char l1[96], l2[128];
         snprintf(l1, sizeof l1, "WAITING FOR THE %s CABINET...  %d", side_right ? "LEFT (RED)" : "RIGHT (BLUE)", left);
-        snprintf(l2, sizeof l2, "%s", warn_text[0] ? warn_text : "SWITCH BOTH CABINETS ON TOGETHER.   PRESS S TO PLAY ALONE");
+        snprintf(l2, sizeof l2, "%s", warn_text[0] ? warn_text : "SWITCH BOTH CABINETS ON TOGETHER.   PRESS S OR START TO PLAY ALONE");
         int k = 0;
         if (pump) k = pump(l1, l2); else SDL_Delay(10);
         if (k == 'Q') exit(0);

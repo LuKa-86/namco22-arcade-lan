@@ -85,6 +85,11 @@ static pedal_cal gas_cal, brake_cal;
 static int axis_capture = -1;
 static int cap_base[MAX_DEV][MAX_CAP_AXES];
 static bool cap_valid[MAX_DEV][MAX_CAP_AXES];
+/* the buttons already held when a capture starts (engine/ss22_input.c, GitHub #21): on a pad, the A press that OPENS a binding row
+ * also arrives as an SDL_JOYBUTTONDOWN after the menu acted on its SDL_CONTROLLERBUTTONDOWN, so A itself was bound at once and no
+ * trigger (or other button) could ever be pressed for it */
+#define MAX_CAP_BUTTONS 128
+static bool cap_rheld[MAX_DEV][MAX_CAP_BUTTONS], cap_pheld[MAX_DEV][MAX_CAP_BUTTONS];
 
 static const char *axis_cfg_name(int k) { return k == 0 ? "joy_steer" : k == 1 ? "joy_gas" : "joy_brake"; }
 static const char *guid_cfg_name(int k) { return k == 0 ? "joy_steer_guid" : k == 1 ? "joy_gas_guid" : "joy_brake_guid"; }
@@ -400,6 +405,20 @@ static void axis_capture_begin(int kind)
             cap_valid[d][a] = true;
         }
     }
+    memset(cap_rheld, 0, sizeof cap_rheld); memset(cap_pheld, 0, sizeof cap_pheld);
+    for (int d = 0; d < MAX_DEV; d++) {
+        SDL_Joystick *rj = raws[d].js, *pj = pads[d].gc ? SDL_GameControllerGetJoystick(pads[d].gc) : NULL;
+        for (int b = 0; rj && b < SDL_JoystickNumButtons(rj) && b < MAX_CAP_BUTTONS; b++) cap_rheld[d][b] = SDL_JoystickGetButton(rj, b) != 0;
+        for (int b = 0; pj && b < SDL_JoystickNumButtons(pj) && b < MAX_CAP_BUTTONS; b++) cap_pheld[d][b] = SDL_JoystickGetButton(pj, b) != 0;
+    }
+}
+/* a button that was down when the capture began: ignored until it is released (then a new press of it binds) */
+static bool *cap_held_slot(SDL_JoystickID id, int b)
+{
+    if (b < 0 || b >= MAX_CAP_BUTTONS) return NULL;
+    int d = raw_find(id); if (d >= 0) return &cap_rheld[d][b];
+    d = pad_find(id);     if (d >= 0) return &cap_pheld[d][b];
+    return NULL;
 }
 
 static void axis_label(int kind, char *v, size_t vn)
@@ -685,9 +704,11 @@ static bool capture_input(const SDL_Event *e, void *u)
     }
     const bool trig = e->type == SDL_CONTROLLERAXISMOTION && e->caxis.value > 20000 &&
         (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT || e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+    if (e->type == SDL_JOYBUTTONUP) { bool *h = cap_held_slot(e->jbutton.which, e->jbutton.button); if (h) *h = false; return false; }
     if (e->type == SDL_JOYBUTTONDOWN || trig) {
         SDL_Joystick *js = button_device(trig ? e->caxis.which : e->jbutton.which);
         if (!js) return false;
+        if (!trig) { bool *h = cap_held_slot(e->jbutton.which, e->jbutton.button); if (h && *h) return false; }   /* the press that opened the row */
         joy_button[rebinding] = trig ? PAD_TRIG + (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) : e->jbutton.button;
         SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(js), joy_button_guid[rebinding],
                                  sizeof joy_button_guid[rebinding]);
