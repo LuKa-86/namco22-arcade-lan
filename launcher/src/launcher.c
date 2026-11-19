@@ -525,7 +525,9 @@ static GLuint load_bmp(const char *p, int *w, int *h)
     SDL_Surface *s = SDL_LoadBMP(p); if (!s) return 0;
     SDL_Surface *r = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_ABGR8888, 0); SDL_FreeSurface(s); if (!r) return 0;
     GLuint t; glGenTextures(1, &t); glBindTexture(GL_TEXTURE_2D, t);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    /* mipmaps: a logo / picture is drawn at a fraction of its size; plain GL_LINEAR skipped pixels (jagged, speckled logos) */
+    glTexParameteri(GL_TEXTURE_2D, 0x8191 /* GL_GENERATE_MIPMAP (GL 1.4) */, GL_TRUE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, r->pitch / 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, r->w, r->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, r->pixels);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
