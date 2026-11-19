@@ -12,6 +12,7 @@
 enum { S23_SRC_VBLANK, S23_SRC_C361, S23_SRC_SUB, S23_SRC_C435, S23_SRC_C422, S23_SRC_C450, S23_SRC_C451, S23_SRC_RS232, S23_SRC_TIMER, S23_SRC_N };
 #define S23_IP(n) (0x400u << (n))                 /* the CPU's IRQn pin = Cause.IP(n+2); the CP0 timer is IP7 = S23_IP(5) */
 
+struct s23_sprite;                                /* (spr_wide, below; src/s23_frame.h) */
 typedef struct {
     const char *title;                            /* "Time Crisis 2": windows, messages */
     const char *tag;                              /* "tc2": the cfg / backup / log file names */
@@ -30,6 +31,9 @@ typedef struct {
     int twin;                                     /* 1 = a TWIN-CABINET game (Time Crisis 2: Left/Red + Right/Blue on the C422 RS-422 link): the menu's
                                                    * Cabinet choice (the I/O board's Link ID) and online play (src/s23_link.c) */
     int evo2;                                     /* 1 = System 23 EVOLUTION 2: the chips at +0x10000000, 29-bit decode, C450 DMA, IRQ status regs */
+    const struct s23_gorgon_ops *gorgon;          /* Namco GORgON ("System 22.5": Rapid River, Final Furlong): &s23_gorgon (src/s23_gorgon.c, linked
+                                                   * by those games only, so other games' builds and save states are untouched): System 23's chips
+                                                   * at other addresses (folded), + sprites (C435 DMA in sprite mode, C404 sprite RAM) and the CZ RAM */
     uint32_t clock;                               /* the main CPU, Hz (cycles as MAME charges them) */
     uint32_t px_num, px_den;                      /* pixel clocks (25.6 MHz) per main cycle, exactly */
     uint32_t sub_div;                             /* main cycles per sub-CPU (H8/3002) state */
@@ -57,6 +61,14 @@ typedef struct {
                                                    * the blue suit-up's cheek plate 0x0AD7 (bias -0x320) sits on the same surface as the dark head layer;
                                                    * at x1 the two near-tie and the plate blinks out (black), x4 holds it as in the arcade footage. NOT global:
                                                    * x4 everywhere pulled the chest doors' frames (bias -5000) over the closed chest plate */
+    int text_no_range;                            /* 1 = the C404's pen range (0x12..0x13) does not make text see-through, only the 0x14 nibble (Rapid River:
+                                                   * range EC..EC hit the HOW TO PLAY banner's red, 0x7FEC -- see-through, scenery edges showing through it; the cabinet's is solid) */
+    int (*depth_role)(int model);                 /* optional, with exact depth: 1 = the model owns its pixels against role 2; 2 = never in the pre-pass,
+                                                   * never drawn where a role-1 model is nearest (Rapid River: the wake's foam disc runs under the raft -- above
+                                                   * its sunken floor, so exact depth put water inside the raft; painter order put foam there) */
+    int depth_within;                             /* 2 = exact depth always, between models too (Rapid River: the pyramid's inner door, the wake's foam inside the raft);
+                                                   * 1 = exact depth between one model's own polygons, always (the menu's Depth adds other models; forcing that on lost the Nile gate's roof) (Rapid River: the Nile gate's sloping
+                                                   * sand, part of the wall's model, sorted over the wall's foot -- yellow wedges the arcade does not show) */
     int depth_default;                            /* Display > Depth when tc2.cfg has no choice yet: 1 = "exact" (Time Crisis 2), 0 = the arcade's order.
                                                    * Crisis Zone 0: with "exact" its hotel scene (frame 2280) loses the sky (the background colour shows where
                                                    * coverage proves the sky polygons drawn) and gains black bands top and bottom -- cause not found yet (NOT
@@ -69,6 +81,7 @@ typedef struct {
     const char *data_rom[2][2];                   /* the data ROMs: [half][high, low] byte-interleaved */
     int npt; const char *pt_rom[4][2];            /* the point ROM chip pairs [high, low] */
     const char *ccrl, *ccrh, *cg[4];              /* texture tile maps and tiles */
+    const char *spr[4];                           /* GORgON: the sprite tile ROMs (4 MB each, 32x32 8-bit tiles), NULL elsewhere */
     const char *wave[2];                          /* the C352's samples: low, high */
     int recoil_hold;                              /* 1 = 0x6002 bit 0 stays on WHILE the gun fires (Crisis Zone's machine gun: measured on a player's
                                                    * session, on for the whole burst), 0 = a 3-frame pulse per shot (Time Crisis 2) */
@@ -84,6 +97,7 @@ typedef struct {
     int (*mem_read)(uint32_t p, int size, uint32_t *v);
     int (*mem_write)(uint32_t p, int size, uint32_t v);
     void (*list_hook)(void *list);
+    int (*spr_wide)(const struct s23_sprite *s);  /* optional, GORgON: -1 / +1 = this sprite is HUD, moved out to that edge in widescreen; 0 = stays */
     int (*hide_crosshair)(void);                  /* optional: 1 = the crosshair is not drawn now (Gunmen Wars: the FPS layout, where the mouse turns
                                                    * and the crosshair's spot means nothing -- Options page "Crosshair (FPS)") */
     int (*hud_wide_ok)(const void *list);
@@ -106,6 +120,7 @@ typedef struct {
                                                    * (Gunmen Wars, against the footage: the game opens each frame with a 90-degree set (320) its world is
                                                    * NOT drawn with -- fighters, team intro, the select card need the 60-degree set (554) it sends last;
                                                    * the suit-up close-ups open with their own narrower set (1955) and need that one) */
+    float znear;                                  /* optional: the near plane for everything; 0 = MAME's 0.0001 */
     float znear_model;                            /* optional: near plane (C435 units) for models in the 3D view; 0 = the default */                /* optional: adjust the frame's render list (a s23_render_list *) before it is drawn */
     struct { uint32_t pc, flag; } idle[4];         /* optional: the game's WAIT LOOPS (src/s23_cpu.c rr_tick): a poll from pc (the loop branch's delay
                                                    * slot) while the word at flag (a main-RAM address) is still 0 skips to the next event --
@@ -123,6 +138,21 @@ typedef struct s23_link_ops {
     int  (*linked)(void);                         /* 1 = in a linked session (no pause: the others would lose this one) */
     int  (*lights)(int kind[2], int lit[2]);      /* the link lights as s23_c422_lights; NULL = none */
 } s23_link_ops;
+
+/* THE GORgON BOARD (s23_game.gorgon; src/s23_gorgon.c): the engine calls these only on that board */
+struct s23_sprite;                                /* src/s23_frame.h */
+typedef struct s23_gorgon_ops {
+    uint32_t (*fold)(uint32_t p);                 /* a GORgON physical address -> System 23's for the same chip (unchanged when it has none) */
+    int  (*read)(uint32_t p, int size, uint32_t *v);   /* its own registers (CZ RAM ...), before the fold: 1 = answered */
+    int  (*write)(uint32_t p, int size, uint32_t v);   /* its own registers (CZ RAM, sprite RAM ...), before the fold: 1 = taken */
+    void (*pio_mode)(uint32_t v);                 /* C435 0x0100005C: bit 0 = the DMA carries sprite data */
+    int  (*sprite_mode)(void);
+    void (*sprite_w)(uint16_t w);                 /* a DMA word in sprite mode (MAME c435_sprite_w) */
+    void (*bufpos0)(void);                        /* C435 0x01000060: restart the word count */
+    int  (*sprites)(struct s23_sprite *out, int max);   /* this frame's sprites, placed on the screen (MAME gorgon_state::render_run): the count */
+    int  (*fog)(uint16_t pcz[256], int *rev, int *delta);   /* the depth fog's table in use (CZ RAM bank), its reverse mask and level offset: 1 = on */
+} s23_gorgon_ops;
+extern const s23_gorgon_ops s23_gorgon;
 
 extern const s23_game_t s23_game;                 /* the one this binary was built for */
 #endif

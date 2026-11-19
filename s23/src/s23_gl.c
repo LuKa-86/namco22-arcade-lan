@@ -90,16 +90,18 @@ static const char *fs_poly =
     "  ty += uint(v_par.z);\n"
     "  float oz = gl_FragCoord.w;\n"                                      /* 1/z: what the software renderer interpolates */
     "  if (u_near != 0) {\n"                                              /* EXACT DEPTH pre-pass: the nearest opaque pixel, its object and band */
-    "    if ((fl & 2) != 0 || (u_alpha != 255 && (fl & 4) != 0)) discard;\n"
+    "    if ((fl & 2) != 0 || (u_alpha != 255 && (fl & 4) != 0) || (fl & 512) != 0) discard;\n"
     "    gl_FragDepth = clamp(0.5 + log2(max(oz, 1e-30)) / 256.0, 0.0, 1.0);\n"
     "    int e = int(v_ext.x);\n"
-    "    gl_FragColor = vec4(float(e & 255) / 255.0, float((e >> 8) & 255) / 255.0, v_ext.y / 255.0, 1.0); return;\n"
+    "    gl_FragColor = vec4(float(e & 255) / 255.0, float((e >> 8) & 255) / 255.0, v_ext.y / 255.0, (fl & 256) != 0 ? 0.75 : 1.0); return;\n"   /* alpha 0.75: s23_game.depth_role 1 */
     "  }\n"
     "  if (u_depth != 0) {\n"                                             /* hidden if ANOTHER object of this band is clearly nearer here */
     "    ivec2 fp = fc; vec4 nn = texelFetch(t_near, fp, 0);\n"
-    "    if (nn.a > 0.5) {\n"
+    "    if ((fl & 512) != 0) { if (nn.a > 0.5 && nn.a < 0.9) discard; }\n"   /* depth_role 2: under a role-1 owner wherever it is nearest */
+    "    else if ((fl & 256) != 0 && nn.a > 0.9 && (int(nn.r * 255.0 + 0.5) | (int(nn.g * 255.0 + 0.5) << 8)) != int(v_ext.x)) { }\n"   /* an owner is never hidden by another model (the raft floor under the water) */
+    "    else if (nn.a > 0.5) {\n"
     "      int ne = int(nn.r * 255.0 + 0.5) | (int(nn.g * 255.0 + 0.5) << 8), nb = int(nn.b * 255.0 + 0.5);\n"
-    "      if (ne != int(v_ext.x) && nb == int(v_ext.y) && oz < exp2((texelFetch(t_nearz, fp, 0).r - 0.5) * 256.0) * u_keep) discard;\n"
+    "      if (((ne != int(v_ext.x)) ? (u_depth & 1) != 0 : (u_depth & 2) != 0) && nb == int(v_ext.y) && oz < exp2((texelFetch(t_nearz, fp, 0).r - 0.5) * 256.0) * u_keep) discard;\n"
     "    }\n"
     "  }\n"
     "  int cmode = int(v_par.y); uint pbase = uint(v_par.x); uint pmask = 0xFFu; uint pshift = 0u;\n"
@@ -170,8 +172,11 @@ static const char *fs_text =
     "  }\n"
     "  if ((mv & 0x8000u) == 0u) discard;\n"
     "  if (u_pass == 0) { gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0); return; }\n"       /* the priority target starts as 'text here' */
-    "  if (u_pass == 2) { vec4 p = texelFetch(t_prio, ivec2(gl_FragCoord.xy) / u_scale, 0); if (!(p.r > 0.5 && p.g > 0.5 && p.a < 0.5)) discard; }\n"
     "  uint pen = mv & 0x7FFFu;\n"
+    "  bool ua0 = u_alpha != 255 && (int(pen & 15u) == u_amask || (int(pen & 255u) >= u_c12 && int(pen & 255u) <= u_c13));\n"
+    /* the 1x priority target misses slivers the internal resolution draws (session 18: the pylons' edges as grey lines through HOW TO
+     * PLAY in the in-between pictures): SOLID text goes over again everywhere -- twice is the same pixel; see-through text keeps the test */
+    "  if (u_pass == 2) { vec4 p = texelFetch(t_prio, ivec2(gl_FragCoord.xy) / u_scale, 0); if (!(p.r > 0.5 && (p.g > 0.5 || !ua0) && p.a < 0.5)) discard; }\n"
     "  ivec3 col = ivec3(texelFetch(t_pal, ivec2(int(pen & 255u), int(pen >> 8u)), 0).rgb * 255.0 + 0.5);\n"
     "  if (u_fade != 0) col = (col * u_ff + u_fcol * (256 - u_ff)) >> 8;\n"
     "  bool ua = u_alpha != 255 && (int(pen & 15u) == u_amask || (int(pen & 255u) >= u_c12 && int(pen & 255u) <= u_c13));\n"
@@ -338,20 +343,23 @@ int s23_gl_init(void)
 
 /* the frame's polygons as triangles, in draw order: per vertex its clip position (x*w, y*w, 0, w with w = z, so GL interpolates u, v and
  * the shade perspective-correct exactly as the hardware's u/z, v/z, i/z), u v shade, and the polygon's parameters and viewport clip */
+static int *vstart, vstart_cap;                          /* vstart[i]: the first vertex of the i-th polygon in draw order (the sprites' splits) */
 static int fill_vertices(const s23_built *b)
 {
     size_t need = 0;
+    if (b->npoly + 1 > vstart_cap) { vstart_cap = b->npoly + 1024; vstart = realloc(vstart, (size_t)vstart_cap * sizeof *vstart); }
     for (int i = 0; i < b->npoly; i++) need += (size_t)(b->polys[i].n - 2) * 3;
     if (need * VFLOATS > vcap) { vcap = need * VFLOATS * 2 + 4096; verts = realloc(verts, vcap * sizeof *verts); }
     float *o = verts;
     for (int i = 0; i < b->npoly; i++) {
         const s23_poly *p = &b->polys[b->order[i]];
+        vstart[i] = (int)((o - verts) / VFLOATS);
         const int cl = (320 - p->vp_size_x) + p->vp_offset_x, cr = (320 + p->vp_size_x) + p->vp_offset_x;
         const int ct = (240 - p->vp_size_y) - p->vp_offset_y, cb = (240 + p->vp_size_y) - p->vp_offset_y;
         /* widescreen (Hor+): a viewport that fills the 4:3 screen fills the wide one -- same camera, more world at the sides */
         const int full = ex && cl <= 0 && cr >= 640 && !p->clip43;
         const int ccl = full ? -ex : cl, ccr = full ? 640 + ex : cr;
-        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3 | (p->boost != 0) << 6 | p->fog << 7);   /* bit 7: the author's depth fog (bit 6 is our boost) */
+        const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3 | (p->boost != 0) << 6 | p->fog << 7 | p->role << 8);   /* bits 8-9: s23_game.depth_role */   /* bit 7: the author's depth fog (bit 6 is our boost) */
         for (int k = 1; k + 1 < p->n; k++) {
             const int tri[3] = { 0, k, k + 1 };
             /* a triangle with a non-finite or absurd coordinate is dropped: Intel's GL driver crashed on such vertices (Gunmen Wars, in a
@@ -408,6 +416,50 @@ static void draw_quad(void)
     glDrawArrays(GL_TRIANGLES, 0, 6); GLFIN("quad");
     p_glDisableVertexAttribArray(A_POS);
 }
+/* GORgON's sprites i0..i1-1, drawn on the CPU (src/s23_render.c) and laid over what is drawn so far: only the rectangle they touch is
+ * uploaded and drawn. 1280 wide: board x -320..960, so HUD sprites moved out to a widescreen picture's edges still draw. Leaves the
+ * fixed-function state set; the polygon pass calls poly_state() after it */
+static int spr_next;                                     /* the first sprite not drawn yet this frame */
+static void spr_group(const s23_built *b, int i0, int i1)
+{
+    static uint32_t ovl[1280 * 480]; static GLuint t_spr; int bb[4];
+    if (i0 >= i1) return;
+    if (!t_spr) { t_spr = texture(GL_RGBA8, 1280, 480, GL_BGRA, NULL); memset(ovl, 0, sizeof ovl); }
+    s23_sprites_draw(&b->fs, i0, i1, ovl, 1280, 320, bb);
+    if (bb[0] >= bb[2] || bb[1] >= bb[3]) return;
+    bind_tex(0, t_spr); glPixelStorei(GL_UNPACK_ROW_LENGTH, 1280);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1], GL_BGRA, GL_UNSIGNED_BYTE, ovl + bb[1] * 1280 + bb[0]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    for (int y = bb[1]; y < bb[3]; y++) memset(ovl + y * 1280 + bb[0], 0, (size_t)(bb[2] - bb[0]) * 4);   /* clear again for the next group */
+    p_glUseProgram(0); p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col); glViewport(0, 0, fbw, fbh);
+    glEnable(GL_BLEND); p_glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(-ex, 640 + ex, 0, 480, -1, 1);
+    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+    glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDisable(GL_ALPHA_TEST); glDisable(GL_LIGHTING); glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE); p_glActiveTexture(GL_TEXTURE0); glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); glMatrixMode(GL_TEXTURE); glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_TEXTURE_2D); glColor4f(1, 1, 1, 1);
+    const float u0 = bb[0] / 1280.f, u1 = bb[2] / 1280.f, v0 = bb[1] / 480.f, v1 = bb[3] / 480.f, x0 = (float)bb[0] - 320, x1 = (float)bb[2] - 320;
+    glBegin(GL_QUADS);
+    glTexCoord2f(u0, v0); glVertex2f(x0, (float)bb[1]); glTexCoord2f(u1, v0); glVertex2f(x1, (float)bb[1]);
+    glTexCoord2f(u1, v1); glVertex2f(x1, (float)bb[3]); glTexCoord2f(u0, v1); glVertex2f(x0, (float)bb[3]);
+    glEnd();
+    if (b->fx.layers & 4) {   /* the text layer goes over sprites as over polygons (session 15: "Congratulations!" under the sun): G = 1 in the priority target */
+        p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio); glViewport(0, 0, fbw / scale, 480);
+        glDisable(GL_BLEND); glEnable(GL_ALPHA_TEST); glAlphaFunc(GL_GREATER, 0.f); glColorMask(GL_FALSE, GL_TRUE, GL_FALSE, GL_FALSE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE); glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_REPLACE); glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PRIMARY_COLOR);
+        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE); glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_TEXTURE);
+        glColor4f(0, 1, 0, 1);
+        glBegin(GL_QUADS);
+        glTexCoord2f(u0, v0); glVertex2f(x0, (float)bb[1]); glTexCoord2f(u1, v0); glVertex2f(x1, (float)bb[1]);
+        glTexCoord2f(u1, v1); glVertex2f(x1, (float)bb[3]); glTexCoord2f(u0, v1); glVertex2f(x0, (float)bb[3]);
+        glEnd();
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE); glDisable(GL_ALPHA_TEST); glColor4f(1, 1, 1, 1);
+        glEnable(GL_BLEND);   /* the text pass after the last group blends (session 16: left off, the banners went solid over scenery) */
+        p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col); glViewport(0, 0, fbw, fbh);
+    }
+    glDisable(GL_TEXTURE_2D);
+    glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW); glPopMatrix();
+}
 static void text_pass(const s23_built *b, int pass)
 {
     const s23_frame_state *fs = &b->fs;
@@ -416,7 +468,7 @@ static void text_pass(const s23_built *b, int pass)
     p_glUniform1i(ut[0], 0); p_glUniform1i(ut[1], 1); p_glUniform1i(ut[2], 2);
     p_glUniform1i(ut[3], pass == 0 ? 1 : scale); p_glUniform1i(ut[4], pass == 0 ? 480 : fbh); p_glUniform1i(ut[5], pass);   /* pass 0: the 1x priority target */
     p_glUniform1i(ut[6], (C4(0x1A) & 2) && C4(0x19)); p_glUniform1i(ut[7], 0xFF - C4(0x19));
-    p_glUniform1i(ut[8], 0xFF - C4(0x15)); p_glUniform1i(ut[9], C4(0x14)); p_glUniform1i(ut[10], C4(0x12)); p_glUniform1i(ut[11], C4(0x13));
+    p_glUniform1i(ut[8], 0xFF - C4(0x15)); p_glUniform1i(ut[9], C4(0x14)); p_glUniform1i(ut[10], s23_game.text_no_range ? 0x100 : C4(0x12)); p_glUniform1i(ut[11], C4(0x13));
     p_glUniform3i(ut[12], C4(0x16), C4(0x17), C4(0x18)); p_glUniform1i(ut[13], ex); p_glUniform1i(ut[14], 3);
     { const s23_render_list *l = &fs->list; const int n = ex > 0 ? (l->ntshift < 2 ? l->ntshift : 2) : 0;   /* the text-layer shifts */
       p_glUniform1i(ut[15], n);
@@ -470,6 +522,7 @@ unsigned s23_gl_draw(const s23_built *b)
     }
     /* 3. + 4. the polygons, one draw call each into the picture and into the priority target */
     const int nv = fill_vertices(b);
+    spr_next = 0;
     { static long from = -2; if (from == -2) { const char *e = getenv("S23_GLLOG"); from = e ? atol(e) : -1; }   /* debug: per frame from <frame> */
       extern uint32_t rr_frame;
       if (from >= 0 && (long)rr_frame >= from) { float mx = 0; for (int k = 0; k < nv * VFLOATS; k++) { const float a = fabsf(verts[k]); if (!(a <= mx)) mx = a; }
@@ -497,7 +550,7 @@ unsigned s23_gl_draw(const s23_built *b)
         p_glUniform1i(up[24], seam);
         bind_tex(7, t_fog); p_glUniform1i(up[21], 7); p_glUniform1i(up[22], f->fog); p_glUniform3i(up[23], f->cr, f->cg, f->cb);
         p_glUniform1i(up[14], 4); p_glUniform1i(up[15], 5); p_glUniform1i(up[16], 0);
-        const int depth = s23_depth_on() && fbo_near;
+        const int depth = (s23_depth_on() || s23_game.depth_within) && fbo_near;   /* depth_within (Rapid River): one object's own polygons only */
         p_glUniform1i(up[17], 0); p_glUniform1f(up[18], s23_depth_keep());
         if (depth) {                                     /* EXACT DEPTH pre-pass: nearest opaque object / band / 1/z per pixel */
             bind_tex(4, 0); bind_tex(5, 0);
@@ -507,13 +560,27 @@ unsigned s23_gl_draw(const s23_built *b)
             p_glUniform1i(up[6], 0); p_glUniform1i(up[16], 1);
             glDrawArrays(GL_TRIANGLES, 0, nv); GLFIN("depth pre-pass");
             glDisable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glClearDepth(1.0); glEnable(GL_BLEND);
-            p_glUniform1i(up[16], 0); p_glUniform1i(up[17], 1);
+            p_glUniform1i(up[16], 0); p_glUniform1i(up[17], (s23_depth_on() || s23_game.depth_within >= 2 ? 1 : 0) | (s23_game.depth_within ? 2 : 0));   /* bit 0: other objects (the menu), bit 1: within one */
             bind_tex(4, t_near); bind_tex(5, t_nearz);
         }
         p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col);
         p_glUniform1i(up[6], 0);
         p_glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDrawArrays(GL_TRIANGLES, 0, nv); GLFIN("polygons");
+        { int v = 0, done = 0;                           /* the sprites go in among the polygons by depth key (MAME's sort) */
+          spr_next = 0;
+          for (int i = 0; i < b->npoly && spr_next < b->fs.nspr; i++) {
+              const s23_poly *q = &b->polys[b->order[i]];
+              if (b->fs.spr[spr_next].z > (q->zkey & 0x1FFFFF)) {
+                  int e = spr_next; while (e < b->fs.nspr && b->fs.spr[e].z > (q->zkey & 0x1FFFFF)) e++;
+                  v = vstart[i];
+                  if (v > done) glDrawArrays(GL_TRIANGLES, done, v - done);
+                  done = v; spr_group(b, spr_next, e); spr_next = e;
+                  p_glUseProgram(prog_poly); bind_tex(0, t_rom); p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col); glViewport(0, 0, fbw, fbh);
+                  glEnable(GL_BLEND); p_glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+              }
+          }
+          if (nv > done) glDrawArrays(GL_TRIANGLES, done, nv - done);
+          GLFIN("polygons"); }
         if (f->layers & 4) {
             p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_prio); glViewport(0, 0, fbw / scale, 480);
             p_glUniform1i(up[6], 1);
@@ -525,6 +592,7 @@ unsigned s23_gl_draw(const s23_built *b)
         for (int a = A_POS; a <= A_EXT; a++) p_glDisableVertexAttribArray((GLuint)a);
         bind_tex(4, 0); bind_tex(5, 0); bind_tex(6, 0); bind_tex(7, 0); p_glActiveTexture(GL_TEXTURE0);
     }
+    spr_group(b, spr_next, b->fs.nspr);                  /* 4b. GORgON's sprites nearer than every polygon (the rest went in among them, step 4) */
     /* 5. the text the polygons let through again */
     if (f->layers & 4) {
         p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col);

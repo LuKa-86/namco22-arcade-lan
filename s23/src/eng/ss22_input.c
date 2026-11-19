@@ -354,12 +354,25 @@ static bool button_matches(SDL_Joystick *js, int a)
     return SDL_JoystickGetButton(js, joy_button[a]) != 0;
 }
 
+/* a pad's analogue trigger bound as a button: joy_button = PAD_TRIG + 0 (LT) or + 1 (RT) */
+#define PAD_TRIG 100
+static bool trigger_matches(SDL_GameController *gc, int a)
+{
+    if (!gc || joy_button[a] < PAD_TRIG) return false;
+    if (joy_button_guid[a][0]) {
+        char guid[40];
+        SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(gc)), guid, sizeof guid);
+        if (strcmp(guid, joy_button_guid[a])) return false;
+    }
+    return SDL_GameControllerGetAxis(gc, joy_button[a] == PAD_TRIG ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 12000;
+}
+
 static bool raw_button_held(int a)
 {
     if (a < 0 || a >= game->n || joy_button[a] < 0) return false;
     for (int i = 0; i < MAX_DEV; i++) {
         if (button_matches(raws[i].js, a)) return true;
-        if (pads[i].gc && button_matches(SDL_GameControllerGetJoystick(pads[i].gc), a)) return true;
+        if (pads[i].gc && (button_matches(SDL_GameControllerGetJoystick(pads[i].gc), a) || trigger_matches(pads[i].gc, a))) return true;
     }
     return false;
 }
@@ -501,7 +514,8 @@ static void pg_text_raw(int r, char *l, size_t ln, char *v, size_t vn)
     snprintf(v, vn, "%s", key && *key ? key : "(none)");
     if (joy_button[a] >= 0) {
         size_t used = strlen(v);
-        snprintf(v + used, vn - used, " / button %d", joy_button[a]);
+        if (joy_button[a] >= PAD_TRIG) snprintf(v + used, vn - used, " / %s", joy_button[a] == PAD_TRIG ? "left trigger" : "right trigger");
+        else snprintf(v + used, vn - used, " / button %d", joy_button[a]);
     }
     const int kind = action_axis(a);
     if (kind >= 0 && axis_bind(kind)->axis >= 0) {
@@ -669,10 +683,12 @@ static bool capture_input(const SDL_Event *e, void *u)
         rebinding = axis_capture = -1;
         return true;
     }
-    if (e->type == SDL_JOYBUTTONDOWN) {
-        SDL_Joystick *js = button_device(e->jbutton.which);
+    const bool trig = e->type == SDL_CONTROLLERAXISMOTION && e->caxis.value > 20000 &&
+        (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT || e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+    if (e->type == SDL_JOYBUTTONDOWN || trig) {
+        SDL_Joystick *js = button_device(trig ? e->caxis.which : e->jbutton.which);
         if (!js) return false;
-        joy_button[rebinding] = e->jbutton.button;
+        joy_button[rebinding] = trig ? PAD_TRIG + (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) : e->jbutton.button;
         SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(js), joy_button_guid[rebinding],
                                  sizeof joy_button_guid[rebinding]);
         char key[64];

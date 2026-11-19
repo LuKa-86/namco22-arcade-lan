@@ -322,9 +322,10 @@ static uint8_t asca_switches(int n)
     if ((in & IN_TEST) && !test_was) test_on ^= 1;
     test_was = (in & IN_TEST) != 0;
     switch (n) {
-    case 0: return (uint8_t)~((!!(in & (IN_USR_ENTER | IN_PEDAL))) << 3 | (!!(in & IN_USR_DOWN)) << 2 | (!!(in & IN_USR_UP)) << 1 | test_on);
+    case 0: return (uint8_t)~((s23_game.gorgon && (in & IN_TRIGGER)) << 4   /* GORgON (Rapid River): the trigger key is START (p1.0) */
+                              | (!!(in & (IN_USR_ENTER | IN_PEDAL))) << 3 | (!!(in & IN_USR_DOWN)) << 2 | (!!(in & IN_USR_UP)) << 1 | test_on);
     case 1: return 0xFF;
-    case 2: return (uint8_t)~((!!(in & IN_COIN)) << 3 | (!!(in & IN_TRIGGER)) << 2);
+    case 2: return (uint8_t)~((!!(in & IN_COIN)) << 3 | (!s23_game.gorgon && (in & IN_TRIGGER)) << 2);
     default: return (uint8_t)~0x03;
     }
 }
@@ -352,7 +353,7 @@ static void io_wr8(void *u, uint32_t a, uint8_t v)
         { static long w = -2; if (w == -2) { const char *e = getenv("S23_IOWATCH"); w = e ? strtol(e, NULL, 16) : -1; }   /* $S23_IOWATCH=<I/O RAM address>: its writes */
           if ((long)a == w && io_ram[a - 0xC000] != v) { static unsigned long n; if (n++ < 200) fprintf(stderr, "[IOW] frame %u %04X = %02X (was %02X) pc %04X\n", rr_frame, (unsigned)a, v, io_ram[a - 0xC000], io.pc); } }
         io_ram[a - 0xC000] = v; return; }
-    if (s23_game.io_asca3 && (a == 0x6004 || a == 0x6005)) { if (a == 0x6004) io_out = v; return; }   /* output_w (lamps; no recoil) */
+    if ((s23_game.io_asca3 || s23_game.gorgon) && (a == 0x6004 || a == 0x6005)) { if (a == 0x6004) io_out = v; return; }   /* output_w (lamps; Rapid River's seat valves) */
     if (a == 0x6002 && !s23_game.io_asca3) {
         static int dbg = -1; if (dbg < 0) dbg = getenv("S23_OUTLOG") != NULL;
         if (dbg && v != io_out) { extern uint32_t rr_frame; fprintf(stderr, "[OUT] frame %u: 0x6002 %02X -> %02X\n", rr_frame, io_out, v); }
@@ -418,7 +419,7 @@ static void run_all(uint64_t main_cycles)
 void s23_h8_run(uint64_t main_cycles)
 {
     if (!sub_ok && !io_ok) return;
-    for (;;) {
+    for (; !s23_game.gorgon;) {                           /* (GORgON: no scan-line timers -- its IRQ1 is the vblank, s23_h8_vblank) */
         const uint64_t on_px = line_k * 814u, off_px = OFF_PX(off_j);
         const uint64_t at_px = on_px < off_px ? on_px : off_px, at = px_cycle(at_px);
         if (at > main_cycles) break;
@@ -451,6 +452,7 @@ void s23_h8_vblank(int on)
         fprintf(stderr, "[H8T] frame %u sub PC %06X ccr %02X%s io PC %04X sense %d irq 13:%lu 26:%lu 53:%lu io28:%lu\n", rr_frame, sub.pc, sub.ccr, sub_running ? "" : " (held)", io.pc, jvs_sense_init,
                 n_irq[0][13], n_irq[0][26], n_irq[0][53], n_irq[1][28]); }
     sub_pb = (uint8_t)((sub_pb & 0x7F) | (on ? 0x80 : 0));   /* port B bit 7 = vblank (the IRQ1 pin is the scan-line timers, above) */
+    if (s23_game.gorgon) irq1_set(on);                        /* GORgON: the IRQ1 pin IS the vblank (MAME gorgon_state::vblank) */
     if (sub_running && (subp.adcr & 0x80)) { h8p_sync(&subp); h8p_adtrg(&subp, on); } else subp.adtrg = on;   /* and the A/D's ADTRG pin (MAME namcos23_state::vblank) */
 }
 

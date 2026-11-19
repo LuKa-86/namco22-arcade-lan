@@ -225,3 +225,9 @@ __pycache__/
 /victlap/captures/
 /victlap/tests/
 /crszone/captures/
+
+# Rapid River (rapidrvr/): game files, the translation's working files, test output
+/rapidrvr/extracted/
+/rapidrvr/gen/
+/rapidrvr/build/
+/rapidrvr/*.pcode

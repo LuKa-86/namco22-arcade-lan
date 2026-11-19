@@ -19,6 +19,7 @@ typedef struct {
     int vp_size_x, vp_size_y, vp_offset_x, vp_offset_y;
     int clip43;                                        /* widescreen: clip to the 4:3 picture (s23_render_entry.clip43) */
     int boost;                                         /* shade may go to 2x (s23_game.imm_adjust: Gunmen Wars' namco logo) */
+    int role;                                          /* s23_game.depth_role */
     int entry, model;                                  /* the render-list entry it came from and its model (-1 = immediate / direct) */
     int fog;                                           /* takes the depth fog (bit 15 of its colour word clear, as Super System 22's C-fog gate) */
 } s23_poly;

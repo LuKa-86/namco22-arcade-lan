@@ -213,6 +213,10 @@ static void gpu_gate(uint32_t frame)
         snprintf(p, sizeof p, "%s/gpufull_%05u.ppm", dir, frame);
         FILE *f = w ? fopen(p, "wb") : NULL;
         if (f) { fprintf(f, "P6\n%d %d\n255\n", w, fh); fwrite(full, 1, (size_t)w * fh * 3, f); fclose(f); }
+        const s23_built *m = s23_built_mid_count() > 0 ? s23_built_mid(0) : NULL;   /* $S23_SMOOTH=1: the GPU's in-between picture too */
+        if (m) { s23_gl_draw(m); const int w2 = s23_gl_read_full(full, (int)sizeof full);
+            snprintf(p, sizeof p, "%s/gpumid_%05u.ppm", dir, frame); FILE *f2 = w2 ? fopen(p, "wb") : NULL;
+            if (f2) { fprintf(f2, "P6\n%d %d\n255\n", w2, fh); fwrite(full, 1, (size_t)w2 * fh * 3, f2); fclose(f2); } }
     }
 }
 /* THE SESSION RECORDER: a window session writes every change of the cabinet inputs (the buttons, the gun's x / y / off-screen) with its

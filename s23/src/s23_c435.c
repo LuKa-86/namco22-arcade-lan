@@ -320,7 +320,12 @@ static void dma(void)
 {
     { static long a = -2, b; if (a == -2) { const char *e = getenv("S23_STLOG"); a = -1; if (e) sscanf(e, "%ld:%ld", &a, &b); }   /* debug */
       if (a >= 0 && (long)rr_frame >= a && (long)rr_frame <= b) fprintf(stderr, "[DMA] f%u adr %08X size %X pc %08X\n", rr_frame, c435.address, c435.size, rr_pc); }
-    for (uint32_t pos = 0; pos < c435.size && pos < 0x1000000u; pos += 2) { dma_at = (c435.address & 0x1FFFFFFFu) + pos; s23_c435_pio((uint16_t)rr_read(dma_at, 2)); }
+    const int spr = s23_game.gorgon && s23_game.gorgon->sprite_mode();   /* GORgON: PIO mode bit 0 = this DMA is sprite data (MAME c435_dma) */
+    for (uint32_t pos = 0; pos < c435.size && pos < 0x1000000u; pos += 2) {
+        dma_at = (c435.address & 0x1FFFFFFFu) + pos;
+        const uint16_t w = (uint16_t)rr_read(dma_at, 2);
+        if (spr) s23_game.gorgon->sprite_w(w); else s23_c435_pio(w);
+    }
     dma_at = 0;
 }
 /* EVOLUTION 2's C450 (MAME crszone_state::c450_dma_*): the same DMA into the C435, started by writing the SIZE, and it interrupts when done
@@ -361,13 +366,15 @@ int s23_c435_write(uint32_t p, int size, uint32_t v)
     case 0x0100001Cu: c435.address = v; return 1;
     case 0x01000020u: c435.size = v; return 1;
     case 0x01000024u: if (v & 1) dma(); return 1;
-    case 0x01000060u: c435.pos = 0; return 1;
-    case 0x0100005Cu: if (!s23_game.super23) return 0; s23_irq_set(S23_SRC_C361, 0); return 1;   /* MAME namcoss23_state::c435_c361_ack_w */
+    case 0x01000060u: c435.pos = 0; if (s23_game.gorgon) s23_game.gorgon->bufpos0(); return 1;
+    case 0x0100005Cu:
+        if (s23_game.gorgon) { s23_game.gorgon->pio_mode(v); c435.pos = 0; return 1; }   /* MAME gorgon c435_pio_mode_w */
+        if (!s23_game.super23) return 0; s23_irq_set(S23_SRC_C361, 0); return 1;   /* MAME namcoss23_state::c435_c361_ack_w */
     case 0x02000000u: if (size == 2) { s23_c435_pio((uint16_t)v); return 1; } return 0;
     case 0x0C800010u: c435.state_pos = 0; return 1;
     case 0x0C800016u: state_pio((uint16_t)v); return 1;
     }
     return 0;
 }
-int s23_c435_owns(uint32_t p) { return (p >= 0x0100001Cu && p <= 0x0100002Bu) || p == 0x01000060u || (s23_game.super23 && p == 0x0100005Cu) || p == 0x0C800010u || p == 0x0C800016u; }
+int s23_c435_owns(uint32_t p) { return (p >= 0x0100001Cu && p <= 0x0100002Bu) || p == 0x01000060u || ((s23_game.super23 || s23_game.gorgon) && p == 0x0100005Cu) || p == 0x0C800010u || p == 0x0C800016u; }
 float s23_c435_fov_now(void) { return clip_data[23]; }   /* debug: the clip set now (S23_FOVLAST) */

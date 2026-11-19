@@ -144,7 +144,7 @@ int s23_window_open(int scale, int fullscreen)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     { static char cfg[64]; snprintf(cfg, sizeof cfg, "%s.cfg", s23_game.tag); eng_disp_load(cfg, scale, fullscreen != 0); }
-    g_eng_disp_light_gun = true;                 /* a light-gun game: the Display page shows the crosshair row */
+    g_eng_disp_light_gun = !s23_game.input || ((const ss22_input_game *)s23_game.input)->light_gun;   /* a light-gun game: the Display page shows the crosshair rows */
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     /* $S23_MONITOR=N (our fork, one gun a screen): full screen on the Nth monitor from the left; one monitor only = the left / right half of it */
     int mon = -1, wpos = (int)SDL_WINDOWPOS_CENTERED;
@@ -393,9 +393,9 @@ static int pass(int new_frame)
             case SDL_SCANCODE_F11: eng_disp_toggle_fullscreen(); break;
             case SDL_SCANCODE_F12: screenshot(); break;
             case SDL_SCANCODE_F9: glitch_capture(); break;      /* our fork: picture + save state (captures\) */
-            case SDL_SCANCODE_F6: { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
-            case SDL_SCANCODE_F7: { void ss22_input_mouse_step(int); ss22_input_mouse_step(1); } break;   /* the mouse speed: Direct, 125, 150, 200, 300 % */
-            case SDL_SCANCODE_F8: eng_disp_cycle_gun_border(); break;     /* the light gun's white border round the picture (Sinden-style guns) */
+            case SDL_SCANCODE_F6: if (!g_eng_disp_light_gun) break; { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
+            case SDL_SCANCODE_F7: if (!g_eng_disp_light_gun) break; { void ss22_input_mouse_step(int); ss22_input_mouse_step(1); } break;   /* the mouse speed: Direct, 125, 150, 200, 300 % */
+            case SDL_SCANCODE_F8: if (g_eng_disp_light_gun) eng_disp_cycle_gun_border(); break;     /* the light gun's white border round the picture (Sinden-style guns) */
             default: break;
             }
         }

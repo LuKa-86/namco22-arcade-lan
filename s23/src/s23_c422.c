@@ -212,7 +212,7 @@ int s23_c422_lights(int kind[2], int lit[2])
 static void open_link(void)
 {
     static int done; if (done) return; done = 1;
-    if (s23_game.link) { logon = 0; return; }                /* the game has its own link (s23_game.link): no C422 cable, no tc2_link.cfg */
+    if (s23_game.link || !s23_game.twin) { logon = 0; return; }   /* its own link (s23_game.link), or a one-cabinet game: no C422 cable, no tc2_link.cfg */
     lights_read();
     logon = getenv("S23_C422LOG") != NULL;
     char side = 'L', host[256] = "auto"; unsigned lport = 23000, pport = 23000; int on = 0;

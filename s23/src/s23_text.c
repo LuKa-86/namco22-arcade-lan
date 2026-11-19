@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "s23_frame.h"
+#include "s23_game.h"
 
 static uint16_t be16p(const uint8_t *m) { return (uint16_t)(m[0] << 8 | m[1]); }
 static uint32_t be32p(const uint8_t *m) { return (uint32_t)m[0] << 24 | (uint32_t)m[1] << 16 | (uint32_t)m[2] << 8 | m[3]; }
@@ -53,7 +54,7 @@ void s23_text_mix(const s23_frame_state *fs, uint32_t *rgba, const uint16_t *mix
 {
     const int fade = (c404b(fs, 0x1A) & 2) && c404b(fs, 0x19);
     const int ff = 0xFF - c404b(fs, 0x19), ffi = 0x100 - ff, fr = c404b(fs, 0x16), fg = c404b(fs, 0x17), fb = c404b(fs, 0x18);
-    const int af = c404b(fs, 0x15), a_mask = c404b(fs, 0x14), c12 = c404b(fs, 0x12), c13 = c404b(fs, 0x13);
+    const int af = c404b(fs, 0x15), a_mask = c404b(fs, 0x14), c12 = s23_game.text_no_range ? 0x100 : c404b(fs, 0x12), c13 = c404b(fs, 0x13);
     const int alpha = 0xFF - af, alphai = 0x100 - alpha;
     for (int k = 0; k < 640 * 480; k++) {
         if (pri[k] != prival) continue;

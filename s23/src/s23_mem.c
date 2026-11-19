@@ -27,14 +27,15 @@ int s23_load_data(const char *dir)
 {
     for (int h = 0; h < 2; h++) {
         if (!s23_game.data_rom[h][0]) continue;          /* a half the game has no chips for reads 0 (Gunmen Wars: one pair) */
-        uint8_t *chip[2];
+        uint8_t *chip[2]; size_t got[2];                 /* 8 MB chips (System 23), or 4 MB (GORgON: Rapid River's rd1mtah/l) */
         for (int c = 0; c < 2; c++) {
             char p[1024]; snprintf(p, sizeof p, "%s/%s", dir, s23_game.data_rom[h][c]);
-            FILE *f = fopen(p, "rb"); chip[c] = malloc(0x800000);
-            if (!f || fread(chip[c], 1, 0x800000, f) != 0x800000) { fprintf(stderr, "[S23] cannot read %s\n", p); if (f) fclose(f); return 0; }
+            FILE *f = fopen(p, "rb"); chip[c] = calloc(1, 0x800000);
+            got[c] = f ? fread(chip[c], 1, 0x800000, f) : 0;
+            if (got[c] != 0x800000 && got[c] != 0x400000) { fprintf(stderr, "[S23] cannot read %s\n", p); if (f) fclose(f); return 0; }
             fclose(f);
         }
-        for (uint32_t k = 0; k < 0x800000; k++) { s23_data[h * 0x1000000 + 2 * k] = chip[0][k]; s23_data[h * 0x1000000 + 2 * k + 1] = chip[1][k]; }
+        for (uint32_t k = 0; k < got[0]; k++) { s23_data[h * 0x1000000 + 2 * k] = chip[0][k]; s23_data[h * 0x1000000 + 2 * k + 1] = chip[1][k]; }
         free(chip[0]); free(chip[1]);
     }
     return 1;
@@ -245,6 +246,10 @@ uint32_t rr_read(uint32_t a, int size)
         if (p < 0x11000000u) { io("Ru", a, size, 0); return 0; }
         p -= 0x10000000u;
     }
+    if (s23_game.gorgon) {                                     /* GORgON: its own registers, else System 23's chip at the folded address */
+        uint32_t v; if (s23_game.gorgon->read(p, size, &v)) { io("Rg", a, size, v); return v; }
+        p = s23_game.gorgon->fold(p);
+    }
     if (p >= 0x04400000u && p + (uint32_t)size <= 0x04410000u) {
         uint8_t *m = shared_ram + (p - 0x04400000u);
         uint32_t v;
@@ -279,6 +284,10 @@ void rr_write(uint32_t a, int size, uint32_t v)
         if (evo2_write(p, size, v)) { io("We", a, size, v); return; }
         if (p < 0x11000000u || p >= boot_base()) { io("Wu", a, size, v); return; }
         p -= 0x10000000u;
+    }
+    if (s23_game.gorgon) {
+        if (s23_game.gorgon->write(p, size, v)) { io("Wg", a, size, v); return; }
+        p = s23_game.gorgon->fold(p);
     }
     { uint8_t *m = vram(p, size); if (m) { if (p >= 0x06A08000u && p < 0x06A08040u && c404log()) fprintf(stderr, "C404 W %08X %d %08X pc %08X frame %u\n", p, size, v, rr_pc, rr_frame); be_wr(m, size, v); return; } }
     if (s23_game.mem_write && s23_game.mem_write(p, size, v)) { io("Wg", a, size, v); return; }
