@@ -203,7 +203,7 @@ static int finish(poly *p, const s23_render_entry *e, int hsort, uint32_t polysh
     p->index = (uint32_t)GNPOLY;
     p->vp_size_x = e->vp_size_x; p->vp_size_y = e->vp_size_y; p->vp_offset_x = e->vp_offset_x; p->vp_offset_y = e->vp_offset_y;
     p->clip43 = e->clip43;
-    p->entry = (int)(e - FS->list.e); p->model = e->type == S23_RE_MODEL ? e->model : -1; p->role = p->model >= 0 && s23_game.depth_role ? s23_game.depth_role(p->model) : 0;
+    p->entry = (int)(e - FS->list.e); p->nodepth = 0; p->model = e->type == S23_RE_MODEL ? e->model : -1; p->role = p->model >= 0 && s23_game.depth_role ? s23_game.depth_role(p->model) : 0;
     return 1;
 }
 
@@ -406,6 +406,7 @@ static void render_direct(const s23_render_entry *e)
         p->blend = 0;
         p->prioverchar = 2;                               /* MAME 0.289: render_direct_poly works out (cmode == 1 ? 7 : 0), but render_flush draws EVERY
                                                           * polygon with prioverchar 2 -- text the polygon covers is drawn again over it (Angler King's NOTICE) */
+        p->nodepth = p->pv[0].p[0] == 1.f && p->pv[1].p[0] == 1.f && p->pv[2].p[0] == 1.f;   /* no depth given (mantissa 0): out of exact depth */
         GNPOLY++;
     }
 }
@@ -465,7 +466,7 @@ static void span(const poly *p, int y, int x0, int x1, const float *s, const flo
         uint32_t tx = (uint32_t)(int32_t)(u * ooz), ty = (uint32_t)(int32_t)(v * ooz);
         const int vx = x + clip_left;
         if (vx < clip_left || vx >= clip_right || vx < 0 || vx >= 640) continue;
-        { static int hide = -2; if (hide == -2) { const char *e = getenv("S23_HIDEMODEL"); hide = e ? atoi(e) : -1; } if (p->model == hide) continue; }   /* TEST: leave one model out */
+        { static int hide = -2; if (hide == -2) { const char *e = getenv("S23_HIDEMODEL"); hide = e ? atoi(e) : -3; } if (p->model == hide) continue; }   /* (-3 unset: -1 is every immediate / direct polygon -- the software picture drew none) */   /* TEST: leave one model out */
         { static int only = -2; if (only == -2) { const char *e = getenv("S23_ONLYMODEL"); only = e ? atoi(e) : -1; } if (only >= 0 && p->model != only) continue; }   /* TEST: one model only */
         if (seamtest == 3) {                              /* 3: OVERDRAW of translucent polygons (blend / alpha) -- 0x20 a layer; opaque ones not drawn */
             static int only = -2; if (only == -2) { const char *e = getenv("S23_SEAMMODEL"); only = e ? atoi(e) : -1; }   /* only this model */
@@ -473,7 +474,7 @@ static void span(const poly *p, int y, int x0, int x1, const float *s, const flo
             continue; }
         if (seamtest) {                                   /* coverage: a stencil cutout is the art's own hole, not a seam -- drawn solid */ dest[vx] = seamtest == 2 ? (uint32_t)(p->entry & 0xFFF) << 12 | ((p->zkey & 0x1FFFFF) >> 9) : (p->zkey & 0xFFFFFF); continue; }   /* 1: depth key; 2: entry << 12 | depth >> 9 */
         if (p->stencil && stencil_lookup(tx, ty)) continue;
-        if (s23_depth_mode || s23_game.depth_within) {   /* depth_within: within one object only, unless the menu's Depth is on too */
+        if ((s23_depth_mode || s23_game.depth_within) && !p->nodepth) {   /* depth_within: within one object only, unless the menu's Depth is on too */
             const int k = oy * 640 + vx, ent = (int)(p->entry & 0x3FFF) + 1, band = (int)(p->zkey >> 21);
             if (near_pass) { if (p->role != 2 && z > zb[k]) { zb[k] = z; eb[k] = (int16_t)ent; ab[k] = (uint8_t)(band | (p->role == 1) << 7); } continue; }   /* (opaque polygons only; bit 7: role 1) */
             if (p->role == 2) { if (eb[k] && (ab[k] & 0x80)) continue; }   /* s23_game.depth_role: under the owner, wherever it is nearest */
