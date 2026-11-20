@@ -82,8 +82,10 @@ typedef struct {
     int npt; const char *pt_rom[4][2];            /* the point ROM chip pairs [high, low] */
     const char *ccrl, *ccrh, *cg[4];              /* texture tile maps and tiles */
     const char *spr[4];                           /* GORgON: the sprite tile ROMs (4 MB each, 32x32 8-bit tiles), NULL elsewhere */
-    int spr_alpha;                                /* GORgON sprites: 1 = a sprite's own alpha always applies (Final Furlong's race map panel: alpha 0x80 in the
-                                                   * C404's opaque bank -- MAME's rule drew it solid white over the race); 0 = MAME's bank / alpha-pen rule */
+    int spr_alpha;                                /* GORgON sprites in the C404's alpha bank: 1 = pens AT OR ABOVE the alpha pen take the sprite's alpha (Final
+                                                   * Furlong: panel backgrounds are pen FD -- the race map with the alpha pen at FB went solid white by MAME's
+                                                   * "pen == alpha pen"; making every pen see-through washed out the select screens' text, pens 00-1A / E7);
+                                                   * 0 = MAME's rule */
     int c422_mame;                                /* the C422 as MAME has it: registers kept, the interrupt raised by 0xFFFB and acked by 0x000F written
                                                    * to +2, no data path (Final Furlong: its own link driver, not yet modelled) */
     int spr_first_top;                            /* GORgON sprites of equal depth: 1 = the list's first on top (Final Furlong, against arcade footage: the

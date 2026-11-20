@@ -738,7 +738,7 @@ void s23_sprites_draw(const s23_frame_state *fs, int i0, int i1, uint32_t *ovl, 
                     const int pen = src[v * 32 + u]; if (pen == 0xFF) continue;
                     const uint32_t c = pal[pen]; int r = c >> 16 & 0xFF, g = c >> 8 & 0xFF, b = c & 0xFF;
                     if (fade && ffac != 0xFF) { r = (r * ffac + fr * (0x100 - ffac)) >> 8; g = (g * ffac + fg * (0x100 - ffac)) >> 8; b = (b * ffac + fb * (0x100 - ffac)) >> 8; }
-                    const uint32_t a = af != 0xFF && (ablend || pen == apen || s23_game.spr_alpha) ? (uint32_t)af : 0xFF;
+                    const uint32_t a = af != 0xFF && (ablend || (s23_game.spr_alpha ? pen >= apen : pen == apen)) ? (uint32_t)af : 0xFF;
                     ovl[y * ow + x + ox] = a << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
                     if (x + ox < bb[0]) bb[0] = x + ox; if (x + ox >= bb[2]) bb[2] = x + ox + 1; if (y < bb[1]) bb[1] = y; if (y >= bb[3]) bb[3] = y + 1;
                 }
