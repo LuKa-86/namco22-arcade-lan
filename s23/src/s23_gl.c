@@ -453,6 +453,19 @@ static void spr_group(const s23_built *b, int i0, int i1)
         glTexCoord2f(u0, v0); glVertex2f(x0, (float)bb[1]); glTexCoord2f(u1, v0); glVertex2f(x1, (float)bb[1]);
         glTexCoord2f(u1, v1); glVertex2f(x1, (float)bb[3]); glTexCoord2f(u0, v1); glVertex2f(x0, (float)bb[3]);
         glEnd();
+        if (s23_game.spr_fe_over) {   /* sprites over the text layer (cz 0xFE): G back to 0 under them -- no text drawn again over them */
+            extern int s23_spr_only_fe; int fb[4]; s23_spr_only_fe = 1; s23_sprites_draw(&b->fs, i0, i1, ovl, 1280, 320, fb); s23_spr_only_fe = 0;
+            if (fb[0] < fb[2] && fb[1] < fb[3]) {
+                bind_tex(0, t_spr); glPixelStorei(GL_UNPACK_ROW_LENGTH, 1280);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1], GL_BGRA, GL_UNSIGNED_BYTE, ovl + bb[1] * 1280 + bb[0]);   /* (the FE ones lie inside bb) */
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+                glColor4f(0, 0, 0, 1);
+                glBegin(GL_QUADS);
+                glTexCoord2f(u0, v0); glVertex2f(x0, (float)bb[1]); glTexCoord2f(u1, v0); glVertex2f(x1, (float)bb[1]);
+                glTexCoord2f(u1, v1); glVertex2f(x1, (float)bb[3]); glTexCoord2f(u0, v1); glVertex2f(x0, (float)bb[3]);
+                glEnd(); }
+            for (int y = bb[1]; y < bb[3]; y++) memset(ovl + y * 1280 + bb[0], 0, (size_t)(bb[2] - bb[0]) * 4);
+        }
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE); glDisable(GL_ALPHA_TEST); glColor4f(1, 1, 1, 1);
         glEnable(GL_BLEND);   /* the text pass after the last group blends (session 16: left off, the banners went solid over scenery) */
         p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_col); glViewport(0, 0, fbw, fbh);

@@ -717,6 +717,7 @@ static void build(s23_built *b)
  * own alpha unless its bank is the C404's opaque bank and the pen isn't its alpha pen. Drawn into an ARGB overlay the back end lays over the
  * polygons (ponytail: in list order, over every polygon -- MAME sorts them by depth among the polygons; sort them in if one shows through wrong) */
 int s23_spr_fullpic, s23_spr_hud;
+int s23_spr_only_fe;                                     /* 1: draw only the sprites over the text layer (cz 0xFE, s23_game.spr_fe_over) */
 void s23_sprites_draw(const s23_frame_state *fs, int i0, int i1, uint32_t *ovl, int ow, int ox, int bb[4])
 {
     const uint8_t *c4 = fs->c404;
@@ -725,6 +726,7 @@ void s23_sprites_draw(const s23_frame_state *fs, int i0, int i1, uint32_t *ovl, 
     bb[0] = ow; bb[1] = 480; bb[2] = bb[3] = 0;
     for (int i = i0; i < i1 && i < fs->nspr; i++) {
         const s23_sprite *s = &fs->spr[i];
+        if (s23_spr_only_fe && s->cz != 0xFE) continue;
         const uint32_t *pal = &fs->pens[(s->color & 0x7F) << 8];
         const int fade = (fflags & 2) || s->fade, af = 0xFF - s->alpha, ablend = (s->color & 0x7F) != acolor;
         for (int row = 0; row < s->rows; row++) for (int col = 0; col < s->cols; col++) {
@@ -759,6 +761,9 @@ static void soft_sprites(const s23_built *b, int i0, int i1, uint32_t *rgba)
         const uint32_t d = rgba[k]; uint32_t o = 0;
         for (int sh = 0; sh <= 16; sh += 8) o |= (((s >> sh & 0xFF) * a + (d >> sh & 0xFF) * (0x100 - a)) >> 8) << sh;
         rgba[k] = o; }
+    if (s23_game.spr_fe_over) {   /* sprites marked over the text layer (cz 0xFE, MAME's prioverchar): no text drawn again over them */
+        s23_spr_only_fe = 1; s23_sprites_draw(&b->fs, i0, i1, ovl, 640, 0, bb); s23_spr_only_fe = 0;
+        for (int y = bb[1]; y < bb[3]; y++) for (int x = bb[0]; x < bb[2]; x++) { const int k = y * 640 + x; if (ovl[k] >> 24) prio[k] &= (uint8_t)~2; ovl[k] = 0; } }
 }
 void s23_soft_raster(const s23_built *b, uint32_t *rgba)
 {

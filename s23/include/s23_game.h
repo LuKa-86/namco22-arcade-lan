@@ -88,7 +88,9 @@ typedef struct {
                                                    * 0 = MAME's rule */
     int c422_mame;                                /* the C422 as MAME has it: registers kept, the interrupt raised by 0xFFFB and acked by 0x000F written
                                                    * to +2, no data path (Final Furlong: its own link driver, not yet modelled) */
-    int spr_first_top;                            /* GORgON sprites of equal depth: 1 = the list's first on top (Final Furlong, against arcade footage: the
+    int spr_fe_over;                              /* GORgON: 1 = sprites with cz 0xFE stay over the text layer (MAME's prioverchar; Final Furlong's course
+                                                   * select: the see-through text-layer band washed out "ROYAL GARDEN'S CUP" over it) */
+    int spr_first_top;                           /* GORgON sprites of equal depth: 1 = the list's first on top (Final Furlong, against arcade footage: the
                                                    * message board over "4/8 POSITION", the horse dots over the course-map panel); 0 = the last on top (MAME) */
     int no_hud_shift;                             /* 1 = no widescreen move of screen-plane models to the edges (Final Furlong: its HUD is sprites; the move
                                                    * pulled the rider's arms off the hands in the attract's TURN LEFT / RIGHT) */
