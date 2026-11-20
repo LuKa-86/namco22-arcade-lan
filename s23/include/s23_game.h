@@ -86,6 +86,13 @@ typedef struct {
                                                    * C404's opaque bank -- MAME's rule drew it solid white over the race); 0 = MAME's bank / alpha-pen rule */
     int c422_mame;                                /* the C422 as MAME has it: registers kept, the interrupt raised by 0xFFFB and acked by 0x000F written
                                                    * to +2, no data path (Final Furlong: its own link driver, not yet modelled) */
+    int spr_first_top;                            /* GORgON sprites of equal depth: 1 = the list's first on top (Final Furlong, against arcade footage: the
+                                                   * message board over "4/8 POSITION", the horse dots over the course-map panel); 0 = the last on top (MAME) */
+    int no_hud_shift;                             /* 1 = no widescreen move of screen-plane models to the edges (Final Furlong: its HUD is sprites; the move
+                                                   * pulled the rider's arms off the hands in the attract's TURN LEFT / RIGHT) */
+    int ap_wrap;                                /* 1 = a polygon's priority adjust (z-shift bits 18-20) wraps in 3 bits: Final Furlong's island (priority 6,
+                                                   * adjust 7 -> 5) sits on the sea; MAME's plain add (13) drew it under the sea (attract fly-over: sea only). MODELS ONLY: the
+                                                   * attract's scrolling tile background (direct polygons, 6 + 7 too) must stay at 13, behind the jockey */
     uint32_t cg_chip;                             /* the texture tile chips' size: 0 = 8 MB; Final Furlong 4 MB (the 16 MB region mirrored, as an address wraps) */
     const char *wave[2];                          /* the C352's samples: low, high */
     int recoil_hold;                              /* 1 = 0x6002 bit 0 stays on WHILE the gun fires (Crisis Zone's machine gun: measured on a player's

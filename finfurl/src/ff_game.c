@@ -151,6 +151,28 @@ void ff_horse_frame(void)
     s23_analog_in[0] = (uint16_t)(0x8000 + (int)(swing * FF_SWING_SPAN));
     s23_analog_in[1] = (uint16_t)(0x8000 - (int)(rein * FF_HANDLE_SPAN));   /* PORT_REVERSE: left reads high. ponytail: check in SWING TEST */
 }
+/* WIDESCREEN: the attract's scrolling "FINAL FURLONG" tile background is a grid of flat 214 x 160 direct quads just covering the 4:3 screen
+ * (4 columns, x -169..687 as it scrolls); the side strips showed black past them. The grid again one grid-width each side fills them.
+ * ponytail: tiles found by their 214-pixel width; a scene with other 214-wide direct quads would be copied too */
+#include "../../s23/src/s23_c435.h"
+static void ff_list_hook(void *lv)
+{
+    s23_render_list *l = (s23_render_list *)lv;
+    int s23_gl_wide(void); if (s23_gl_wide() <= 0) return;
+    int lo = 0x7FFF, hi = -0x8000, tiles[64], n = 0;
+    for (int i = 0; i < l->count && n < 64; i++) {
+        const s23_render_entry *e = &l->e[i]; if (e->type != S23_RE_DIRECT) continue;
+        int x0 = 0x7FFF, x1 = -0x8000;
+        for (int j = 0; j < 4; j++) { const int x = (int16_t)e->d[4 + j * 6 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; }
+        if (x1 - x0 != 214) continue;
+        tiles[n++] = i; if (x0 < lo) lo = x0; if (x1 > hi) hi = x1;
+    }
+    const int span = hi - lo;
+    for (int s = -1; s <= 1 && n; s += 2) for (int k = 0; k < n && l->count < S23_RENDER_MAX; k++) {
+        s23_render_entry *c = &l->e[l->count++]; *c = l->e[tiles[k]];
+        for (int j = 0; j < 4; j++) c->d[4 + j * 6 + 2] = (uint16_t)((int16_t)c->d[4 + j * 6 + 2] + s * span);
+    }
+}
 static const ss22_input_game ff_input = {
     .actions = ff_actions, .n = (int)(sizeof ff_actions / sizeof *ff_actions),
     .wheel_min = 0x001, .wheel_max = 0x3FF, .wheel_key_span = 0x1FF, .wheel_step = 12,
@@ -168,7 +190,11 @@ const s23_game_t s23_game = {
     .znear = 0.01f,                               /* as Rapid River (MAME's 0.0001 read far-off texture right by the camera there) */
     .spr_alpha = 1,                               /* the race's course-map panel is see-through (alpha 0x80), not solid white */
     .c422_mame = 1,                               /* the link chip as MAME has it (our TC2 model kept its "send done" interrupt up: a storm) */
-    .cz_fog = 1,                                 /* the depth fog from the GORgON's CZ RAM (src/s23_gorgon.c fog) */
+    .spr_first_top = 1,                           /* the message board over everything, the horses on the course map */
+    .list_hook = ff_list_hook,                    /* widescreen: the attract's tile background across the whole width */
+    .no_hud_shift = 1,                            /* widescreen: the rider's arms stay on the hands (the HUD is sprites) */
+    .ap_wrap = 1,                              /* the island in the attract fly-over: on the sea, not under it */
+    .cz_fog = 1,                                /* the depth fog from the GORgON's CZ RAM (src/s23_gorgon.c fog) */
     .clock = 135475200u,                          /* BUSCLOCK * 4 (GORgON; System 23 is * 5) */
     .px_num = 250, .px_den = 1323,                /* 25.6 MHz / 135.4752 MHz */
     .sub_div = 8,                                 /* 16.9344 MHz */
@@ -176,7 +202,8 @@ const s23_game_t s23_game = {
     .c352_div = 1536,                             /* 88200 Hz */
     .ip = { [S23_SRC_VBLANK] = S23_IP(0), [S23_SRC_C361] = S23_IP(1), [S23_SRC_SUB] = S23_IP(1), [S23_SRC_C435] = S23_IP(2),
             [S23_SRC_C422] = S23_IP(3), [S23_SRC_TIMER] = S23_IP(5) },
-    .boot_size = 0x400000, .rom_boot = rom_boot, .rom_sub = rom_sub, .rom_io = rom_io, .io_rom_size = 0x4000, .c417_status = 0x008E, .depth_default = 0,
+    .boot_size = 0x400000, .rom_boot = rom_boot, .rom_sub = rom_sub, .rom_io = rom_io, .io_rom_size = 0x4000, .c417_status = 0x008E,
+    .depth_default = 1,                           /* Display > Depth "exact": a tail and a hind leg overlap by distance (the board sorts whole polygons: the leg cut the tail off) */
     .no_direct_buf = 1,                           /* (GORgON has no 0x0CC00000 direct buffer) */
     .data_rom = { { "ff2mtah.3j", "ff2mtal.1j" }, { NULL, NULL } },
     .npt = 1, .pt_rom = { { "ff2pt0h.9l", "ff2pt0l.9j" } },

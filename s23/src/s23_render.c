@@ -195,6 +195,7 @@ static int finish(poly *p, const s23_render_entry *e, int hsort, uint32_t polysh
         const int zsc = s23_game.zbias_scale && e->type == S23_RE_MODEL ? s23_game.zbias_scale(e->model) : 0;   /* the game's own, per model */
         zsort += (int)((shift_bit != 17 ? 1.f : bsc > 0.f ? bsc : zsc > 0 ? (float)zsc : 1.f) * (float)((polyshift >> shift_bit & 1) ? (int)(polyshift | shift_sign) : (int)(polyshift & shift_mask_lo)));
         ap += (int)((polyshift & 0x1C0000) >> 18);
+        if (s23_game.ap_wrap && e->type == S23_RE_MODEL) ap &= 7;   /* models only (include/s23_game.h ap_wrap) */
     }
     if (zsort < 0) zsort = 0;
     if (zsort > 0x1FFFFF) zsort = 0x1FFFFF;
@@ -1059,6 +1060,7 @@ void s23_render_frame_end(void)
       since = seen ? 0 : since + 1; s23_spr_hud = since < 30;
       /* far to near by the C404 depth key (stable: equal keys keep the list order), so the renderers can put each among the polygons as MAME
        * does (the waterfall bonus's sun glow behind the helicopter and the text, the paddles' splash behind the raft) */
+      if (s23_game.spr_first_top) for (int i = 0, j = snap->nspr - 1; i < j; i++, j--) { const s23_sprite t = snap->spr[i]; snap->spr[i] = snap->spr[j]; snap->spr[j] = t; }
       for (int i = 1; i < snap->nspr; i++) { const s23_sprite s = snap->spr[i]; int j = i;
           while (j > 0 && snap->spr[j - 1].z < s.z) { snap->spr[j] = snap->spr[j - 1]; j--; } snap->spr[j] = s; } }
     { static long at = -2, to; extern uint32_t rr_frame; if (at == -2) { const char *e = getenv("S23_SPRLOG"); at = -1; if (e && sscanf(e, "%ld-%ld", &at, &to) < 2) to = at; }   /* debug: $S23_SPRLOG=frame[-frame]: sprites; a range logs the header only */
@@ -1095,7 +1097,7 @@ void s23_render_frame_end(void)
               if (s23_game.wide_pillar && s23_game.wide_pillar() && fade >= 20) e->clip43 = 1;   /* the game's option: everything in 4:3 outside a match */
               if (e->type == S23_RE_MODEL && e->vp_fov > 0.f && (float)e->v[2] >= e->vp_fov - 8.f && (float)e->v[2] <= e->vp_fov + 8.f) e->clip43 = 1;
           } }
-      else if (g_eng_hud_edges_on && ex > 0)
+      else if (g_eng_hud_edges_on && ex > 0 && !s23_game.no_hud_shift)
           for (int i = 0; i < snap->list.count; i++) {
               s23_render_entry *e = &snap->list.e[i];
               if (e->type != S23_RE_MODEL || e->vp_fov <= 0.f || e->v[0] == 0) continue;
