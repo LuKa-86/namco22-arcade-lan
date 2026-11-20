@@ -56,6 +56,7 @@ cabinets on the network and links with them, with nobody touching a keyboard, ev
 | **Air Combat 22** | 1995 | Super 22 | 1 | **New** port; jet-fighter missions |
 | **Aqua Jet** | 1996 | Super 22 | 1 | **New** port |
 | **Rapid River** | 1997 | Gorgon (System 23 family) | 1 | **New** port; white-water rafting |
+| **Final Furlong** | 1997 | Gorgon (System 23 family) | 1 | **New** port; horse racing on a rocking horse. The game links up to 4; not yet in this fork |
 | **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
 | **Prop Cycle** | 1996 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
 | **Dirt Dash** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
@@ -167,7 +168,7 @@ of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The l
 
 ## Version history
 
-- **0.10.3, later** (November 2026): **Rapid River** (Namco Gorgon) port. The launcher's **Link play** switch (off by
+- **0.10.3, later** (November 2026): **Rapid River** and **Final Furlong** (Namco Gorgon) ports. The launcher's **Link play** switch (off by
   default), controller fixes in every game (triggers can be bound and stay analogue on pedals; the left stick moves
   through menus; pad Start skips the link wait), the launcher opens games in front and in a real window, sharper logos.
 

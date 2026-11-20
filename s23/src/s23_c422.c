@@ -515,6 +515,7 @@ void s23_c422_tick(void)
 
 int s23_c422_read(uint32_t p, uint32_t *v)
 {
+    if (s23_game.c422_mame) { *v = reg[(p - 0x06400000u) >> 1 & 7]; return 1; }
     open_link();
     const unsigned k = (p - 0x06400000u) >> 1 & 7;
     *v = reg[k];
@@ -524,6 +525,13 @@ int s23_c422_read(uint32_t p, uint32_t *v)
 
 int s23_c422_write(uint32_t p, uint32_t v)
 {
+    if (s23_game.c422_mame) {                     /* MAME namcos23_state::c422_irq_w / c422_w: no data path */
+        const unsigned k = (p - 0x06400000u) >> 1 & 7;
+        reg[k] = (uint16_t)v;
+        if (k == 1 && (uint16_t)v == 0xFFFB) s23_irq_set(S23_SRC_C422, 1);
+        else if (k == 1 && (uint16_t)v == 0x000F) s23_irq_set(S23_SRC_C422, 0);
+        return 1;
+    }
     open_link();
     const unsigned k = (p - 0x06400000u) >> 1 & 7;
     const uint16_t old = reg[k];

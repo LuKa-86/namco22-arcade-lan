@@ -27,8 +27,10 @@ WHAT IS IN THIS FOLDER
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
      Dirt Dash\             one cabinet (the original project's own program)
+     Final Furlong\         one cabinet, the rocking-horse racer (new in this package)
      Gunmen Wars\           up to 3 linked cabinets, with the NamCam photo (new in this package)
      Prop Cycle\            one cabinet (the original project's own program)
+     Rapid River\           one cabinet, white-water rafting (new in this package)
      Rave Racer\            up to 4 linked cabinets
      Time Crisis\           one cabinet (the original project's own program)
      Time Crisis II\        the twin cabinet: left and right sides linked
@@ -55,8 +57,10 @@ itself the first time it starts.
    games\Cyber Cycles\roms      cybrcycc.zip
    games\Cyber Sled\roms        cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
    games\Dirt Dash\roms         dirtdash.zip
+   games\Final Furlong\roms     finfurl.zip  and  namco_asca1.zip
    games\Gunmen Wars\roms       gunwars.zip  and  namco_asca5.zip
    games\Prop Cycle\roms        propcycl.zip
+   games\Rapid River\roms       rapidrvr.zip  and  namco_asca1.zip
    games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
    games\Time Crisis\roms       timecris.zip
    games\Time Crisis II\roms    timecrs2.zip

@@ -231,3 +231,10 @@ __pycache__/
 /rapidrvr/gen/
 /rapidrvr/build/
 /rapidrvr/*.pcode
+
+# Final Furlong (finfurl/): game files, the translation's working files, test output
+/finfurl/extracted/
+/finfurl/gen/
+/finfurl/build/
+/finfurl/*.pcode
+/finfurl/build_cfg.log

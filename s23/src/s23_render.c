@@ -65,7 +65,9 @@ void s23_render_init(const char *dir)
     for (uint32_t k = 0; k < 0x200000; k++) tmlrom[k] = (uint16_t)(raw[2 * k] | raw[2 * k + 1] << 8);   /* ROM_REGION16_LE */
     if (s23_game.gorgon) memcpy(tmlrom + 0x100000, tmlrom, 0x200000);   /* half-size map: mirror it, as MAME's tileid mask wraps */
     ok &= load(dir, s23_game.ccrh, tmhrom, 0x200000);
-    for (int c = 0; c < 4; c++) ok &= load(dir, s23_game.cg[c], texrom + c * 0x800000, 0x800000);
+    const uint32_t cgsz = s23_game.cg_chip ? s23_game.cg_chip : 0x800000;
+    for (int c = 0; c < 4; c++) ok &= load(dir, s23_game.cg[c], texrom + c * cgsz, cgsz);
+    for (uint32_t o = 4 * cgsz; o < 0x2000000; o += 4 * cgsz) memcpy(texrom + o, texrom, 4 * cgsz);   /* a smaller set wraps */
     if (s23_game.spr[0] && (sprrom = malloc(0x1000000)))   /* GORgON's sprite tiles (MAME region "sprites") */
         for (int c = 0; c < 4; c++) ok &= load(dir, s23_game.spr[c], sprrom + c * 0x400000, 0x400000);
     tm_decoded =malloc(4u * (tileid_mask | 0xFF) + 4); tattr_decoded = malloc((tileid_mask | 0xFF) + 1);
@@ -734,7 +736,7 @@ void s23_sprites_draw(const s23_frame_state *fs, int i0, int i1, uint32_t *ovl, 
                     const int pen = src[v * 32 + u]; if (pen == 0xFF) continue;
                     const uint32_t c = pal[pen]; int r = c >> 16 & 0xFF, g = c >> 8 & 0xFF, b = c & 0xFF;
                     if (fade && ffac != 0xFF) { r = (r * ffac + fr * (0x100 - ffac)) >> 8; g = (g * ffac + fg * (0x100 - ffac)) >> 8; b = (b * ffac + fb * (0x100 - ffac)) >> 8; }
-                    const uint32_t a = af != 0xFF && (ablend || pen == apen) ? (uint32_t)af : 0xFF;
+                    const uint32_t a = af != 0xFF && (ablend || pen == apen || s23_game.spr_alpha) ? (uint32_t)af : 0xFF;
                     ovl[y * ow + x + ox] = a << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
                     if (x + ox < bb[0]) bb[0] = x + ox; if (x + ox >= bb[2]) bb[2] = x + ox + 1; if (y < bb[1]) bb[1] = y; if (y >= bb[3]) bb[3] = y + 1;
                 }
@@ -1062,7 +1064,9 @@ void s23_render_frame_end(void)
     { static long at = -2, to; extern uint32_t rr_frame; if (at == -2) { const char *e = getenv("S23_SPRLOG"); at = -1; if (e && sscanf(e, "%ld-%ld", &at, &to) < 2) to = at; }   /* debug: $S23_SPRLOG=frame[-frame]: sprites; a range logs the header only */
       if (to > at && (long)rr_frame >= at && (long)rr_frame <= to) { fprintf(stderr, "[SPRN] %u %d %02X full %d", rr_frame, snap->nspr, snap->c404[2 * 0x1F + 1], s23_spr_fullpic);
           for (int i = 0; i < snap->nspr && i < 8; i++) fprintf(stderr, " | %d,%d %04X a%02X z%06X", snap->spr[i].x, snap->spr[i].y, snap->spr[i].code, snap->spr[i].alpha, snap->spr[i].z); fprintf(stderr, "\n"); }
-      if (at >= 0 && (long)rr_frame == at) { fprintf(stderr, "[SPR] %u: layer byte %02X, %d sprites, list %d entries\n", rr_frame, snap->c404[2 * 0x1F + 1], snap->nspr, snap->list.count); }   /* (Gorgon's header words: $S23_SPRRAW) */
+      if (at >= 0 && (long)rr_frame == at) { fprintf(stderr, "[SPR] %u: layer byte %02X, %d sprites, list %d entries; alpha colour %02X pen %02X\n", rr_frame, snap->c404[2 * 0x1F + 1], snap->nspr, snap->list.count, snap->c404[2 * 0x0F + 1], snap->c404[2 * 0x10 + 1]);
+        FILE *pf = getenv("S23_PENDUMP") ? fopen(getenv("S23_PENDUMP"), "wb") : NULL;   /* debug: with $S23_SPRLOG, the palette (0x8000 x 0x00RRGGBB) -- a logo from the sprite ROM */
+        if (pf) { fwrite(snap->pens, 4, 0x8000, pf); fclose(pf); } }   /* (Gorgon's header words: $S23_SPRRAW) */
       static long at2 = -2; if (at2 == -2) { const char *e = getenv("S23_SPRLOG"), *c = e ? strchr(e, ',') : NULL; at2 = c ? atol(c + 1) : -1; }   /* =a,b: two frames' lists */
       if ((at >= 0 && (long)rr_frame == at) || (long)rr_frame == at2) for (int i = 0; i < snap->nspr; i++) { const s23_sprite *s = &snap->spr[i];
           fprintf(stderr, "[SPR] %u #%d at %d,%d size %d x %d, %d x %d tiles, code %04X colour %02X alpha %02X fade %d z %06X cz %02X\n", rr_frame, i, s->x, s->y, s->xs, s->ys, s->cols, s->rows, s->code, s->color, s->alpha, s->fade, s->z, s->cz); } }

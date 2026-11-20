@@ -82,6 +82,11 @@ typedef struct {
     int npt; const char *pt_rom[4][2];            /* the point ROM chip pairs [high, low] */
     const char *ccrl, *ccrh, *cg[4];              /* texture tile maps and tiles */
     const char *spr[4];                           /* GORgON: the sprite tile ROMs (4 MB each, 32x32 8-bit tiles), NULL elsewhere */
+    int spr_alpha;                                /* GORgON sprites: 1 = a sprite's own alpha always applies (Final Furlong's race map panel: alpha 0x80 in the
+                                                   * C404's opaque bank -- MAME's rule drew it solid white over the race); 0 = MAME's bank / alpha-pen rule */
+    int c422_mame;                                /* the C422 as MAME has it: registers kept, the interrupt raised by 0xFFFB and acked by 0x000F written
+                                                   * to +2, no data path (Final Furlong: its own link driver, not yet modelled) */
+    uint32_t cg_chip;                             /* the texture tile chips' size: 0 = 8 MB; Final Furlong 4 MB (the 16 MB region mirrored, as an address wraps) */
     const char *wave[2];                          /* the C352's samples: low, high */
     int recoil_hold;                              /* 1 = 0x6002 bit 0 stays on WHILE the gun fires (Crisis Zone's machine gun: measured on a player's
                                                    * session, on for the whole burst), 0 = a 3-frame pulse per shot (Time Crisis 2) */
