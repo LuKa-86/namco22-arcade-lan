@@ -37,30 +37,31 @@ cabinets on the network and links with them, with nobody touching a keyboard, ev
 
 **Linked** means cabinets on the network play together, as the original boards did over their link cable.
 **New** means the game is not in the original project: this fork ported it.
+Sorted by board, oldest first (System 21, System 22, Super 22, Gorgon, System 23), then by name.
 
 | Game | Year | Board | Cabinets | |
 |---|---|---|---|---|
-| **Tokyo Wars** | 1996 | Super 22 | up to 4, linked | Team tank battles |
-| **Rave Racer** | 1995 | System 22 | up to 4, linked | Linked races |
+| **Cyber Sled** | 1993 | System 21 | 2, linked | Hover-tank battles; **cabinet link** is new (the original links only online) |
 | **Ace Driver** | 1994 | System 22 | up to 8, linked | Linked races; the link is **new** (the original project's build plays solo) |
 | **Ace Driver: Victory Lap** | 1996 | System 22 | up to 4, linked | **New** port. Up to 8 is in the code but not yet reliable |
-| **Cyber Cycles** | 1995 | System 22 | up to 4, linked | **New** port |
 | **Cyber Commando** | 1994 | System 22 | 2, linked | Robot battles; the link is **new** |
-| **Armadillo Racing** | 1997 | Super 22 | up to 4, linked | Trackball racing; the link is **new** |
-| **Alpine Racer 2** | 1996 | Super 22 | 2, linked | **New** port; head-to-head races, party mode |
-| **Cyber Sled** | 1993 | System 21 | 2, linked | Hover-tank battles; **cabinet link** is new (the original links only online) |
-| **Time Crisis II** | 1997 | System 23 | 2, the twin cabinet | Left and right sides linked for two players; party mode |
-| **Gunmen Wars** | 1998 | System 23 + GMEN | up to 3, linked | **New** port; team shoot-outs, NamCam photo from a webcam, party mode |
-| **Alpine Racer** | 1995 | Super 22 | 1 | **New** port |
-| **Alpine Surfer** | 1996 | Super 22 | 1 | **New** port |
+| **Cyber Cycles** | 1995 | System 22 | up to 4, linked | **New** port |
+| **Rave Racer** | 1995 | System 22 | up to 4, linked | Linked races |
 | **Air Combat 22** | 1995 | Super 22 | 1 | **New** port; jet-fighter missions |
+| **Alpine Racer** | 1995 | Super 22 | 1 | **New** port |
+| **Alpine Racer 2** | 1996 | Super 22 | 2, linked | **New** port; head-to-head races, party mode |
+| **Alpine Surfer** | 1996 | Super 22 | 1 | **New** port |
 | **Aqua Jet** | 1996 | Super 22 | 1 | **New** port |
-| **Rapid River** | 1997 | Gorgon (System 23 family) | 1 | **New** port; white-water rafting |
-| **Final Furlong** | 1997 | Gorgon (System 23 family) | 1 | **New** port; horse racing on a rocking horse. The game links up to 4; not yet in this fork |
-| **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
-| **Prop Cycle** | 1996 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
+| **Armadillo Racing** | 1997 | Super 22 | up to 4, linked | Trackball racing; the link is **new** |
 | **Dirt Dash** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
+| **Prop Cycle** | 1996 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
 | **Time Crisis** | 1995 | Super 22 | 1 | The original project's game, built here from its 0.10.3 source |
+| **Tokyo Wars** | 1996 | Super 22 | up to 4, linked | Team tank battles |
+| **Final Furlong** | 1997 | Gorgon (System 23 family) | up to 4, linked | **New** port; horse racing on a rocking horse |
+| **Rapid River** | 1997 | Gorgon (System 23 family) | 1 | **New** port; white-water rafting |
+| **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
+| **Gunmen Wars** | 1998 | System 23 + GMEN | up to 3, linked | **New** port; team shoot-outs, NamCam photo from a webcam, party mode |
+| **Time Crisis II** | 1997 | System 23 | 2, the twin cabinet | Left and right sides linked for two players; party mode |
 
 Every linked game has been tested linking several copies on one PC. Tokyo Wars, Rave Racer, Cyber Cycles,
 Time Crisis II and Gunmen Wars have also been tested linking across three real PCs.
@@ -69,8 +70,9 @@ Time Crisis II and Gunmen Wars have also been tested linking across three real P
 
 ### The cabinet link (all new in this fork)
 
-- **A local-network link** for 11 games, modelled on Namco's own link chips (the C139 on System 21/22, the C422 on
-  System 23, the GMEN board's FireWire link for Gunmen Wars). The games run their original link code unchanged.
+- **A local-network link** for 12 games, modelled on Namco's own link chips (the C139 on System 21/22, the C422 on
+  System 23 and on Final Furlong's Gorgon board, where it makes a ring of up to 4 cabinets, the GMEN board's FireWire
+  link for Gunmen Wars). The games run their original link code unchanged.
 - **Links at power-on, like the boards.** Cabinets wait up to a minute for each other, then start together. A cabinet
   that starts late or restarts plays alone until the set is restarted, as on the real hardware.
 - **Finds the other cabinets by itself.** *Find cabinets* on the Network page fills in every PC's address, and the
@@ -171,6 +173,10 @@ of `gunwars.cfg`); the game's **Network** page in its Esc menu edits them. The l
 - **0.10.3, later** (November 2026): **Rapid River** and **Final Furlong** (Namco Gorgon) ports. The launcher's **Link play** switch (off by
   default), controller fixes in every game (triggers can be bound and stay analogue on pedals; the left stick moves
   through menus; pad Start skips the link wait), the launcher opens games in front and in a real window, sharper logos.
+  Then: **Final Furlong links up to 4 cabinets** (and a 2-cabinet test in the launcher), picture fixes checked against
+  arcade footage (the island in the attract fly-over, the message board and course-map markers on top, widescreen
+  backgrounds and the rider's arms, horse tails, the marshal's flag, clearer text on see-through panels), and
+  **File > Restart** now restarts Time Crisis II, Crisis Zone, Gunmen Wars, Rapid River and Final Furlong instead of closing them.
 
 - **0.10.3** (November 2026): merged the original project's 0.10.3; Prop Cycle, Dirt Dash, Time Crisis and Crisis Zone
   now built here. New: **Ace Driver: Victory Lap** (up to 4 linked) and **Air Combat 22**. The link replies out of the

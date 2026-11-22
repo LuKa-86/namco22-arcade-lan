@@ -27,7 +27,7 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/ff_sub.c
 add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/gen/ff_io.c
     COMMAND ${CMAKE_COMMAND} -E env H8_ROMSIZE=0x4000 python3 ${H8T}/h8_translate.py extracted/io.bin 0 s23io gen/ff_io.c ${H8IO_PREFIX}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/extracted/io.bin ${H8_TOOLS} ${H8IO_COV} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set(RR_SRC ${S23_HOST_SRC} src/ff_game.c ${S23_HOST_DIR}/src/s23_gorgon.c gen/ff_sub.c gen/ff_io.c ${RR_LIFTED} ${S23_HOST_TAIL})
+set(RR_SRC ${S23_HOST_SRC} src/ff_game.c ${S23_HOST_DIR}/src/s23_gorgon.c gen/ff_sub.c gen/ff_io.c ${RR_LIFTED} ${S23_HOST_TAIL} src/ff_link.c)   # (the link: sockets, threads -- outside the saved state)
 option(PORTABLE "Bind glibc symbols to baseline versions (runs on glibc >= 2.34)" ON)
 if(PORTABLE AND NOT WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   add_compile_options(-include ${S23_HOST_DIR}/include/glibc_compat.h)

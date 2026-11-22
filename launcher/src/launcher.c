@@ -151,10 +151,13 @@ static const game_t games[] = {
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X gas  \xC2\xB7  Z brake  \xC2\xB7  Q / E shift  \xC2\xB7  C view  \xC2\xB7  Esc menu", NULL,
       2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", "") } },
     { "finfurl", "Final Furlong", "1997", "Final Furlong", "FinalFurlong-ArcadeLAN.exe",
-      "Horse racing on a rocking horse, for a single cabinet (linked play not yet). New in this package.",
+      "Horse racing on a rocking horse, for up to 4 linked cabinets (set up in the game's Esc menu, Network page). New in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  tap Up in rhythm to ride  \xC2\xB7  Left / Right reins  \xC2\xB7  Z / X whips (Z starts)  \xC2\xB7  Esc menu", NULL,
-      2, { { "Full screen", "The normal choice for a cabinet.", true, 1, { { "--window --fullscreen", NULL } } },
-           { "Window", "The same in a window.", false, 1, { { "--window", NULL } } } } },
+      3, { { "Full screen", "The normal choice for a cabinet. With Link play on (Settings) it joins the other cabinets.", true, 1, { { "--window --fullscreen", NULL } } },
+           { "Window", "The same in a window.", false, 1, { { "--window", NULL } } },
+           { "Test: 2 cabinets", "Opens 2 linked windows side by side. Controller 1 plays the left, controller 2 the right; the keyboard plays the window you click.", false, 2, {
+               { "--window", "FF_LINK=1:2:23280;S23_CABINET_DIR=try-1;S23_WINPOS=1/2;S23_PAD=0" },
+               { "--window", "FF_LINK=2:2:23280;S23_CABINET_DIR=try-2;S23_WINPOS=2/2;S23_PAD=1;S23_MUTE=1" } } } } },
     { "gunwars", "Gunmen Wars", "1998", "Gunmen Wars", "GunmenWars-ArcadeLAN.exe",
       "Team shoot-outs for up to 3 linked cabinets (set up in the game's Esc menu, Network page). New in this package.",
       "Controls: mouse turns  \xC2\xB7  left button fires  \xC2\xB7  right button decide  \xC2\xB7  W A S D move  \xC2\xB7  5 coin  \xC2\xB7  Esc menu (Options: NamCam webcam / photo)", NULL,
@@ -232,7 +235,7 @@ static const char *cabinets_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
         { "acedrive", "Up to 8 linked cabinets" }, { "victlap", "Up to 4 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
-        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" }, { "alpinr2", "2 linked cabinets" },
+        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" }, { "finfurl", "Up to 4 linked cabinets" }, { "alpinr2", "2 linked cabinets" },
         { "raverace", "Up to 4 linked cabinets" }, { "timecrs2", "Twin cabinet, 2 players" }, { "tokyowar", "Up to 4 linked cabinets" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
     return "Single cabinet";
@@ -244,7 +247,7 @@ static struct { int auto_game, auto_mode, delay, restart, windowed, tests, link;
 /* LINK PLAY (Settings, off by default): one switch for this PC. A game started on its own (Full screen / Window / a TC2 side) gets
  * link=on|off written into its link settings just before it starts, so off = it plays at once, on = it looks for the other cabinets.
  * The Test / Party ways link by their own command line and are not touched. */
-static const char *link_file(const game_t *g) { return g->cfg ? g->cfg : !strcmp(g->id, "gunwars") ? "gunwars.cfg" : NULL; }
+static const char *link_file(const game_t *g) { return g->cfg ? g->cfg : !strcmp(g->id, "gunwars") ? "gunwars.cfg" : !strcmp(g->id, "finfurl") ? "finfurl.cfg" : NULL; }
 /* a way to play the menu shows: the "Test: ..." ways (several linked windows on this PC) only with Settings > Test modes on */
 static bool way_shown(const way_t *m) { return S.tests || strncmp(m->label, "Test: ", 6) != 0; }
 static const int delays[] = { 5, 10, 20, 30, 60 };

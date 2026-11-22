@@ -27,7 +27,7 @@ WHAT IS IN THIS FOLDER
      Cyber Cycles\          up to 4 linked cabinets (new in this package)
      Cyber Sled\            2 linked cabinets, left and right (linked play new in this package)
      Dirt Dash\             one cabinet (the original project's own program)
-     Final Furlong\         one cabinet, the rocking-horse racer (new in this package)
+     Final Furlong\         up to 4 linked cabinets, the rocking-horse racer (new in this package)
      Gunmen Wars\           up to 3 linked cabinets, with the NamCam photo (new in this package)
      Prop Cycle\            one cabinet (the original project's own program)
      Rapid River\           one cabinet, white-water rafting (new in this package)
@@ -87,7 +87,8 @@ The ways to play:
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
                                          (Gunmen Wars and Time Crisis II: 2 players, keyboard and
                                          mouse + a controller, or 2 controllers)
-   (Gunmen Wars' link is set up in the game's Esc menu, Network page, as the other games)
+   (Gunmen Wars' and Final Furlong's links are set up in the game's Esc menu, Network page,
+    as the other games)
    Time Crisis II                        Left side or Right side, Both sides on one PC (2 monitors
                                          and 2 guns), Test: both sides, or Party
 
@@ -136,6 +137,7 @@ How the link behaves (the same rule as the real boards):
    > POSITION, left / right). Every linked cabinet
    needs a different one; a cabinet's first linked run sets it from its cabinet
    number, after that the test menu's is kept (and a warning shows if two linked cabinets have the same one).
+   Final Furlong: GAME OPTIONS > PCB NUMBER always follows the cabinet number while linked.
 
 
 4. SET UP AND FORGET: STARTING BY ITSELF

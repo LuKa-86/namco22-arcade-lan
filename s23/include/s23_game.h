@@ -87,7 +87,7 @@ typedef struct {
                                                    * "pen == alpha pen"; making every pen see-through washed out the select screens' text, pens 00-1A / E7);
                                                    * 0 = MAME's rule */
     int c422_mame;                                /* the C422 as MAME has it: registers kept, the interrupt raised by 0xFFFB and acked by 0x000F written
-                                                   * to +2, no data path (Final Furlong: its own link driver, not yet modelled) */
+                                                   * to +2, no data path (Final Furlong alone; linked, its .link models the chip: finfurl/src/ff_link.c) */
     int spr_fe_over;                              /* GORgON: 1 = sprites with cz 0xFE stay over the text layer (MAME's prioverchar; Final Furlong's course
                                                    * select: the see-through text-layer band washed out "ROYAL GARDEN'S CUP" over it) */
     int spr_first_top;                           /* GORgON sprites of equal depth: 1 = the list's first on top (Final Furlong, against arcade footage: the
@@ -153,6 +153,9 @@ typedef struct s23_link_ops {
     void (*report)(void);                         /* closing: the totals to the log, the others told */
     int  (*linked)(void);                         /* 1 = in a linked session (no pause: the others would lose this one) */
     int  (*lights)(int kind[2], int lit[2]);      /* the link lights as s23_c422_lights; NULL = none */
+    int  (*c422_read)(unsigned k, uint32_t *v);   /* optional: the game's own model of the C422's registers (k = word 0-7); 0 = not now (the
+                                                   * engine's model answers) -- Final Furlong's ring link (finfurl/src/ff_link.c) */
+    int  (*c422_write)(unsigned k, uint32_t v);
 } s23_link_ops;
 
 /* THE GORgON BOARD (s23_game.gorgon; src/s23_gorgon.c): the engine calls these only on that board */

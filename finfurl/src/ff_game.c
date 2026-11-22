@@ -182,6 +182,11 @@ static const ss22_input_game ff_input = {
     .send = ff_send_inputs, .test_bit = 0x0008, .service_bit = 0x0004,
 };
 
+#include "eng/eng_ui.h"
+extern const eng_ui_page ff_link_page;            /* src/ff_link.c */
+static void ff_menu_pages(void) { eng_ui_add_page(&ff_link_page); }
+extern const s23_link_ops ff_link_ops;
+
 const s23_game_t s23_game = {
     .title = "Final Furlong", .tag = "finfurl", .window_title = "Final Furlong", .mame_set = "finfurl",
     .zip_help = "MAME's finfurl.zip (Final Furlong, FF2 Ver. A) and namco_asca1.zip",
@@ -189,7 +194,8 @@ const s23_game_t s23_game = {
     .gorgon = &s23_gorgon, .io_asca = 1, .input = &ff_input,
     .znear = 0.01f,                               /* as Rapid River (MAME's 0.0001 read far-off texture right by the camera there) */
     .spr_alpha = 1,                               /* the race's course-map panel is see-through (alpha 0x80), not solid white */
-    .c422_mame = 1,                               /* the link chip as MAME has it (our TC2 model kept its "send done" interrupt up: a storm) */
+    .c422_mame = 1,                               /* alone: the link chip as MAME has it (our TC2 model kept its "send done" interrupt up: a storm) */
+    .link = &ff_link_ops, .menu_pages = ff_menu_pages,   /* linked: up to 4 cabinets on the C422 ring (src/ff_link.c), its Network page */
     .spr_fe_over = 1,                             /* course select: the race name over the see-through band */
     .spr_first_top = 1,                          /* the message board over everything, the horses on the course map */
     .list_hook = ff_list_hook,                    /* widescreen: the attract's tile background across the whole width */
