@@ -60,17 +60,17 @@ D342B7F4  Aim with the cursor and press the button to cast!
 040368FE  Now! Reel it in!
 C54C63C7  Pull the opposite way from the fish|to make it jump!
 EE4808F4  The line snapped!
-84505DA0  Keep fighting it? (Yes / No)
-B5BD31C3  -
-1A4DA026  -
-988802E3  -
-C262287C  -
+84505DA0  Keep fighting it?
+B5BD31C3  Yes
+1A4DA026  Yes
+988802E3  No
+C262287C  No
 28013255  Tilt the rod forward
 
 # --- results
 61011F32  Arapaima
-F643A785  Cast / Reeling / Hooking / Fight / Jump|Total
-A55070A3  Cast / Reeling / Hooking / Fight / Jump|Total
+F643A785  Cast|Reeling|Hooking|Fight|Jump|Total
+A55070A3  Cast|Reeling|Hooking|Fight|Jump|Total
 7F1F7510  Rank: Beginner Angler
 7DCFD3D6  Catch every fish and you can|take on the legendary fish!
 D620CDD1  -
@@ -94,3 +94,13 @@ FC578A83  Hurry!! The fish is getting away!!
 3F082C00  Deep in the Costa Rican jungle,
 BCB08ECA  hunt the fish of the gods!!
 A7C6FC50  Costa Rica, the headwaters
+
+# --- added 2026-11-23 (second pass): Sargasso and Comoro stage intros, the results' fish name
+941662B2  The devil's waters are real!
+A5D53FFF  Fight to the death in the Sargasso Sea!!
+66497AE9  Mediterranean, the ship graveyard
+DD787649  Where no one has gone before!
+70BC8C98  In a mysterious underground lake,
+88FCF596  catch the giant ancient fish!!
+3AFA24AE  Comoro Islands, the undersea cave
+FDF2CE61  Marlin

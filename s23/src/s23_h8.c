@@ -40,6 +40,7 @@ extern uint16_t s23_inputs, g_ss22_gun_x, g_ss22_gun_y;
 extern _Bool g_ss22_gun_off;
 
 static uint8_t sub_rom[0x80000], sub_onchip[0x200], io_rom[0x4000], io_ram[0x3F80];
+uint8_t *s23_io_ram(void) { return io_ram; }   /* (debug: $S23_SHDUMP) */
 static h8_cpu sub, io;
 static h8p subp, iop;
 static int sub_running, sub_ok, io_ok;
@@ -155,16 +156,43 @@ static uint8_t sub_sync_rx(void *u, int ch)
     }
     return b;
 }
+static void jvs_req_byte(uint8_t b);
 static void sub_sci_tx(void *u, int ch, uint8_t byte, int64_t at)   /* the JVS link: to the I/O board */
 {
     (void)u;
-    if (ch == 0) h8p_sci_receive(&iop, 0, byte, io_from_sub(at));
+    if (ch == 0) { h8p_sci_receive(&iop, 0, byte, io_from_sub(at)); jvs_req_byte(byte); }
     if (DBG("S23_JVSLOG")) fprintf(stderr, "[JVS] sub->io %02X frame %u line %llu\n", byte, rr_frame, (unsigned long long)line_k);
+}
+/* ANGLER KING'S START SW (the switch test's "START SW"): the real FCA-1 board sends it as bit 2 (0x04, JVS "right") of the player's first
+ * byte (measured: $S23_JVSBITSCAN over all 24 player bits, only 0x04 lights START SW); the stand-in ASCA-3 program has no pin for it (every
+ * in_r bit and port pin scanned), so it goes into the board's REPLY on the way to the sub-CPU. The game's request starts with "read
+ * switches" (E0 01 len 20 01 03 ...), so its reply is E0 00 len 01 | 01 system p1 ...: byte 6 after the E0 is the player byte; the checksum
+ * (the last byte) takes the same change. D0 = escape (the next byte + 1) both ways. */
+static int jvs_sw_req;                                  /* the last request the sub-CPU sent began with 0x20 (read switches) */
+static void jvs_req_byte(uint8_t b)
+{
+    static int n;
+    if (b == 0xE0) { n = 0; return; }
+    if (++n == 3) jvs_sw_req = b == 0x20;
+}
+static void io_reply_byte(uint8_t b, int64_t at)
+{
+    static int n, len, add, esc;
+    if (b == 0xE0) { n = 0; add = 0; esc = 0; h8p_sci_receive(&subp, 0, b, sub_from_io(at)); return; }
+    if (b == 0xD0) { esc = 1; return; }
+    uint8_t v = (uint8_t)(esc ? b + 1 : b); esc = 0; n++;
+    if (n == 2) len = v;
+    { static long at = -2; if (at == -2) { const char *e = getenv("S23_JVSBITSCAN"); at = e ? atol(e) : -1; }   /* TEST: every 20 frames the next player bit */
+      if (at >= 0 && (long)rr_frame >= at && n >= 6 && n <= 8 && jvs_sw_req) { const long k = ((long)rr_frame - at) / 20; if (k / 8 == n - 6) { const uint8_t m = (uint8_t)(0x80 >> (k % 8)); if (!(v & m)) { v |= m; add += m; } } } }
+    if (n == 6 && jvs_sw_req && (s23_inputs & 0x0200) && !(v & 0x04)) { v |= 0x04; add += 0x04; }
+    if (n == 2 + len && add) v = (uint8_t)(v + add);
+    if (v == 0xE0 || v == 0xD0) { h8p_sci_receive(&subp, 0, 0xD0, sub_from_io(at)); v--; }
+    h8p_sci_receive(&subp, 0, v, sub_from_io(at));
 }
 static void io_sci_tx(void *u, int ch, uint8_t byte, int64_t at)
 {
     (void)u;
-    if (ch == 0) h8p_sci_receive(&subp, 0, byte, sub_from_io(at));
+    if (ch == 0) { if (s23_game.io_asca3) io_reply_byte(byte, at); else h8p_sci_receive(&subp, 0, byte, sub_from_io(at)); }
     if (DBG("S23_JVSLOG")) fprintf(stderr, "[JVS] io->sub %02X frame %u line %llu\n", byte, rr_frame, (unsigned long long)line_k);
 }
 

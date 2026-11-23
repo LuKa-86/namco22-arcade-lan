@@ -110,7 +110,7 @@ static int find_blocks(const uint8_t *cg, const uint8_t *tm, blk *out, int max)
  * this frame (the game's are shared between cells). The letters: a bold system font (Segoe UI Bold, Arial Bold; DejaVu / Liberation on
  * Linux; $S23_SUBFONT), baked by Nuklear's stb_truetype at even pixel sizes, one pen, no smoothing (the game's Japanese has none).
  * No font found: the bar (mode 1) instead. */
-#define NSIZE 18                                         /* baked sizes: 10, 12, .. 44 px */
+#define NSIZE 28                                         /* baked sizes: 10, 12, .. 64 px (the results' fish name is 64 px of Japanese) */
 static struct nk_font_atlas fatlas;
 static struct nk_font *fsize[NSIZE];
 static uint8_t *fimg; static int fimg_w, font_state;     /* font_state 0 not tried, 1 ready, -1 none */
@@ -228,6 +228,8 @@ static int ingame_layout(const uint8_t *cg, const uint8_t *tm, const blk *b, con
             ph[p]++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
         /* a shape is mostly solid inside (a bubble: ~2/3 of it 5 px from its edge); big outlined letters are mostly near an edge */
+        if (getenv("S23_SUBLAY")) fprintf(stderr, "[SUBLAY] %08X rows %d-%d cols %d-%d see-through %d of %d, inner %d of %d (%d%%): %s\n", b->hash, b->r0, b->r1, b->c0, b->c1, hist[0xF], tot, inner,
+                                          tot - hist[0xF], (tot - hist[0xF]) ? inner * 100 / (tot - hist[0xF]) : 0, x1 < 0 || inner * 100 < (tot - hist[0xF]) * 35 ? "letters" : "shape");
         if (x1 < 0 || inner * 100 < (tot - hist[0xF]) * 35) letters_only = 1; else {
         int pen = 0; for (int p = 1; p < 15; p++) if (ph[p] > ph[pen]) pen = p;
         for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) if (P[y][x] != 0xF) P[y][x] = (uint8_t)box;
@@ -280,6 +282,13 @@ static int ingame_layout(const uint8_t *cg, const uint8_t *tm, const blk *b, con
             if (P[y - 1][x] == 0xF || P[y + 1][x] == 0xF || P[y][x - 1] == 0xF || P[y][x + 1] == 0xF) oh[p]++; else gh[p]++; }
         int op = 0; for (int p = 1; p < 15; p++) if (oh[p] > oh[op]) op = p;
         int gp = op ? 0 : 1; for (int p = 0; p < 15; p++) if (p != op && gh[p] > gh[gp]) gp = p;
+        /* ONE PEN (the continue question's white, the stage intros' red: the glyphs' own shading is all one pen): the English in that pen with
+         * no outline -- the next-commonest pen is a stray (or pen 0, unused), and drawing the letters in it washed them out */
+        const int one_pen = gh[gp] * 4 < gh[op];
+        if (one_pen) gp = op;
+        if (getenv("S23_SUBLAY")) { fprintf(stderr, "[SUBLAY] %08X letters: outline pen %d, letter pen %d; edge pens", b->hash, op, gp);
+            for (int p = 0; p < 16; p++) if (oh[p]) fprintf(stderr, " %d:%d", p, oh[p]); fprintf(stderr, "; inside pens");
+            for (int p = 0; p < 16; p++) if (gh[p]) fprintf(stderr, " %d:%d", p, gh[p]); fprintf(stderr, "\n"); }
         memset(cv, 0xF, sizeof cv);
         for (int i = 0; i < ne; i++) {
             const int y0 = i * H / ne, y1 = (i + 1) * H / ne, hgt = y1 - y0;
@@ -288,9 +297,10 @@ static int ingame_layout(const uint8_t *cg, const uint8_t *tm, const blk *b, con
             const int xmax = (cmax + 1) * 16 - 3;
             int s = NSIZE - 1;
             while (s > 0 && (line_h(fsize[s]) > hgt - 4 || 3 + text_w(fsize[s], ls[i], ll[i]) > xmax)) s--;
+            if (getenv("S23_SUBLAY")) fprintf(stderr, "[SUBLAY] %08X letters line %d: height %d, width allowed %d, size index %d\n", b->hash, i, hgt, xmax, s);
             put_text(fsize[s], ls[i], ll[i], 3, y0 + (hgt - line_h(fsize[s])) / 2, (uint8_t)gp);
         }
-        for (int y = 0; y < 480; y++) for (int x = 0; x < CV_W; x++) {
+        for (int y = 0; y < 480 && !one_pen; y++) for (int x = 0; x < CV_W; x++) {
             if (cv[y][x] != 0xF) continue;
             int near = 0;
             for (int dy = -2; dy <= 2 && !near; dy++) for (int dx = -2; dx <= 2 && !near; dx++) {
@@ -383,7 +393,8 @@ static void dump_pgm(const char *dir, const blk *b, const uint8_t *tm, const uin
 void s23_subs_frame(uint32_t frame)
 {
     if (!s23_game.subtitles) return;
-    if (!loaded) { load(); mode = eng_cfg_int("subtitles", 2); if (mode < 0 || mode > 2) mode = 2; if (!lock) lock = SDL_CreateMutex(); }
+    if (!loaded) { load(); mode = eng_cfg_int("subtitles", 2); if (mode < 0 || mode > 2) mode = 2; if (!lock) lock = SDL_CreateMutex();
+                   const char *e = getenv("S23_SUBMODE"); if (e) mode = atoi(e); }   /* $S23_SUBMODE=0/1/2: tests (a headless run reads no cfg) */
     static const char *logdir; static int ld = -1;
     if (ld < 0) { logdir = getenv("S23_SUBLOG"); ld = 1; }
     const uint8_t *cg = s23_vram_ptr(0x06800000u), *tm = s23_vram_ptr(0x0681E000u);
@@ -473,7 +484,8 @@ static const eng_ui_page sub_page = { "Subtitles", 360, 160, 0, p_nrows, NULL, N
 void s23_subs_ui_init(void)                             /* src/s23_window.c, after eng_ui_init */
 {
     if (!s23_game.subtitles) return;
-    if (!loaded) { load(); mode = eng_cfg_int("subtitles", 2); if (mode < 0 || mode > 2) mode = 2; if (!lock) lock = SDL_CreateMutex(); }
+    if (!loaded) { load(); mode = eng_cfg_int("subtitles", 2); if (mode < 0 || mode > 2) mode = 2; if (!lock) lock = SDL_CreateMutex();
+                   const char *e = getenv("S23_SUBMODE"); if (e) mode = atoi(e); }   /* $S23_SUBMODE=0/1/2: tests (a headless run reads no cfg) */
     eng_ui_add_page(&sub_page);
     eng_ui_add_layer(&sub_layer);
     font_load();                                         /* now, not at the first caption (baking the sizes took a few frames) */
