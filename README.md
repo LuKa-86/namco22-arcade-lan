@@ -5,7 +5,7 @@
 # Polygonizer Arcade LAN
 
 *Named after "Polygonizer", Namco's own name for System 21, its first 3D polygon board: every game here comes
-from that 1990s line of boards (System 21, 22, Super 22, Gorgon and System 23). Formerly "Namco 22: Arcade LAN".*
+from that 1990s line of boards (System 21, 22, Super 22, Gorgon and System 23).*
 
 **A fork of [namco22-decompile](https://github.com/spacestate1/namco22-decompile) by
 [spacestate1](https://github.com/spacestate1), made to keep real arcade cabinets running.**

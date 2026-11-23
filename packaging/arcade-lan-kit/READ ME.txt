@@ -1,5 +1,5 @@
-NAMCO 22 ARCADE LAN
-===================
+POLYGONIZER ARCADE LAN
+======================
 
 Namco's 1990s arcade games (System 22 and System 23), rebuilt to run on a PC, for real arcade
 cabinets: one PC in each cabinet in place of the original boards, the cabinets linked over a wired network the way the
