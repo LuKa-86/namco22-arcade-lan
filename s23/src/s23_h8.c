@@ -281,10 +281,12 @@ static uint8_t asca3_switches_(int n);
 static uint8_t asca3_switches(int n)                  /* TEST: $S23_INRSCAN=frame -- every 40 frames the next bit of in_r 0-3 reads pressed (low) */
 {
     uint8_t v = asca3_switches_(n); extern uint32_t rr_frame;
-    static long at = -2; if (at == -2) { const char *e = getenv("S23_INRSCAN"); at = e ? atol(e) : -1; }
-    if (at >= 0 && (long)rr_frame >= at) { const long k = ((long)rr_frame - at) / 40; if ((int)(k / 8) == n) v &= (uint8_t)~(1u << (k % 8)); }
+    static long at = -2, first, per = 40, cnt = 32; if (at == -2) { const char *e = getenv("S23_INRSCAN"); at = e ? atol(e) : -1;   /* frame[:first bit[:frames a bit[:bits]]] */
+        if (e) sscanf(e, "%ld:%ld:%ld:%ld", &at, &first, &per, &cnt); if (per < 1) per = 40; }
+    if (at >= 0 && (long)rr_frame >= at && ((long)rr_frame - at) / per < cnt) { const long k = ((long)rr_frame - at) / per + first; if ((int)(k / 8) == n) v &= (uint8_t)~(1u << (k % 8)); }
     return v;
 }
+uint8_t *s23_vram_ptr(uint32_t p);
 static uint8_t asca3_switches_(int n)
 {
     /* JVS_PLAYER1 (aking): 0x02 Enter (here IN_TRIGGER, the cabinet's button), 0x10 Down, 0x20 Up; JVS_SYSTEM 0x80 Test; JVS_COIN1 bit 0 the coin,
@@ -292,7 +294,11 @@ static uint8_t asca3_switches_(int n)
      * 2: ~(coin << 3 | p10 << 2 | p11 << 1 | p12); 3: ~(coin2 << 3 | !counter2 disc. << 1 | !counter1 disc.); 1: buttons Angler King has none of */
     const uint16_t in = s23_inputs;
     if (n == 0) return (uint8_t)~((!!(in & IN_TRIGGER)) << 3 | (!!(in & IN_USR_DOWN)) << 2 | (!!(in & IN_USR_UP)) << 1 | (!!(in & IN_TEST)));
-    if (n == 2) return (uint8_t)~((!!(in & IN_COIN)) << 3);
+    /* FREE PLAY: the title's "PRESS START BUTTON" is answered by the COIN switch (measured: every switch tapped on the title, only this one
+     * starts a game), so the cast button presses it too -- only while the game's COIN OPTIONS > FREE PLAY is on (backup RAM 0x5B = 1), so
+     * in coin play it never gives a credit */
+    if (n == 2) { const uint8_t *bk = s23_vram_ptr(0x0600005Bu); const int fp = bk && *bk == 1;
+                  return (uint8_t)~((!!(in & IN_COIN) || (fp && (in & IN_TRIGGER))) << 3); }
     if (n == 3) return (uint8_t)~(1 << 1 | 1 << 0);
     return 0xFF;
 }

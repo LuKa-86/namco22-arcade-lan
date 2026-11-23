@@ -76,6 +76,7 @@ const ss22_input_game ak_input_game = {
     IN_TEST, IN_SERVICE,
     false,
     true,                                     /* the pointer aims the rod */
+    .mounted_gun = true,                      /* (a rod, no light gun: no Gun shot flash / Gun border / recoil rows on the Controls page) */
 };
 
 const ss22_input_game s23_input_game = {
