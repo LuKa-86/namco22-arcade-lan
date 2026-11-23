@@ -62,6 +62,7 @@ Sorted by board, oldest first (System 21, System 22, Super 22, Gorgon, System 23
 | **Tokyo Wars** | 1996 | Super 22 | up to 4, linked | Team tank battles |
 | **Final Furlong** | 1997 | Gorgon (System 23 family) | up to 4, linked | **New** port; horse racing on a rocking horse |
 | **Rapid River** | 1997 | Gorgon (System 23 family) | 1 | **New** port; white-water rafting |
+| **Angler King** | 1998 | Super System 23 | 1 | Sea fishing with rod and reel; its captions are redrawn in English in the game's own style; the original project's game on this fork's System 23 engine |
 | **Crisis Zone** | 1999 | System 23 | 1 | Built by this fork, with widescreen and graphics fixes |
 | **Gunmen Wars** | 1998 | System 23 + GMEN | up to 3, linked | **New** port; team shoot-outs, NamCam photo from a webcam, party mode |
 | **Time Crisis II** | 1997 | System 23 | 2, the twin cabinet | Left and right sides linked for two players; party mode |

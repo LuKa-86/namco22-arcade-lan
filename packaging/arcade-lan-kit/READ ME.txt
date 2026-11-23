@@ -20,6 +20,7 @@ WHAT IS IN THIS FOLDER
      Alpine Racer 2\        2 linked cabinets race head to head (new in this package)
      Alpine Surfer\         one cabinet (new in this package)
      Air Combat 22\         one cabinet (new in this package)
+     Angler King\           one cabinet, sea fishing, captions in English
      Aqua Jet\              one cabinet (new in this package)
      Armadillo Racing\      up to 4 linked cabinets (linked play new in this package)
      Crisis Zone\           one cabinet (the original project's own program)
@@ -50,6 +51,7 @@ itself the first time it starts.
    games\Alpine Racer 2\roms    alpinr2a.zip  (and alpinr2b.zip, if your set keeps the shared files there)
    games\Alpine Surfer\roms     alpines.zip
    games\Air Combat 22\roms     airco22b.zip
+   games\Angler King\roms       aking.zip  and  namco_fca10.zip
    games\Aqua Jet\roms          aquajet.zip
    games\Armadillo Racing\roms  adillor.zip
    games\Crisis Zone\roms       crszone.zip

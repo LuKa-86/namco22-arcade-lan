@@ -40,6 +40,7 @@ GAMES=(
   "Gunmen Wars|GunmenWars-ArcadeLAN.exe|gunwars/build/gunwars.exe|gunwars.zip namco_asca5.zip|gunwars"
   "Rapid River|RapidRiver-ArcadeLAN.exe|rapidrvr/build/rapidrvr.exe|rapidrvr.zip namco_asca1.zip|rapidrvr"
   "Final Furlong|FinalFurlong-ArcadeLAN.exe|finfurl/build/finfurl.exe|finfurl.zip namco_asca1.zip|finfurl"
+  "Angler King|AnglerKing-ArcadeLAN.exe|aking/build/aking.exe|aking.zip namco_fca10.zip|aking"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|crszone/build/crszone.exe|crszone.zip|crszone"
   "Dirt Dash|DirtDash.exe|dirtdash/build/dd.exe|dirtdash.zip|dirtdash"
@@ -54,6 +55,7 @@ for g in "${GAMES[@]}"; do
     d="$KIT/games/$folder"; mkdir -p "$d"
     cp "$src" "$d/$exe"; [ -n "$STRIP" ] && [ "$src" = "$ROOT/$build" ] && "$STRIP" "$d/$exe"   # (ours: the debug symbols are 5-8x the program)
     [ "$folder" = "Prop Cycle" ] && [ -d "$AUTHOR_RELEASE/mesa" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
+    [ "$folder" = "Angler King" ] && cp "$ROOT/aking/aking_subtitles.txt" "$d/"   # its English subtitles (read beside the program)
     [ "$folder" = "Crisis Zone" ] && [ -d "$AUTHOR_RELEASE/hotr" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
     cp "$ROOT/launcher/pictures/$pic.bmp" "$d/picture.bmp"
     [ -f "$ROOT/launcher/pictures/${pic}_logo.bmp" ] && cp "$ROOT/launcher/pictures/${pic}_logo.bmp" "$d/logo.bmp"   # its title logo (32-bit, alpha), beside the picture

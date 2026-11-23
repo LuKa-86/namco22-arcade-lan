@@ -122,6 +122,11 @@ static const game_t games[] = {
       "Snowboarding for a single cabinet: freeriding and gate racing. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter decide / change view  \xC2\xB7  Z, X select  \xC2\xB7  arrows ride  \xC2\xB7  Esc menu", NULL,
       2, { M_SOLO_FULL("roms"), M_SOLO_WIN("roms", " 2") } },
+    { "aking", "Angler King", "1998", "Angler King", "AnglerKing-ArcadeLAN.exe",
+      "Sea fishing with a rod and reel, for a single cabinet, its captions redrawn in English. The original project's game, on this package's System 23 engine.",
+      "Controls: mouse / arrows / stick aim the rod  \xC2\xB7  left button or Space casts and selects  \xC2\xB7  hold R to reel  \xC2\xB7  5 coin  \xC2\xB7  Esc menu", NULL,
+      2, { { "Full screen", "The normal choice for a cabinet.", true, 1, { { "--window --fullscreen", NULL } } },
+           { "Window", "The same in a window.", false, 1, { { "--window", NULL } } } } },
     { "aquajet", "Aqua Jet", "1996", "Aqua Jet", "AquaJet-ArcadeLAN.exe",
       "Jet-ski racing for a single cabinet: the novice and expert courses. New in this package.",
       "Keys: 5 coin  \xC2\xB7  Enter start / view  \xC2\xB7  arrows lean  \xC2\xB7  Up throttle  \xC2\xB7  Z / X lean forward / back  \xC2\xB7  Esc menu", NULL,
@@ -236,7 +241,7 @@ static const char *board_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
         { "cybsled", "System 21" }, { "acedrive", "System 22" }, { "victlap", "System 22" }, { "cybrcomm", "System 22" }, { "cybrcycc", "System 22" },
-        { "raverace", "System 22" }, { "rapidrvr", "Gorgon" }, { "finfurl", "Gorgon" }, { "timecrs2", "System 23" }, { "crszone", "System 23" },
+        { "raverace", "System 22" }, { "rapidrvr", "Gorgon" }, { "finfurl", "Gorgon" }, { "timecrs2", "System 23" }, { "crszone", "System 23" }, { "aking", "Super System 23" },
         { "gunwars", "System 23 + GMEN" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
     return "Super 22";
