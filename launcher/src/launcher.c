@@ -93,10 +93,10 @@ typedef struct {
 
 static const game_t games[] = {
     { "acedrive", "Ace Driver", "1994", "Ace Driver", "AceDriver-ArcadeLAN.exe",
-      "Formula racing for up to 8 linked cabinets. Linked play is new in this package.",
+      "Formula racing for linked cabinets (more than 4 is experimental). Linked play is new in this package.",
       "Keys: 5 coin (2 per credit)  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  A / S shift  \xC2\xB7  V view  \xC2\xB7  Esc menu", "link.cfg",
       9, { M_NET_FULL("roms"), M_NET_WIN("roms"), M_TRY2("roms"), M_TRY4("roms"),
-        { "Test: 8 cabinets", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC.", false, 8, {
+        { "Test: 8 cabinets (experimental)", "Opens 8 small linked windows. Only cabinet 1 has sound. Needs a powerful PC; not guaranteed to keep up.", false, 8, {
             { "roms --window 1 --link 1 --link-cabinets 8", NULL }, { "roms --window 1 --link 2 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 3 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 4 --link-cabinets 8 --mute", NULL },
             { "roms --window 1 --link 5 --link-cabinets 8 --mute", NULL }, { "roms --window 1 --link 6 --link-cabinets 8 --mute", NULL },
@@ -241,13 +241,13 @@ static const char *board_text(const game_t *g)
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
     return "Super 22";
 }
-/* the game list's second line: how many cabinets play together */
+/* the game list's second line: link play, the twin cabinet or a single cabinet (no counts: Ace Driver 8 is not guaranteed) */
 static const char *cabinets_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
-        { "acedrive", "Up to 8 linked cabinets" }, { "victlap", "Up to 4 linked cabinets" }, { "adillor", "Up to 4 linked cabinets" }, { "cybrcomm", "2 linked cabinets" },
-        { "cybrcycc", "Up to 4 linked cabinets" }, { "cybsled", "2 linked cabinets" }, { "gunwars", "Up to 3 linked cabinets" }, { "finfurl", "Up to 4 linked cabinets" }, { "alpinr2", "2 linked cabinets" },
-        { "raverace", "Up to 4 linked cabinets" }, { "timecrs2", "Twin cabinet, 2 players" }, { "tokyowar", "Up to 4 linked cabinets" } };
+        { "acedrive", "Link play" }, { "victlap", "Link play" }, { "adillor", "Link play" }, { "cybrcomm", "Link play" },
+        { "cybrcycc", "Link play" }, { "cybsled", "Link play" }, { "gunwars", "Link play" }, { "finfurl", "Link play" }, { "alpinr2", "Link play" },
+        { "raverace", "Link play" }, { "timecrs2", "Twin cabinet" }, { "tokyowar", "Link play" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
     return "Single cabinet";
 }

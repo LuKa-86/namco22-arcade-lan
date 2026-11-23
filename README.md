@@ -45,7 +45,7 @@ Sorted by board, oldest first (System 21, System 22, Super 22, Gorgon, System 23
 | Game | Year | Board | Cabinets | |
 |---|---|---|---|---|
 | **Cyber Sled** | 1993 | System 21 | 2, linked | Hover-tank battles; **cabinet link** is new (the original links only online) |
-| **Ace Driver** | 1994 | System 22 | up to 8, linked | Linked races; the link is **new** (the original project's build plays solo) |
+| **Ace Driver** | 1994 | System 22 | linked | Linked races; the link is **new** (the original project's build plays solo). More than 4 cabinets is experimental |
 | **Ace Driver: Victory Lap** | 1996 | System 22 | up to 4, linked | **New** port. Up to 8 is in the code but not yet reliable |
 | **Cyber Commando** | 1994 | System 22 | 2, linked | Robot battles; the link is **new** |
 | **Cyber Cycles** | 1995 | System 22 | up to 4, linked | **New** port |

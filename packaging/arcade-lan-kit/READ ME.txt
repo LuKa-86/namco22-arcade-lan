@@ -14,7 +14,7 @@ WHAT IS IN THIS FOLDER
   Polygonizer Arcade LAN.exe   THE LAUNCHER: start everything from here
   READ ME.txt               this file
   games\                    one folder per game: its program, its roms\ and its settings
-     Ace Driver\            up to 8 linked cabinets (linked play new in this package)
+     Ace Driver\            linked cabinets, more than 4 experimental (linked play new)
      Ace Driver Victory Lap\ up to 4 linked cabinets (new in this package)
      Alpine Racer\          one cabinet (new in this package)
      Alpine Racer 2\        2 linked cabinets race head to head (new in this package)
@@ -82,7 +82,7 @@ The ways to play:
                                          joins the other cabinets when Link play is On
    Window                                the same in a window, for setting up and testing
    Test: 2 / 4 cabinets                  linked copies in windows on this PC, to see the link
-                                         working (Ace Driver also has Test: 8). Hidden until
+                                         working (Ace Driver also has Test: 8, experimental). Hidden until
                                          Settings > Test modes is set to Shown
    Party: 2 or 4 players                 split screen on one PC, a controller for each player
                                          (Gunmen Wars and Time Crisis II: 2 players, keyboard and
