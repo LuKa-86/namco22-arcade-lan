@@ -4,14 +4,14 @@
 #   tools/make_arcade_kit.sh <package folder> [<folder with your MAME zips>]
 #
 #   <package>\
-#     Namco 22 Arcade LAN.exe        the launcher (launcher/): pick a game and how to play it; auto start
+#     Polygonizer Arcade LAN.exe        the launcher (launcher/): pick a game and how to play it; auto start
 #     READ ME.txt
 #     games\<Game>\                   <Name>-ArcadeLAN.exe, picture.bmp, roms\ (that game's zips), its settings
 #     advanced\                       a .bat for every way to play (the launcher's buttons, for scripts and shortcuts)
 #     mesa\                           optional: Mesa's opengl32.dll + libgallium_wgl.dll for a PC without an OpenGL driver
 #
 # Builds used (a missing one is left out): tokyowar/build/tw.exe, raverace/build/rr.exe, tc2/build/tc2.exe,
-# cybrcycc/build/cc.exe, alpiner/build/al.exe, alpinr2/build/a2.exe, cybsled/build/cs21.exe, launcher/build/"Namco 22 Arcade LAN.exe".
+# cybrcycc/build/cc.exe, alpiner/build/al.exe, alpinr2/build/a2.exe, cybsled/build/cs21.exe, launcher/build/"Polygonizer Arcade LAN.exe".
 # The zips are never part of this repository: with a zips folder each game's are copied into its roms\ (every game unpacks
 # its own zips on its first start).
 set -e
@@ -70,13 +70,13 @@ for g in "${GAMES[@]}"; do
     echo "  $folder: $exe${have:+, roms:$have}"
 done
 
-L="$ROOT/launcher/build/Namco 22 Arcade LAN.exe"
+L="$ROOT/launcher/build/Polygonizer Arcade LAN.exe"
 if [ -f "$L" ]; then
-    cp "$L" "$KIT/"; [ -n "$STRIP" ] && "$STRIP" "$KIT/Namco 22 Arcade LAN.exe"
-    rm -rf "$KIT/advanced"; "$KIT/Namco 22 Arcade LAN.exe" --write-advanced "$(cygpath -w "$KIT/advanced")"
+    cp "$L" "$KIT/"; [ -n "$STRIP" ] && "$STRIP" "$KIT/Polygonizer Arcade LAN.exe"
+    rm -rf "$KIT/advanced"; "$KIT/Polygonizer Arcade LAN.exe" --write-advanced "$(cygpath -w "$KIT/advanced")"
     echo "  launcher + advanced\\ ($(ls "$KIT/advanced" | wc -l) .bat files)"
 else
-    echo "  (no launcher build: launcher/build/Namco 22 Arcade LAN.exe)"
+    echo "  (no launcher build: launcher/build/Polygonizer Arcade LAN.exe)"
 fi
 cp "$ROOT/packaging/arcade-lan-kit/READ ME.txt" "$KIT/"
 mkdir -p "$KIT/LAN test"; cp "$ROOT/packaging/arcade-lan-kit/LAN test"/* "$KIT/LAN test/"   # link tests on several real PCs (copied over: never wipes the results folder)

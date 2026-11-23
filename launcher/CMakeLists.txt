@@ -1,4 +1,4 @@
-# The package's launcher, "Namco 22 Arcade LAN.exe" (Windows only): src/launcher.c. Built like the games, in MSYS2 MINGW64:
+# The package's launcher, "Polygonizer Arcade LAN.exe" (Windows only): src/launcher.c. Built like the games, in MSYS2 MINGW64:
 #   cmake -S launcher -B launcher/build -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C launcher/build
 cmake_minimum_required(VERSION 3.16)
 project(arcade_lan_launcher C RC)
@@ -14,6 +14,6 @@ pkg_check_modules(SDL2 REQUIRED sdl2)
 include_directories(${SDL2_INCLUDE_DIRS})
 add_link_options(-mwindows -static-libgcc -static)
 add_executable(launcher src/launcher.c src/launcher.rc)
-set_target_properties(launcher PROPERTIES OUTPUT_NAME "Namco 22 Arcade LAN")
+set_target_properties(launcher PROPERTIES OUTPUT_NAME "Polygonizer Arcade LAN")
 target_compile_options(launcher PRIVATE -Wall -Wno-unused-function -Wno-misleading-indentation -Wno-format-truncation)
 target_link_libraries(launcher ${SDL2_STATIC_LDFLAGS} opengl32 iphlpapi ws2_32)

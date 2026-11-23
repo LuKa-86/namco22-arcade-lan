@@ -1,8 +1,11 @@
 <p align="center">
-  <img src="docs/images/arcade-lan-header.jpg" alt="Namco 22: Arcade LAN - four linked Tokyo Wars cabinets" width="100%">
+  <img src="docs/images/arcade-lan-header.jpg" alt="Polygonizer Arcade LAN - four linked Tokyo Wars cabinets" width="100%">
 </p>
 
-# Namco 22: Arcade LAN
+# Polygonizer Arcade LAN
+
+*Named after "Polygonizer", Namco's own name for System 21, its first 3D polygon board: every game here comes
+from that 1990s line of boards (System 21, 22, Super 22, Gorgon and System 23). Formerly "Namco 22: Arcade LAN".*
 
 **A fork of [namco22-decompile](https://github.com/spacestate1/namco22-decompile) by
 [spacestate1](https://github.com/spacestate1), made to keep real arcade cabinets running.**
@@ -93,7 +96,7 @@ Time Crisis II and Gunmen Wars have also been tested linking across three real P
 
 ### Running in a cabinet
 
-- **A full-screen launcher** (`Namco 22 Arcade LAN.exe`) for every game, driven by keyboard, controller or mouse.
+- **A full-screen launcher** (`Polygonizer Arcade LAN.exe`) for every game, driven by keyboard, controller or mouse.
 - **One Link play switch** in the launcher's Settings, **off** out of the box: every game simply starts and plays. Turn
   it on for a PC that is part of a linked set and its games look for the other cabinets first (Start or S skips the
   wait). The launcher sets each game's own Link play setting to match whenever it starts one.

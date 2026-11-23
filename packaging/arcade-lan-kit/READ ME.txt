@@ -11,7 +11,7 @@ cabinet link, the launcher and the cabinet set-up. You need your own copy of the
 
 WHAT IS IN THIS FOLDER
 ----------------------
-  Namco 22 Arcade LAN.exe   THE LAUNCHER: start everything from here
+  Polygonizer Arcade LAN.exe   THE LAUNCHER: start everything from here
   READ ME.txt               this file
   games\                    one folder per game: its program, its roms\ and its settings
      Ace Driver\            up to 8 linked cabinets (linked play new in this package)
@@ -69,7 +69,7 @@ itself the first time it starts.
 
 2. THE LAUNCHER
 ---------------
-Double-click "Namco 22 Arcade LAN.exe". The games are on the left, the chosen game's picture and
+Double-click "Polygonizer Arcade LAN.exe". The games are on the left, the chosen game's picture and
 the ways to play it on the right.
    Arrow keys / D-pad / stick     choose          Enter / A      start
    Esc / B                        back            S / Y          settings

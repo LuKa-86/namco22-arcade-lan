@@ -1,10 +1,10 @@
 /*
- * launcher.c -- "Namco 22 Arcade LAN.exe": the package's front end (Windows).
+ * launcher.c -- "Polygonizer Arcade LAN.exe": the package's front end (Windows).
  *
  * Full screen, like a cabinet's own menu: the games down the left, the chosen one's picture and how to play it on the right.
  * Keyboard (arrows, Enter, Esc), a game controller (D-pad / stick, A, B) or the mouse. The package beside it:
  *
- *   Namco 22 Arcade LAN.exe       this program, and its settings: launcher.cfg
+ *   Polygonizer Arcade LAN.exe       this program, and its settings: launcher.cfg
  *   games\<Game>\                  each game's program (<Name>-ArcadeLAN.exe), its own roms\ folder and settings (link.cfg)
  *   advanced\                      one .bat per way to play (written by --write-advanced): the same as this menu's buttons
  *
@@ -44,8 +44,9 @@
 #include "../../third_party/nuklear.h"
 #include "../../third_party/nuklear_sdl_gl2.h"
 
-#define APP_NAME   "Namco 22 Arcade LAN"
-#define RUN_VALUE  L"Namco 22 Arcade LAN"         /* the HKCU Run value's name */
+#define APP_NAME   "Polygonizer Arcade LAN"
+#define RUN_VALUE  L"Polygonizer Arcade LAN"         /* the HKCU Run value's name */
+#define RUN_VALUE_OLD L"Namco 22 Arcade LAN"      /* (its name before the rename: removed when auto start is set or cleared) */
 
 /* ---- THE GAMES AND THE WAYS TO PLAY THEM ------------------------------------------------------------------------------
  * A way to play starts one or more copies of the game (copies on one PC: "try" and party modes), in the game's folder.
@@ -230,6 +231,16 @@ static void logm(const char *fmt, ...)
     va_list a; va_start(a, fmt); vfprintf(log_file, fmt, a); va_end(a);
     fputc('\n', log_file); fflush(log_file);
 }
+/* the game list's second line: the hardware the game ran on */
+static const char *board_text(const game_t *g)
+{
+    static const struct { const char *id, *text; } t[] = {
+        { "cybsled", "System 21" }, { "acedrive", "System 22" }, { "victlap", "System 22" }, { "cybrcomm", "System 22" }, { "cybrcycc", "System 22" },
+        { "raverace", "System 22" }, { "rapidrvr", "Gorgon" }, { "finfurl", "Gorgon" }, { "timecrs2", "System 23" }, { "crszone", "System 23" },
+        { "gunwars", "System 23 + GMEN" } };
+    for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;
+    return "Super 22";
+}
 /* the game list's second line: how many cabinets play together */
 static const char *cabinets_text(const game_t *g)
 {
@@ -302,8 +313,9 @@ static bool run_key_set(bool on)
         GetModuleFileNameW(NULL, exe, MAX_PATH);
         swprintf(cmd, MAX_PATH + 32, L"\"%ls\" --auto", exe);
         r = RegSetValueExW(k, RUN_VALUE, 0, REG_SZ, (const BYTE *)cmd, (DWORD)((wcslen(cmd) + 1) * sizeof(wchar_t)));
+        RegDeleteValueW(k, RUN_VALUE_OLD);
     } else {
-        r = RegDeleteValueW(k, RUN_VALUE);
+        r = RegDeleteValueW(k, RUN_VALUE); RegDeleteValueW(k, RUN_VALUE_OLD);
         if (r == ERROR_FILE_NOT_FOUND) r = ERROR_SUCCESS;
     }
     RegCloseKey(k);
@@ -698,8 +710,8 @@ static void draw(int W, int H, SDL_Window *win)
     /* the title bar */
     nk_fill_rect(cb, nk_rect(0, 0, (float)W, 112 * k), 0, C_DARK);
     nk_fill_rect(cb, nk_rect(0, 112 * k, (float)W, 1), 0, C_LINE);
-    text(cb, f_title, pad, 28 * k, "Namco 22 Arcade LAN", C_TEXT);     /* (Quit, bottom right, closes it: no second close button) */
-    text(cb, f_small, pad + tw(f_title, "Namco 22 Arcade LAN") + 24 * k, 48 * k, "System 22 and System 23 games, one PC in each cabinet, linked over a wired network", C_SEC);
+    text(cb, f_title, pad, 28 * k, "Polygonizer Arcade LAN", C_TEXT);     /* (Quit, bottom right, closes it: no second close button) */
+    text(cb, f_small, pad + tw(f_title, "Polygonizer Arcade LAN") + 24 * k, 48 * k, "Namco System 21, 22, Super 22, Gorgon and System 23 games, one PC in each cabinet, linked over a wired network", C_SEC);
     const float top = 144 * k, bottom = H - 96 * k;
 
     if (screen == SC_MENU) {
@@ -737,7 +749,7 @@ static void draw(int W, int H, SDL_Window *win)
             nk_fill_rect(cb, r, 8 * k, s ? C_SEL : C_PANEL);                 /* chosen: one surface step up and the amber bar */
             if (s) nk_fill_rect(cb, nk_rect(r.x, r.y + 16 * k, 4 * k, r.h - 32 * k), 2 * k, focus == 0 ? C_AMBER : C_DIM);
             text(cb, f_big, r.x + 24 * k, r.y + 8 * k, games[i].name, s ? C_TEXT : C_SEC);
-            char sub[64]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s", games[i].year, cabinets_text(&games[i]));
+            char sub[128]; snprintf(sub, sizeof sub, "%s  \xC2\xB7  %s  \xC2\xB7  %s", games[i].year, board_text(&games[i]), cabinets_text(&games[i]));
             text(cb, f_small, r.x + 24 * k, r.y + 44 * k, sub, C_DIM);
         }
         nk_push_scissor(cb, nk_rect(0, 0, (float)W, (float)H));
@@ -931,6 +943,7 @@ int main(int argc, char **argv)
     cfg_load();
     if (forced_window) S.windowed = 1;
     logm("---- " APP_NAME " started%s", want_auto ? " by Windows (--auto)" : "");
+    if (S.auto_game >= 0 && !shot) run_key_set(true);   /* auto start on: the Windows entry points at this program (a renamed or moved package) */
 
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) { MessageBoxA(NULL, SDL_GetError(), APP_NAME, MB_ICONERROR); return 1; }

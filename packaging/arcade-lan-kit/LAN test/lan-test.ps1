@@ -76,7 +76,7 @@ if ($Share) {
 if ($Run) {
     $s = Read-Saved
     Write-Host ""
-    Write-Host "NAMCO 22 ARCADE LAN - LAN TEST" -ForegroundColor Cyan
+    Write-Host "POLYGONIZER ARCADE LAN - LAN TEST" -ForegroundColor Cyan
     Write-Host "Run this on every PC of the test. Each PC needs its own cabinet number (1, 2, 3 ...)."
     Write-Host ""
     for ($i = 0; $i -lt $Games.Count; $i++) { Write-Host ("  {0,2}. {1}" -f ($i + 1), $Games[$i].Name) }
