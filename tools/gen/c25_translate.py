@@ -38,7 +38,7 @@ chips run different programs at the same addresses, so cybsled generates one fun
 import argparse, os, re, sys
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--game', required=True, choices=['pc', 'rr', 'tw', 'dd', 'tc', 'cs', 'am'])
+ap.add_argument('--game', required=True, choices=['pc', 'rr', 'tw', 'dd', 'tc', 'cs', 'sb', 'am'])
 ap.add_argument('--roms', required=True)
 ap.add_argument('--cov', action='append', default=[])
 ap.add_argument('--out')
@@ -66,6 +66,16 @@ if a.game == 'cs':
     u = open(os.path.join(a.roms, 'cy1-data-u.3a'), 'rb').read(); l = open(os.path.join(a.roms, 'cy1-data-l.1a'), 'rb').read()
     rom = bytearray(2 * len(u)); rom[0::2] = u; rom[1::2] = l
     main_block = 0x0
+    prog_base = 0x8000
+elif a.game == 'sb':
+    # Starblade (System 21, starblad/): the same C67 and BIOS as Cyber Sled, but the uploaded programs are in the MASTER 68000's program
+    # ROM (ROM_LOAD16_BYTE st2_mpu.mpru even / st2_mpl.mprl odd), Cyber Sled's `count, count words` blocks: the master DSP's at 0x20468
+    # (0xE43 words), the slave DSP's at 0x220F0 (0xE44 words -- word for word Cyber Sled's block 1E16, so its coverage applies retagged).
+    b = open(os.path.join(a.roms, 'c67.bin'), 'rb').read()
+    bios_img = {i: w for i, w in enumerate(words_be(b[:0x2000]))}
+    u = open(os.path.join(a.roms, 'st2_mpu.mpru'), 'rb').read(); l = open(os.path.join(a.roms, 'st2_mpl.mprl'), 'rb').read()
+    rom = bytearray(2 * len(u)); rom[0::2] = u; rom[1::2] = l
+    main_block = 0x20468
     prog_base = 0x8000
 elif a.game == 'dd':
     # Dirt Dash (Super System 22): two 2 MB chips, MAME ROM_LOAD32_WORD_SWAP -- dt2vera.2 the high word of every long, dt2vera.1 the
@@ -114,7 +124,7 @@ blocks = [int(b, 16) for b in a.block] or [main_block]
 
 images = {'bios': bios_img}                  # tag -> {program address: word}
 for ca in blocks:
-    cnt = ((rom[ca] << 8) | rom[ca + 1]) + (0 if a.game == 'cs' else 1)
+    cnt = ((rom[ca] << 8) | rom[ca + 1]) + (0 if a.game in ('cs', 'sb') else 1)
     if not 0 < cnt <= 0xC000: sys.exit(f'bad master program size {cnt} at {ca:X}')
     images[f'{ca:X}'] = {prog_base + i: w for i, w in enumerate(words_be(rom[ca + 2: ca + 2 + 2 * cnt]))}
 cnt = len(images[f'{main_block:X}']) if f'{main_block:X}' in images else 0
@@ -229,7 +239,7 @@ dispatch = []
 for tag, img in images.items():
     seeds = set(cov[tag])
     if tag == 'bios': seeds |= {0x0000, 0x0002, 0x0004, 0x0006, 0x0018, 0x001A, 0x001C, 0x001E}
-    elif a.game == 'cs':
+    elif a.game in ('cs', 'sb'):
         # the C67 BIOS enters an uploaded program at its first word, and forwards the chip's vectors (INT0/1/2 at 2/4/6, TINT/RINT/
         # XINT/TRAP at 0x18..0x1E) to `B` entries at program+2..+0xE: a per-image walk cannot follow the BIOS's jumps there
         seeds |= {prog_base + 2 * k for k in range(8)}

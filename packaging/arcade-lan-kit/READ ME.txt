@@ -13,6 +13,7 @@ WHAT IS IN THIS FOLDER
 ----------------------
   Polygonizer Arcade LAN.exe   THE LAUNCHER: start everything from here
   READ ME.txt               this file
+  Allow through firewall.bat  run once on each cabinet PC: Windows stops asking about every game
   games\                    one folder per game: its program, its roms\ and its settings
      Ace Driver\            linked cabinets, more than 4 experimental (linked play new)
      Ace Driver Victory Lap\ up to 4 linked cabinets (new in this package)
@@ -33,6 +34,7 @@ WHAT IS IN THIS FOLDER
      Prop Cycle\            one cabinet (the original project's own program)
      Rapid River\           one cabinet, white-water rafting (new in this package)
      Rave Racer\            up to 4 linked cabinets
+     Starblade\             one cabinet, the mounted-gun space shooter, set to free play (new in this package)
      Time Crisis\           one cabinet (the original project's own program)
      Time Crisis II\        the twin cabinet: left and right sides linked
      Tokyo Wars\            up to 4 linked cabinets
@@ -64,6 +66,7 @@ itself the first time it starts.
    games\Prop Cycle\roms        propcycl.zip
    games\Rapid River\roms       rapidrvr.zip  and  namco_asca1.zip
    games\Rave Racer\roms        raverace.zip  and  namcoc74.zip
+   games\Starblade\roms         starblad.zip  and  namcoc67.zip  and  namcoc68.zip
    games\Time Crisis\roms       timecris.zip
    games\Time Crisis II\roms    timecrs2.zip
    games\Tokyo Wars\roms        tokyowar.zip
@@ -120,9 +123,12 @@ The launcher sets the game's own "Link play" row to match each time it starts a 
 3. Close the game on every PC and start them all again. The cabinets look for each other when
    they start, like the real boards, wait up to a minute for any that are missing, then begin
    together.
-4. The first time, Windows Firewall asks whether the game may use the network: tick "Private
-   networks" and click Allow. If it does not ask and the cabinets cannot see each other, that
-   permission is the first thing to check.
+4. Windows Firewall asks, the first time each game starts, whether it may use the network. To
+   answer once for every game: double-click "Allow through firewall.bat" (in this folder) on
+   each cabinet PC and say Yes to the administrator question. It allows every program here on
+   Private and Public networks (a network with no internet is usually counted as Public), and
+   clears an old "block" from clicking Cancel. Run it again after moving this folder or adding
+   a game. If the cabinets cannot see each other, this permission is the first thing to check.
 5. To TEST the link across real PCs first, use the "LAN test" folder (see "About the LAN test.txt"):
    every PC runs the game as its own cabinet and sends its logs to one folder on the main PC.
 

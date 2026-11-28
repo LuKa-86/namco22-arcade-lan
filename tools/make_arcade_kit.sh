@@ -41,6 +41,7 @@ GAMES=(
   "Rapid River|RapidRiver-ArcadeLAN.exe|rapidrvr/build/rapidrvr.exe|rapidrvr.zip namco_asca1.zip|rapidrvr"
   "Final Furlong|FinalFurlong-ArcadeLAN.exe|finfurl/build/finfurl.exe|finfurl.zip namco_asca1.zip|finfurl"
   "Angler King|AnglerKing-ArcadeLAN.exe|aking/build/aking.exe|aking.zip namco_fca10.zip|aking"
+  "Starblade|Starblade-ArcadeLAN.exe|starblad/build/cs21.exe|starblad.zip namcoc67.zip namcoc68.zip|starblad"
   # the original author's own programs, unchanged (single-cabinet games): from their Windows release, unpacked at $AUTHOR_RELEASE
   "Crisis Zone|CrisisZone.exe|crszone/build/crszone.exe|crszone.zip|crszone"
   "Dirt Dash|DirtDash.exe|dirtdash/build/dd.exe|dirtdash.zip|dirtdash"
@@ -55,6 +56,8 @@ for g in "${GAMES[@]}"; do
     d="$KIT/games/$folder"; mkdir -p "$d"
     cp "$src" "$d/$exe"; [ -n "$STRIP" ] && [ "$src" = "$ROOT/$build" ] && "$STRIP" "$d/$exe"   # (ours: the debug symbols are 5-8x the program)
     [ "$folder" = "Prop Cycle" ] && [ -d "$AUTHOR_RELEASE/mesa" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
+    # Starblade: its settings with the gun calibrated and free play on (made headless: starblad/build/freeplay.nv; never over a cabinet's own)
+    [ "$folder" = "Starblade" ] && [ -f "$ROOT/starblad/build/freeplay.nv" ] && [ ! -f "$d/sb21.nv" ] && cp "$ROOT/starblad/build/freeplay.nv" "$d/sb21.nv"
     [ "$folder" = "Angler King" ] && cp "$ROOT/aking/aking_subtitles.txt" "$d/"   # its English subtitles (read beside the program)
     [ "$folder" = "Crisis Zone" ] && [ -d "$AUTHOR_RELEASE/hotr" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)
     cp "$ROOT/launcher/pictures/$pic.bmp" "$d/picture.bmp"
@@ -81,6 +84,7 @@ else
     echo "  (no launcher build: launcher/build/Polygonizer Arcade LAN.exe)"
 fi
 cp "$ROOT/packaging/arcade-lan-kit/READ ME.txt" "$KIT/"
+cp "$ROOT/packaging/arcade-lan-kit/Allow through firewall.bat" "$KIT/"   # one Windows Firewall rule per program, run once as administrator
 mkdir -p "$KIT/LAN test"; cp "$ROOT/packaging/arcade-lan-kit/LAN test"/* "$KIT/LAN test/"   # link tests on several real PCs (copied over: never wipes the results folder)
 echo "Package ready: $KIT"
 [ -n "$ZIPS" ] || echo "Put each game's MAME zips in games\\<Game>\\roms (see READ ME.txt)."

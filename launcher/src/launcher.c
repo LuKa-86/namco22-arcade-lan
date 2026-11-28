@@ -192,6 +192,10 @@ static const game_t games[] = {
       "Racing for up to 4 linked cabinets.",
       "Keys: 5 coin  \xC2\xB7  1 start  \xC2\xB7  arrows steer  \xC2\xB7  X accelerate  \xC2\xB7  Z brake  \xC2\xB7  Esc menu", "link.cfg",
       8, { NET_MODES("roms") } },
+    { "starblad", "Starblade", "1991", "Starblade", "Starblade-ArcadeLAN.exe",
+      "Space-battle shooting with a mounted gun, for a single cabinet. New in this package (set to free play).",
+      "Controls: mouse, stick or arrows aim  \xC2\xB7  left / right button (or Ctrl / Alt) fire  \xC2\xB7  middle button or 1 start  \xC2\xB7  F2 test menu (wheel moves)  \xC2\xB7  Esc menu", NULL,
+      2, { M_SOLO_FULL("extracted"), M_SOLO_WIN("extracted", "") } },
     { "timecris", "Time Crisis", "1995", "Time Crisis", "TimeCrisis.exe",
       "Light-gun shooting for a single cabinet. The original project's build.",
       "Controls: mouse or light gun aims and shoots  \xC2\xB7  right button or Z is the pedal  \xC2\xB7  5 coin (3 per credit)  \xC2\xB7  Esc menu", NULL,
@@ -240,7 +244,7 @@ static void logm(const char *fmt, ...)
 static const char *board_text(const game_t *g)
 {
     static const struct { const char *id, *text; } t[] = {
-        { "cybsled", "System 21" }, { "acedrive", "System 22" }, { "victlap", "System 22" }, { "cybrcomm", "System 22" }, { "cybrcycc", "System 22" },
+        { "cybsled", "System 21" }, { "starblad", "System 21" }, { "acedrive", "System 22" }, { "victlap", "System 22" }, { "cybrcomm", "System 22" }, { "cybrcycc", "System 22" },
         { "raverace", "System 22" }, { "rapidrvr", "Gorgon" }, { "finfurl", "Gorgon" }, { "timecrs2", "System 23" }, { "crszone", "System 23" }, { "aking", "Super System 23" },
         { "gunwars", "System 23 + GMEN" } };
     for (size_t i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(g->id, t[i].id)) return t[i].text;

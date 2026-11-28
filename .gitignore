@@ -238,3 +238,17 @@ __pycache__/
 /finfurl/build/
 /finfurl/*.pcode
 /finfurl/build_cfg.log
+
+# Starblade (starblad/): game files, the translation's working files, test output
+/starblad/extracted/
+/starblad/gen/
+/starblad/build/
+/starblad/run*/
+/starblad/*.bin
+/starblad/*.pcode
+/starblad/*.log
+/starblad/*.nv
+/starblad/*.cfg
+/starblad/*.rec
+/starblad/*.wav
+/starblad/*.png

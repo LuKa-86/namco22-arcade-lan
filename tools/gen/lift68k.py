@@ -384,6 +384,8 @@ class Lifter:
             else:
                 for k, o in enumerate(i.ops):
                     body.append('  P_%X_%d: %s' % (i.addr, k, self.op(i, k, o)))
+            if re.match(r'^(lea \(0x[0-9a-f]+\)\.[wl]|movea?\.l #0x[0-9a-f]+),SP$', i.text):   # SP loaded with a fixed address (engine/lift_rt.h)
+                body.append('  RR_SP_RESET(0x%XU);' % (i.addr + i.len))
             body.append('  A_END_%X: ;' % i.addr)
             nxt = ins[n + 1].addr if n + 1 < len(ins) else None
             if i.ft is not None and not terminal and i.ft != nxt:      # the next instruction in memory is not the next one here

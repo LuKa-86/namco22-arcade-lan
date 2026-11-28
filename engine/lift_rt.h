@@ -215,4 +215,15 @@ void rr_trace_ins(uint32_t pc);
 #define RR_INS(a) (--rr_budget)
 #endif
 
+/* After an instruction that loads SP with a fixed address (lea (abs).l,SP / movea.l #imm,SP -- tools/gen/lift68k.py), with the next
+ * instruction's address. A host that runs interrupts as nested calls defines RR_SP_RESET_HOOK: a handler that throws its frame away
+ * this way and never rtes (Starblade's test mode: every vblank resets SP and runs the menu again) is restarted there instead of nesting
+ * (starblad/src/cpu68/s21_cpu_glue.c). Nothing otherwise. */
+#ifdef RR_SP_RESET_HOOK
+void rr_sp_reset(uint32_t next);
+#define RR_SP_RESET(n) rr_sp_reset(n)
+#else
+#define RR_SP_RESET(n) ((void)0)
+#endif
+
 #endif

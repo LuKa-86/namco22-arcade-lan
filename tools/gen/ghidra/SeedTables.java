@@ -272,6 +272,27 @@ public class SeedTables extends GhidraScript {
                 boolean viaReg = (op & 0xFFB8) == 0x4EB0;                    // jsr / jmp (d8,An,Xn): the table's address is in An
                 if (op != 0x4EBB && op != 0x4EFB && !viaReg) continue;       // jsr / jmp (d8,PC,Xn) and its full-format forms
                 int ext = mem.getShort(toAddr(a + 2)) & 0xFFFF;
+                if (op == 0x4EBB && (ext & 0x8F00) == 0) {                  // Starblade's compiler:  move.w (d8a,PC,Dn.w),Dn ; jsr (d8b,PC,Dn.w)
+                    Instruction b = in.getPrevious(); long t1 = -1;          //  -- word offsets from d8b, the table at d8a (the index is pre-scaled,
+                    for (int k = 0; k < 3 && b != null && t1 < 0; k++, b = b.getPrevious()) {   // so a state's two entries can sit side by side)
+                        long ba = b.getAddress().getOffset();
+                        int bext = mem.getShort(toAddr(ba + 2)) & 0xFFFF;
+                        if ((mem.getShort(toAddr(ba)) & 0xF1FF) == 0x303B && (bext & 0x8F00) == 0) t1 = ba + 2 + (byte) (bext & 0xFF);
+                    }
+                    if (t1 < 0) continue;
+                    long t2 = a + 2 + (byte) (ext & 0xFF), stop = size;
+                    int n = 0;
+                    for (int k = 0; k < 256; k++) {                          // the table ends where the first routine it names begins
+                        long ea = t1 + 2L * k;
+                        if (ea + 2 > size || ea + 2 > stop) break;
+                        long t = t2 + (short) mem.getShort(toAddr(ea));
+                        if (!plausible(t) || t < ea + 2) break;
+                        if (t < stop) stop = t;
+                        forced.add(t); n++;
+                    }
+                    if (n > 0) { tables++; clears.add(new long[] { t1, t1 + 2L * n - 1, a }); }
+                    continue;
+                }
                 if (op == 0x4EFB && (ext & 0x100) == 0) {                    // a SWITCH (Alpine Racer 2's compiler):  move.w (d8,PC,Dn.w*2),Dn
                     boolean sw = false;                                      //  [nop]  jmp (d8,PC,Dn.w) -- a table of 16-bit offsets from its own start
                     Instruction b = in.getPrevious();
@@ -301,16 +322,32 @@ public class SeedTables extends GhidraScript {
                         }
                         continue;
                     }
+                    // no bound test: the table ends where the first case it names begins. When the table is RIGHT AFTER the jmp and the
+                    // move reads the same table (Starblade's slave 0x5FAE: andi.w #0x1e; move.w (6,PC,D1.w),D1; jmp (2,PC,D1.w); 3 entries
+                    // Ghidra had decoded as instructions), code found inside the run does not end it and the run is cleared as data.
+                    // Otherwise (the old rule) the entries are only suggestions and the run stops at code -- junk "jmp"s decoded inside
+                    // data must not clear real code.
+                    boolean tight = false;
+                    b = in.getPrevious();
+                    for (int k = 0; k < 3 && b != null && !tight; k++, b = b.getPrevious()) {
+                        long ba = b.getAddress().getOffset();
+                        int bext = mem.getShort(toAddr(ba + 2)) & 0xFFFF;
+                        tight = (mem.getShort(toAddr(ba)) & 0xF1BF) == 0x303B && (bext & 0x8F00) == 0 && ba + 2 + (byte) (bext & 0xFF) == table;
+                    }
+                    tight = tight && table == a + 4;
                     long stop = size;
+                    int n = 0;
                     for (int k = 0; k < 256; k++) {
                         long ea = table + 2L * k;
                         if (ea + 2 > size || ea + 2 > stop) break;
-                        if (k > 0 && currentProgram.getListing().getInstructionAt(toAddr(ea)) != null) break;
+                        if (!tight && k > 0 && currentProgram.getListing().getInstructionAt(toAddr(ea)) != null) break;
                         long t = table + (short) mem.getShort(toAddr(ea));
-                        if (!plausible(t) || t <= a) break;
+                        if (!plausible(t) || t <= a || (tight && t < ea + 2)) break;
                         if (t < stop) stop = t;
-                        targets.add(t);
+                        if (tight) forced.add(t); else targets.add(t);
+                        n++;
                     }
+                    if (tight && n > 0) clears.add(new long[] { table, table + 2L * n - 1, a });
                     continue;
                 }
                 if ((ext & 0x100) == 0 || (ext & 0x40) != 0) continue;       // brief format, or no index
@@ -347,18 +384,33 @@ public class SeedTables extends GhidraScript {
             for (long[] c : clears) {
                 switchTables.put(c[0], c[1]);
                 Address t0 = toAddr(c[0]), t1 = toAddr(c[1]);
+                {   // a wrong instruction that starts in the gap between the jmp and the table (Starblade 0x8338, a pad word) is cleared
+                    // with the table and that gap kept out too -- else the sweep after the rts decodes it again every round
+                    Instruction v0 = currentProgram.getListing().getInstructionContaining(t0);
+                    if (v0 != null && v0.getMinAddress().getOffset() < c[0] && v0.getMinAddress().getOffset() > c[2]) {
+                        switchTables.remove(c[0]); switchTables.put(v0.getMinAddress().getOffset(), c[1]);
+                    }
+                }
                 for (ghidra.program.model.symbol.Reference r : getReferencesFrom(toAddr(c[2])))   // Ghidra's guess at the jmp's target: the table
                     if (r.getToAddress().compareTo(t0) >= 0 && r.getToAddress().compareTo(t1) <= 0) removeReference(r);
                 for (Instruction v = currentProgram.getListing().getInstructionContaining(t0); v != null && v.getMinAddress().compareTo(t1) <= 0;
                      v = currentProgram.getListing().getInstructionAfter(v.getMaxAddress())) {
                     ghidra.program.model.listing.Function f = currentProgram.getFunctionManager().getFunctionAt(v.getAddress());
                     if (f != null) removeFunction(f);
+                    if (round >= 19 && System.getenv("SEEDTABLES_DEBUG") != null)   // a table run that keeps clearing code each round
+                        println(String.format("SeedTables: round %d: table %X-%X (jmp %X) clears %s", round, c[0], c[1], c[2], v.getMinAddress()));
                     currentProgram.getListing().clearCodeUnits(v.getMinAddress(), v.getMaxAddress(), false);
                     carved++;
                 }
             }
             for (long t : targets) if (seed(t)) added++;
-            for (long t : forced) if (currentProgram.getListing().getInstructionAt(toAddr(t)) == null && seed(t, true)) added++;
+            for (long t : forced) if (currentProgram.getListing().getInstructionAt(toAddr(t)) == null) {
+                if (seed(t, true)) added++;
+                else if (round == 1) {                                   // say why a table's case is still no code (the next trap would be there)
+                    java.util.Map.Entry<Long, Long> e = switchTables.floorEntry(t);
+                    println(String.format("SeedTables: case %X refused%s", t, inTable(t) ? String.format(" (inside the table %X-%X)", e.getKey(), e.getValue()) : " (carve failed)"));
+                }
+            }
             added += repair();
             for (int k = sweep(); k > 0; k = sweep()) added += k;
             added += pointers();

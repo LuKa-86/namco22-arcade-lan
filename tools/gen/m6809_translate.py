@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from m6809_decode import decode, disasm
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--game', required=True, choices=['cs'])
+ap.add_argument('--game', required=True, choices=['cs', 'sb'])
 ap.add_argument('--roms', required=True)
 ap.add_argument('--cov', action='append', default=[])
 ap.add_argument('--out')
@@ -56,6 +56,14 @@ if a.game == 'cs':
     # <handler ; ... JSR [handler]`): 4-byte entries, the handler address at +2, the table ending where the first
     # handler begins (0x23 opcodes each). A static walk cannot see through the RAM pointer: these are its seeds.
     TABLES = [(0xD4F5, 4, 2), (0xDEFE, 4, 2)]
+elif a.game == 'sb':
+    # Starblade (System 21): the same board map and the same Namco sound driver as Cyber Sled, at other addresses -- st1-snd0.bin
+    # (128 KB); the two interpreters' tables (`LDX #table ; ABX ; LDD 2,X`) at 0xD442 / 0xDE4C point to 0xD4E9 / 0xDEEC.
+    rom = open(os.path.join(a.roms, 'st1-snd0.bin'), 'rb').read()
+    FIXED_LO, FIXED_HI, FIXED_OFF = 0xC000, 0x10000, 0
+    BANK_LO, BANK_HI, BANK_SIZE, NBANK = 0x0000, 0x4000, 0x4000, 8
+    prefix = a.prefix or 'cs_6809'
+    TABLES = [(0xD4E9, 4, 2), (0xDEEC, 4, 2)]
 
 
 def src(pc, bank, n=6):
