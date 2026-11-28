@@ -18,6 +18,7 @@
 #include "s21_board.h"
 #include "s21_io.h"
 #include "ss22_host.h"
+#include "s21_cpu.h"                               /* s21_bus_read: the credit count (free play) */
 
 /* the Controls page's bindable rows (twin_stick.h: the eight directions first) */
 /* STARBLADE: one gun (two pots: AN1 = X, AN2 = Y) with a fire button on each side -- SHOOT1 (MCUH 0x20) and SHOOT2 (0x08); both fire
@@ -253,8 +254,16 @@ void s21_input_update(void)
     test_prev = test;
     const int wup = wheel_up-- > 8, wdn = wheel_down-- > 8;    /* the wheel: held for the first 8 of its 16 frames */
     in.mcuh = (uint8_t)(0xFF & ~(gun ? 0x20 : 0) & ~(fire2 ? 0x08 : 0) & ~(ts_held(CS_SEL_UP) || wup ? 0x01 : 0) & ~(ts_held(CS_SEL_DOWN) || wdn ? 0x02 : 0));
-    in.mcuc = (uint8_t)(0xFF & ~(coin ? 0x20 : 0) & ~(service ? 0x80 : 0));
-    in.mcub = (uint8_t)(0xFF & ~(start ? 0x80 : 0));
+    /* FREE PLAY WITH THE ATTRACT MODE: the game's own FREE PLAY = YES never leaves the title (it waits there whenever it has a credit),
+     * so the package runs it at 1 coin 1 credit and START with no credit drops a coin first: 6 frames of coin, then START held from
+     * frame 12. The credit count is master work RAM 0x10E022 (measured: 0, 1, 2 with coins, one less after START). */
+    static int vfp, start_prev;
+    if (start && !start_prev && !vfp && !test_on && (s21_bus_read(0, 0x10E022, 2) & 0xFFFF) == 0) vfp = 1;
+    start_prev = start;
+    int vcoin = 0, vstart = 0;
+    if (vfp) { vcoin = vfp <= 6; vstart = vfp >= 12; if (++vfp > 20) vfp = 0; }
+    in.mcuc = (uint8_t)(0xFF & ~(coin || vcoin ? 0x20 : 0) & ~(service ? 0x80 : 0));
+    in.mcub = (uint8_t)(0xFF & ~((start && !(vfp && vfp < 12)) || vstart ? 0x80 : 0));
     in.dsw = (uint8_t)((cur.dsw & ~1) | (test_on ? 0 : 1));
     { static s21_inputs prev; static int log = -1; if (log < 0) log = getenv("CS_INLOG") != NULL;   /* CS_INLOG=1: every change of the ports */
       s21_debug_frame(&in);

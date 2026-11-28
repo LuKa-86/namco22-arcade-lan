@@ -726,3 +726,4 @@ A2D2
 A2F6
 A29E-A2B9 data (script list of the jsr at A280)
 E298
+1F36

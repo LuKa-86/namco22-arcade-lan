@@ -56,7 +56,8 @@ for g in "${GAMES[@]}"; do
     d="$KIT/games/$folder"; mkdir -p "$d"
     cp "$src" "$d/$exe"; [ -n "$STRIP" ] && [ "$src" = "$ROOT/$build" ] && "$STRIP" "$d/$exe"   # (ours: the debug symbols are 5-8x the program)
     [ "$folder" = "Prop Cycle" ] && [ -d "$AUTHOR_RELEASE/mesa" ] && cp -r "$AUTHOR_RELEASE/mesa" "$d/"           # its software OpenGL, for a PC without a graphics driver
-    # Starblade: its settings with the gun calibrated and free play on (made headless: starblad/build/freeplay.nv; never over a cabinet's own)
+    # Starblade: its settings, gun calibrated, 1 coin 1 credit -- the program drops a coin on START, so it plays free AND shows its attract
+    # mode (the game's own FREE PLAY never leaves the title). Made headless: starblad/build/freeplay.nv; never over a cabinet's own
     [ "$folder" = "Starblade" ] && [ -f "$ROOT/starblad/build/freeplay.nv" ] && [ ! -f "$d/sb21.nv" ] && cp "$ROOT/starblad/build/freeplay.nv" "$d/sb21.nv"
     [ "$folder" = "Angler King" ] && cp "$ROOT/aking/aking_subtitles.txt" "$d/"   # its English subtitles (read beside the program)
     [ "$folder" = "Crisis Zone" ] && [ -d "$AUTHOR_RELEASE/hotr" ] && mkdir -p "$d/hotr" && cp "$AUTHOR_RELEASE/hotr/README.txt" "$AUTHOR_RELEASE/hotr/crszone.txt" "$d/hotr/"   # gun recoil (Hook of the Reaper)

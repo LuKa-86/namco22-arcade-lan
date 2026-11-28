@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>                                /* MoveFileExA (the NVRAM save) */
+#endif
 #include "s21_board.h"
 #include "s21_cpu.h"
 #include "s21_dsp.h"
@@ -164,7 +167,10 @@ static void word_w(int cpu, uint32_t a, uint16_t d, uint16_t m)
     if (a >= 0x760000 && a < 0x760002) { COMBINE(g_s21.vena, d, m); return; }
     if (a >= 0x800000 && a < 0x900000) return;
     if (a >= 0x900000 && a < 0x910000) { COMBINE(g_s21.shared[(a - 0x900000) >> 1], d, m); return; }
-    if (a >= 0xA00000 && a < 0xA01000) { if (m & 0xFF) g_s21.dpram[(a - 0xA00000) >> 1] = (uint8_t)d; return; }
+    if (a >= 0xA00000 && a < 0xA01000) {
+        { static int lg = -1; if (lg < 0) lg = getenv("S21_DPLOG") != NULL;   /* DEV: the 68000's writes to the I/O MCU's shared RAM */
+          if (lg && (m & 0xFF) && g_s21.dpram[(a - 0xA00000) >> 1] != (uint8_t)d) fprintf(stderr, "[DPW] f%u %s %06X = %02X\n", g_s21.frame, cpu ? "s" : "m", a, d & 0xFF); }
+        if (m & 0xFF) g_s21.dpram[(a - 0xA00000) >> 1] = (uint8_t)d; return; }
     if (a >= 0xB00000 && a < 0xB04000) { COMBINE(g_s21.c139ram[(a - 0xB00000) >> 1], d, m); return; }
     if (a >= 0xB80000 && a < 0xB80010) { s21_c139_reg_w(a, d, m); return; }
     if (a >= 0xC00000 && a < 0xE00000) return;
@@ -227,7 +233,11 @@ bool s21_nvram_save(const char *path)
     FILE *f = fopen(tmp, "wb"); if (!f) return false;
     bool ok = fwrite(g_s21.nvram, 1, sizeof g_s21.nvram, f) == sizeof g_s21.nvram;
     ok = (fclose(f) == 0) && ok;
+#ifdef _WIN32                                       /* rename() will not replace a file on Windows: the save never landed */
+    return ok && MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
     return ok && rename(tmp, path) == 0;
+#endif
 }
 
 static void machine_reset(void)

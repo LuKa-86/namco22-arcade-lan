@@ -11,6 +11,7 @@
  *        [--ipf N] [--slices N] [--stats EVERY] [--coin F] [--start F] [--play F] (headless scripted cabinet)
  * Settings: cs21_controls.cfg; the NVRAM (settings, calibration, high scores) in cs21.nv beside it, interactive runs only.
  */
+#include "s21_cabinet.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,11 +91,13 @@ static void glgate_summary(void)
 }
 static int snd_live;
 static void snd_set_output(bool live) { snd_live = live; }
+static void input_init(void) { s21_input_init(); s21_cabinet_init(); }
 static const ss22_host_game game = {
     .title = "Starblade", .cfg_file = "sb21_controls.cfg", .tag = "SB", .shot_prefix = "sb",
-    .input_init = s21_input_init, .input_page = s21_input_page, .input_event = s21_input_event,
+    .input_init = input_init, .input_page = s21_input_page, .input_event = s21_input_event,
     .input_update = s21_input_update, .input_neutral = s21_input_neutral, .snd_set_output = snd_set_output,
     .no_link = true,                                /* Starblade: one cabinet -- no Network page (nor Cyber Sled's Debug / Online pages) */
+    .extra_page = s21_cabinet_page, .overlay = s21_cabinet_overlay, .hide_pointer = s21_cabinet_hide_pointer,   /* lamps, vibration, curve (s21_cabinet.c) */
 };
 /* the sound board makes 48 kHz stereo (src/snd); engine/audio_out.c takes the C352's 85,333 Hz four-channel stream, so it is
  * stretched to that rate (linear). TODO (HARD RULE 3): an input-rate setting in engine/audio_out.c instead (proposed patch). */
@@ -300,6 +303,12 @@ int main(int argc, char **argv)
                 if (!nogun && f % 20 < 6) in.mcuh &= (uint8_t)~0x20;
                 if (!nogun && f % 150 < 4) in.mcuh &= (uint8_t)~0x08;
                 in.an[1] = (uint8_t)(0x40 + 0x80 * ((f / 90) % 2)); in.an[2] = (uint8_t)(0x40 + 0x80 * ((f / 120) % 2));   /* Starblade: gun X, Y */
+                static int sw = -1, spx, spy; if (sw < 0) { const char *e = getenv("S21_SWEEP"); sw = e && sscanf(e, "%d,%d", &spx, &spy) == 2; }
+                if (sw) {                    /* tests: S21_SWEEP=px,py -- the gun sweeps the screen (triangle waves of those periods), firing all the time */
+                    int tx = f % spx, ty = f % spy; tx = tx < spx / 2 ? tx : spx - tx; ty = ty < spy / 2 ? ty : spy - ty;
+                    in.an[1] = (uint8_t)(0x08 + 0xF0 * tx / (spx / 2)); in.an[2] = (uint8_t)(0x20 + 0xC0 * ty / (spy / 2));
+                    if (f % 4 < 2) in.mcuh &= (uint8_t)~0x20;
+                }
                 static int tan_set = -1; static unsigned tan[4];   /* CS_TEST_AN=an0,an1,an2,an3 (hex): hold the levers there (tests) */
                 if (tan_set < 0) { const char *e = getenv("CS_TEST_AN"); tan_set = e && sscanf(e, "%x,%x,%x,%x", &tan[0], &tan[1], &tan[2], &tan[3]) == 4; }
                 if (tan_set) for (int a = 0; a < 4; a++) in.an[a] = (uint8_t)tan[a];
@@ -336,6 +345,12 @@ int main(int argc, char **argv)
         }
         if (window && !ss22_host_frame()) break;
 #endif
+        { static char dl[256]; static int di = -1;           /* tests: S21_RAMDUMP=f1,f2,..: master work RAM 0x100000-0x10FFFF to ram_<f>.bin */
+          if (di < 0) { di = 0; const char *e = getenv("S21_RAMDUMP"); snprintf(dl, sizeof dl, ",%s,", e ? e : ""); }
+          char k[16]; snprintf(k, sizeof k, ",%d,", f + 1);
+          if (strstr(dl, k)) { char p[64]; snprintf(p, sizeof p, "ram_%05d.bin", f + 1); FILE *o = fopen(p, "wb");
+              for (uint32_t a = 0x100000; o && a < 0x110000; a += 2) { uint16_t v = (uint16_t)s21_bus_read(0, a, 2); fputc(v >> 8, o); fputc(v & 0xFF, o); }
+              if (o) fclose(o); } }
         if (stats && (f + 1) % stats == 0)
             fprintf(stderr, "[cs21] frame %d: ins master %llu slave %llu (slave %s), traps %u/%u, vena %04X\n", f + 1,
                     (unsigned long long)g_s21.ins[0], (unsigned long long)g_s21.ins[1], g_s21.slave_reset ? "held" : "running",

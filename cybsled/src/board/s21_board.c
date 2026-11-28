@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>                                /* MoveFileExA (the NVRAM save) */
+#endif
 #include "s21_board.h"
 #include "s21_cpu.h"
 #include "s21_dsp.h"
@@ -227,7 +230,11 @@ bool s21_nvram_save(const char *path)
     FILE *f = fopen(tmp, "wb"); if (!f) return false;
     bool ok = fwrite(g_s21.nvram, 1, sizeof g_s21.nvram, f) == sizeof g_s21.nvram;
     ok = (fclose(f) == 0) && ok;
+#ifdef _WIN32                                       /* rename() will not replace a file on Windows: the save never landed */
+    return ok && MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
     return ok && rename(tmp, path) == 0;
+#endif
 }
 
 static void machine_reset(void)

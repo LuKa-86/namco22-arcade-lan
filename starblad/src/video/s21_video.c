@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "s21_video.h"
 #include "s21_video_int.h"
 __attribute__((weak)) uint32_t s21_frame_no(void) { return 0; }   /* the board's frame count (src/board/s21_board.c); 0 without a board */
@@ -145,6 +146,10 @@ void s21_video_quad(const s21_quad *q)
     color = (uint16_t)(color - (zsort >> 2 & PENMASK));    /* depth cue: a darker palette set further away */
     vtx v[4];
     for (int i = 0; i < 4; i++) { v[i].x = S21_W / 2 + q->sx[i]; v[i].y = S21_H / 2 + q->sy[i]; v[i].z = q->z[i]; }
+    { static int lg = -1; if (lg < 0) lg = getenv("S21_BIGQUADLOG") != NULL;   /* tests: quads wider than 400 px (full-screen effects) */
+      if (lg) { int xa = q->sx[0], xb = q->sx[0]; for (int i = 1; i < 4; i++) { if (q->sx[i] < xa) xa = q->sx[i]; if (q->sx[i] > xb) xb = q->sx[i]; }
+          if (xb - xa > 400) fprintf(stderr, "[BIGQ] f%u col %04X (%d,%d z%d) (%d,%d z%d) (%d,%d z%d) (%d,%d z%d)\n", s21_frame_no(), q->color,
+                  q->sx[0], q->sy[0], q->z[0], q->sx[1], q->sy[1], q->z[1], q->sx[2], q->sy[2], q->z[2], q->sx[3], q->sy[3], q->z[3]); } }
     if (sw3d) {
         tri(&v[0], &v[1], &v[2], color, zsort);
         tri(&v[2], &v[3], &v[0], color, zsort);
@@ -634,25 +639,32 @@ static void prepare_gl(bool sprites_built)
     gl_zmix = !(pri1 == 0 || pri1 == 2);
     for (int i = 0; i < 16; i++) gl_pritab[i] = (uint16_t)(i == 0 ? 0x7fc0 : gl_pritab[i - 1] / 1.24);
     if (!wide_e) { encode_2d(render_bm, (uint32_t *)gl2d, FB); gl2d_w = S21_W; }
-    else {                                              /* widescreen: the board in the middle of a W2-wide 2D, the backdrop continued */
+    else {
+        /* STARBLADE WIDESCREEN: every sprite drawn again into the W2-wide 2D, in the board's order, so the ones that reach past the 4:3
+         * sides (ships, explosions, debris) are not cut there: a clip window that is the whole board (the game's "no clip") becomes
+         * the whole wide picture; a narrower one (a window the game set on purpose) stays. A sprite that covers the whole board -- the
+         * white hit flash, a 512-wide sprite at -8..504 -- is stretched about the centre to cover the wide picture too. (Cyber Sled's
+         * sky strip and HUD-to-the-edges rules are not used: Starblade's backdrop is sprites like the rest.) */
         const int W2 = S21_W + 2 * wide_e;
-        for (int y = 0; y < S21_H; y++) {
-            uint16_t *r = wbm + (size_t)y * W2;
-            for (int x = 0; x < wide_e; x++) { r[x] = 0xffff; r[wide_e + S21_W + x] = 0xffff; }
-            memcpy(r + wide_e, render_bm + (size_t)y * S21_W, S21_W * sizeof *wbm);
-        }
-        wide_backdrop();
-        for (int k = 0; k < nspl; k++)                  /* the HUD at the screen edges, on top as before */
-            if (hud_shift[k]) {
-                c355_spr t = spl[k];
-                for (int i = 0; i < t.size; i++) t.x[i] += hud_shift[k] << 16;
-                t.cx0 += hud_shift[k]; t.cx1 += hud_shift[k];
-                draw_sprite_to(&t, wbm, W2, wide_e, -wide_e, S21_W - 1 + wide_e);
+        for (size_t i = 0; i < (size_t)W2 * S21_H; i++) wbm[i] = 0xffff;
+        for (int k = 0; k < nspl; k++) {
+            if (spl[k].disable) continue;
+            c355_spr t = spl[k];
+            if (t.cx0 <= 0 && t.cx1 >= S21_W - 1) { t.cx0 = -wide_e; t.cx1 = S21_W - 1 + wide_e; }
+            int x0, x1; sprite_extent(&t, &x0, &x1);
+            if (x0 <= 0 && x1 >= S21_W - 1 && x1 > x0) {       /* whole-board sprite: widen it to the picture */
+                const double c = S21_W / 2.0, f = (double)(W2 + 2) / (x1 - x0 + 1 < S21_W ? S21_W : x1 - x0 + 1);
+                for (int i = 0; i < t.size; i++) {
+                    if (t.tile[i] & 0x8000) continue;
+                    const double xl = (t.x[i] >> 16) - c, w = (t.zoomx[i] * 16.0) / 65536.0;
+                    const int nx = (int)floor(c + xl * f), nr = (int)ceil(c + (xl + w) * f);
+                    t.x[i] = nx << 16; t.zoomx[i] = (int)(((double)(nr - nx) / 16.0) * 65536.0);
+                }
             }
+            draw_sprite_to(&t, wbm, W2, wide_e, -wide_e, S21_W - 1 + wide_e);
+        }
         encode_2d(wbm, gl2dw, W2 * S21_H);
         gl2d_w = W2;
-        static int lg = -1; if (lg < 0) lg = getenv("CS_WIDELOG") != NULL;
-        if (lg) fprintf(stderr, "[WIDE2D] E %d: sky chain %d slices, neighbours drawn left %d right %d, guessed left %d right %d, missing left %d right %d\n", wide_e, wide_chain_n, wide_side[0], wide_side[1], wide_guess[0], wide_guess[1], wide_miss[0], wide_miss[1]);
     }
     for (int p = 0; p < 0x8000; p++) {
         const uint16_t m = v_pal[p], x = v_palx[p];

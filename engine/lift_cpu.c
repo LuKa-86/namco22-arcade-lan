@@ -66,6 +66,10 @@ void rr_trap(uint32_t at, uint32_t target, const char *what)
 #else
         fprintf(stderr, "[TRAP] f%u at 0x%06X -> 0x%08X: %s\n", rr_frame, at, target, what);
 #endif
+        if (rr_n_traps == 1) {                       /* kept across restarts (the log is not): what a player's crash was */
+            FILE *c = fopen("crash.log", "a");
+            if (c) { fprintf(c, "[TRAP] f%u at 0x%06X -> 0x%08X: %s\n", rr_frame, at, target, what); fclose(c); }
+        }
     }
     if (rr_n_traps == 40) fprintf(stderr, "[TRAP] (further traps counted, not printed)\n");
 }

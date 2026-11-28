@@ -26,6 +26,9 @@ typedef struct {
     void (*paused_tick)(void);               /* called while the game is stopped (P / the menu), ~every 10-16 ms: online keepalive
                                                 (eng_net_poll_paused, docs/NETPLAY.md); NULL = none */
     bool no_link;                            /* a single-cabinet game (no link play): the menu has no Network page */
+    void (*overlay)(int x, int y, int w, int h);   /* drawn over the game picture every frame (that rectangle, drawable pixels from the top-left;
+                                                  the window's framebuffer bound): Starblade's cabinet lamps and curved screen; NULL = none */
+    bool (*hide_pointer)(void);              /* true: no mouse pointer over the game in a window too (the game draws its own sight); NULL = shown */
 } ss22_host_game;
 
 bool ss22_host_open(const ss22_host_game *g, int scale, bool fullscreen);   /* a real window; scale <= 0 = the saved window size */

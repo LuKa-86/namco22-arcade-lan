@@ -180,6 +180,7 @@ static void present(void)
     pic_r = r; gun_r = r;
     if (g_eng_disp.wide) { const int w = (int)(r.h * 4.0 / 3.0 + 0.5); gun_r.x = r.x + (r.w - w) / 2; gun_r.w = w; }   /* the 2D layers and the gun stay 4:3 */
     rt_end_rect(win, r.x, r.y, r.w, r.h, eng_disp_sharp());
+    if (game->overlay) game->overlay(r.x, r.y, r.w, r.h);
     if (game->aim && g_eng_disp.gun_border) {          /* the light gun's border (Sinden-style guns track it): white, all round the window */
         int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
         const float b = (float)(g_eng_disp.gun_border * (dw < dh ? dw : dh) / 100);
@@ -334,7 +335,7 @@ bool ss22_host_frame(void)
     struct timespec a0, a1, a2, a3; if (ftm) clock_gettime(CLOCK_MONOTONIC, &a0);
     if (!pump()) return false;
     if (game->aim) SDL_ShowCursor(eng_ui_is_open() || paused ? SDL_ENABLE : SDL_DISABLE);   /* the crosshair is the pointer */
-    else { const int want = (!g_eng_disp.winmode || eng_ui_is_open()) ? SDL_ENABLE : SDL_DISABLE;   /* fullscreen hides the pointer for the game, the menu needs it */
+    else { const int want = ((!g_eng_disp.winmode && !(game->hide_pointer && game->hide_pointer())) || eng_ui_is_open()) ? SDL_ENABLE : SDL_DISABLE;   /* fullscreen hides the pointer for the game, the menu needs it */
            if (SDL_ShowCursor(SDL_QUERY) != want) SDL_ShowCursor(want); }
     if (!paused && !eng_ui_is_open()) game->input_update();
     else if (link_host_on()) game->input_neutral();  /* linked, the menu open: the game plays on, hands off */

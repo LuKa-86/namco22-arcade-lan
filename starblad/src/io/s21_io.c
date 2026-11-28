@@ -152,6 +152,8 @@ static void wr(void *ctx, uint16_t a, uint8_t v)
 	BUS_NOTE(1, a, v);
 	if (a < 0x00c0) { io.ram0[a] = v; return; }
 	if (a >= 0x0100 && a < 0x0200) { io.ram1[a - 0x100] = v; return; }
+	{ static int lg = -1; static uint8_t last[0x10000]; if (lg < 0) lg = getenv("S21_IOLOG") != NULL;   /* DEV: the MCU's output writes */
+	  if (lg && last[a] != v && (a < 0x5000 || a > 0x57ff)) { last[a] = v; fprintf(stderr, "[IOW] %04X = %02X\n", a, v); } }
 	if (a >= 0x00d6 && a <= 0x00dd) {
 		int o = a - 0xd6;
 		switch (o) {
